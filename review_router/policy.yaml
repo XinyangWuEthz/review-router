@@ -1,0 +1,87 @@
+version: 1
+
+# Ordered integer map, so "highest matching tier wins" is max(..., key=tiers.get).
+tiers:
+  allow: 1
+  human_review: 2
+  auto_action: 3
+
+# Policy input, NOT a measured quantity. Every harm-per-reviewer-hour number in
+# the benchmark is conditional on this vector; benchmarks/run.py must sweep it
+# (flat weights and a wider spread) and report the sensitivity.
+severity_weights:
+  threat: 10
+  identity_hate: 6
+  severe_toxic: 5
+  insult: 2
+  obscene: 2
+  toxic: 1
+
+# Precision floors that DEFINE each tier's threshold. Coverage is then the
+# dependent variable — it is read off the curve, never tuned.
+# Rationale: a false auto-action is an unappealed wrong enforcement; a false
+# queue entry costs a few reviewer-minutes. The costs differ by orders of
+# magnitude, so the floors do too.
+tier_precision_floors:
+  human_review: 0.90
+  auto_action: 0.99
+
+rules:
+  - id: R101_rare_high_harm_never_auto
+    description: >
+      Auto-action requires precision >= 0.99. Arithmetic on the scored test set
+      says that is unreachable for threat: 211 positives against 63,767
+      negatives means a 1% FPR yields ~638 false positives against ~106 true
+      ones. Route to a human instead of relaxing the precision bar.
+    action: human_review
+    conditions:
+      - {signal: p_threat, op: ">=", threshold: 0.30}
+
+  - id: R102_hierarchy_violation
+    description: >
+      severe_toxic is an exact subset of toxic in the training labels — no row
+      has severe_toxic=1 with toxic=0. A prediction asserting severe without
+      toxic is logically impossible, so the model is out of distribution and
+      neither head should be trusted. Send it to a human.
+    action: human_review
+    conditions:
+      - {signal: p_severe_toxic, op: ">=", threshold: 0.50}
+      - {signal: p_toxic, op: "<", threshold: 0.50}
+
+  - id: R103_identity_term_low_confidence
+    description: >
+      The documented failure mode on this corpus is false positives on benign
+      identity mentions. Suppress auto-action in the borderline band so
+      over-enforcement does not concentrate on one group; a human decides.
+    action: human_review
+    conditions:
+      - {signal: identity_term_present, op: "==", threshold: 1}
+      - {signal: p_max, op: "<", threshold: 0.95}
+
+# CI floors live here and nowhere else. Each floor is set a stated delta below a
+# value that was actually measured, and the measured value plus its date is
+# recorded so a red CI shows both the floor and what the number used to be.
+#
+# Floors are null until the first real evaluation run. tests/test_gate.py skips
+# any gate whose floor is null rather than passing it vacuously.
+gates:
+  measured_on: null
+  eval_slice: null
+  per_label_average_precision:
+    toxic: {floor: null, measured: null}
+    obscene: {floor: null, measured: null}
+    insult: {floor: null, measured: null}
+    identity_hate: {floor: null, measured: null}
+    severe_toxic: {floor: null, measured: null}
+    threat: {floor: null, measured: null}
+  routing:
+    # Hard policy floor — set from the cost asymmetry, never relaxed to make a
+    # run pass. Coverage may legitimately fall to zero on the rare labels.
+    auto_action_precision_floor: 0.99
+    human_review_precision_floor: null
+    harm_per_reviewer_hour_vs_fifo_min: null
+    queue_depth_p95_max: null
+    reviewer_utilization_min: 0.60
+  consistency:
+    hierarchy_violation_rate_max: 0.005
+  min_predicted_positives_for_precision: 30
