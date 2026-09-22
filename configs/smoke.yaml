@@ -1,7 +1,7 @@
 # Pipeline check on the synthetic corpus. Numbers from this run are NOT results.
 #   python scripts/make_synthetic_corpus.py --out data/synthetic
 #   python scripts/run_pipeline.py --config configs/smoke.yaml
-label: smoke-synthetic
+label: human-review-smoke
 data_dir: data/synthetic
 output_dir: reports
 seed: 1
@@ -21,5 +21,5 @@ simulation:
   loads_per_hour: [60, 108, 180]
   seeds: [1, 2, 3]
   high_risk_min_weight: 5
-  primary: {load_per_hour: 108, strategy: severity}
+  primary: {load_per_hour: 108, strategy: priority}
   thesis_load_per_hour: 180

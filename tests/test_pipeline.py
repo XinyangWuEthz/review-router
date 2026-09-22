@@ -10,7 +10,13 @@ import pandas as pd
 import pytest
 
 from review_router.data import LABELS
-from review_router.pipeline import _identity_concentration, _route, load_config, run
+from review_router.pipeline import (
+    _identity_concentration,
+    _route,
+    _run_simulation,
+    load_config,
+    run,
+)
 from review_router.policy import load_policy
 from review_router.thresholds import TierThresholds
 
@@ -35,7 +41,7 @@ simulation:
   loads_per_hour: [30, 90]
   seeds: [1, 2]
   high_risk_min_weight: 5
-  primary: {{load_per_hour: 90, strategy: severity}}
+  primary: {{load_per_hour: 90, strategy: priority}}
 """,
         encoding="utf-8",
     )
@@ -82,31 +88,31 @@ def test_invalid_simulation_selection_is_rejected(
         load_config(cfg)
 
 
-def test_human_protection_rule_overrides_automatic_model_tier() -> None:
+def test_high_risk_rule_promotes_regular_review_and_preserves_priority_review() -> None:
     thresholds = TierThresholds(
         {
-            "auto_action": {label: 0.8 for label in LABELS},
+            "priority_review": {label: 0.99 for label in LABELS},
             "human_review": {label: 0.5 for label in LABELS},
         },
         LABELS,
     )
-    probabilities = np.array([[0.95, 0.1, 0.1, 0.4, 0.1, 0.1]])
+    probabilities = np.array([[0.95, 0.1, 0.1, 0.4, 0.1, 0.1], [0.999, 0.1, 0.1, 0.4, 0.1, 0.1]])
     result = _route(
         probabilities,
-        np.array([[1, 0, 0, 1, 0, 0]]),
-        np.zeros(1),
+        np.array([[1, 0, 0, 1, 0, 0], [1, 0, 0, 1, 0, 0]]),
+        np.zeros(2),
         thresholds,
         load_policy(),
     )
-    assert result["model_tier"].tolist() == ["auto_action"]
-    assert result["final_tier"].tolist() == ["human_review"]
-    assert result["rule_ids"] == ["R101_rare_high_harm_never_auto"]
+    assert result["model_tier"].tolist() == ["human_review", "priority_review"]
+    assert result["final_tier"].tolist() == ["priority_review", "priority_review"]
+    assert result["rule_ids"] == ["R101_high_risk_priority", "R101_high_risk_priority"]
 
 
 def test_identity_diagnostics_distinguish_discovery_positive_and_omission_rates() -> None:
     tiers = np.array(
-        ["auto_action", "allow", "auto_action", "allow", "allow"]
-        + ["auto_action", "auto_action", "human_review", "allow", "allow"]
+        ["priority_review", "allow", "priority_review", "allow", "allow"]
+        + ["priority_review", "priority_review", "human_review", "allow", "allow"]
     )
     any_true = np.array([True, True, False, False, False, True, False, False, False, False])
     routing = {"any_true": any_true}
@@ -137,26 +143,39 @@ def test_identity_diagnostics_distinguish_discovery_positive_and_omission_rates(
     assert "gay" in result["identity_terms"]
 
 
-def test_wrong_trigger_counts_as_false_discovery_but_not_a_clean_false_positive() -> None:
-    tiers = np.array(["auto_action", "allow", "auto_action", "allow"])
-    any_true = np.array([True, False, True, False])
-    correct = np.array([False, False, True, False])
-    routing = {
-        "any_true": any_true,
-        "population_tier": tiers,
-        "model_tier": tiers,
-        "final_tier": tiers,
-        "correct_population": correct,
-        "correct_model": correct,
-        "correct": correct,
-    }
-    final = _identity_concentration(
-        routing, np.array([1, 1, 0, 0]), ["gay", "gay", "article", "article"]
-    )["final_tier"]
-    assert final["auto_action"]["with_identity_term"]["false_discovery_rate"] == 1.0
-    clean = final["clean_negative_false_positives"]["auto_action"]["with_identity_term"]
+def test_priority_review_uses_any_true_label_even_when_the_trigger_label_is_wrong() -> None:
+    thresholds = TierThresholds(
+        {
+            "priority_review": {label: 0.8 for label in LABELS},
+            "human_review": {label: 0.5 for label in LABELS},
+        },
+        LABELS,
+    )
+    proba = np.zeros((2, len(LABELS)))
+    proba[:, LABELS.index("toxic")] = 0.9
+    y = np.zeros((2, len(LABELS)), dtype=int)
+    y[0, LABELS.index("obscene")] = 1
+    routing = _route(proba, y, np.array([1, 0]), thresholds, load_policy())
+    assert routing["correct"].tolist() == [True, False]
+    final = _identity_concentration(routing, np.array([1, 0]), ["gay", "article"])["final_tier"]
+    assert final["priority_review"]["with_identity_term"]["false_discovery_rate"] == 0.0
+    clean = final["clean_negative_false_positives"]["priority_review"]["without_identity_term"]
     assert clean["n_actual_negative"] == 1
-    assert clean["false_positive_rate"] == 0.0
+    assert clean["false_positive_rate"] == 1.0
+
+
+def test_simulation_queues_priority_items_when_no_regular_items_exist(tmp_path: Path) -> None:
+    config = load_config(_config(tmp_path, tmp_path / "unused-data"))
+    proba = np.full((2, len(LABELS)), 0.1)
+    y = np.zeros((2, len(LABELS)), dtype=int)
+    y[0, LABELS.index("threat")] = 1
+    sim = _run_simulation(
+        proba, y, np.array(["priority_review", "priority_review"]), load_policy(), config
+    )
+    assert sim["assumptions"]["queued_jobs"] == 2
+    assert sim["assumptions"]["queued_priority_review"] == 2
+    assert sim["assumptions"]["queued_human_review"] == 0
+    assert {row["strategy"] for row in sim["table"]} == {"fifo", "prob", "severity", "priority"}
 
 
 def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: Path) -> None:
@@ -185,9 +204,18 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
 
     report = json.loads((run_dir / "report.json").read_text())
     assert report["synthetic"] is True
+    assert report["decision_contract"] == {
+        "mode": "human_confirmation",
+        "requires_human_confirmation": True,
+        "automatic_actions": 0,
+    }
     assert report["eval_slice"] == "synthetic scored test rows"
     assert "SYNTHETIC pipeline check" in (run_dir / "report.md").read_text()
-    assert set(report["threshold_selection"]["tiers"]) == {"auto_action", "human_review", "allow"}
+    assert set(report["threshold_selection"]["tiers"]) == {
+        "priority_review",
+        "human_review",
+        "allow",
+    }
     assert set(report) >= {"per_label", "tiers", "rules", "consistency", "simulation"}
     assert set(report["per_label"]) == {
         "toxic",
@@ -197,11 +225,22 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
         "insult",
         "identity_hate",
     }
-    assert set(report["tiers"]) == {"auto_action", "human_review", "allow"}
+    assert set(report["tiers"]) == {"priority_review", "human_review", "allow"}
     sim = report["simulation"]
+    workload = report["review_workload"]
+    admitted = sum(
+        report["tiers"][t]["n_predicted_positive"] for t in ("priority_review", "human_review")
+    )
+    assert workload["n_requires_human_review"] == admitted == sim["assumptions"]["queued_jobs"]
+    assert workload["n_priority_review"] + workload["n_human_review"] == admitted
+    assert workload["review_fraction"] == pytest.approx(admitted / workload["n_total"])
+    assert sim["primary"]["strategy"] == "priority"
     assert set(sim["harm_per_reviewer_hour"]) == {"router", "fifo", "load_per_hour"}
     assert sim["harm_per_reviewer_hour"]["load_per_hour"] == 90  # thesis defaults to max load
     assert sim["high_risk_wait_p90"]["load_per_hour"] == 90
+    for name in ("primary", "thesis"):
+        assert sim["high_risk_arrived"][name]["router"] == sim["high_risk_arrived"][name]["fifo"]
+        assert sim["high_risk_handled"][name]["load_per_hour"] == 90
     identity = report["identity_false_positives"]
     assert set(identity) == {"threshold_selection", "test"}
     for name, section in identity.items():
@@ -218,9 +257,10 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
             )
             tiers_key = "tiers" if basis == "final_tier" else "tiers_model_only"
             assert n_pos == sum(
-                src[tiers_key][t]["n_predicted_positive"] for t in ("auto_action", "human_review")
+                src[tiers_key][t]["n_predicted_positive"]
+                for t in ("priority_review", "human_review")
             ), (name, basis)
-            for tier in ("auto_action", "human_review"):
+            for tier in ("priority_review", "human_review"):
                 per_tier = section[basis][tier]
                 assert (
                     per_tier["with_identity_term"]["n_predicted_positive"]
@@ -230,14 +270,15 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
     assert identity["test"]["final_tier"]["by_term"], "by-term breakdown missing"
     sub = report["subgroup_thresholds"]
     assert sub["threshold_selection"]["declared"] == [
-        {"tier": "auto_action", "signal": "identity_term_present"}
+        {"tier": "priority_review", "signal": "identity_term_present"}
     ]
     for split in ("threshold_selection", "test"):
-        st = sub[split]["auto_action"]
+        st = sub[split]["priority_review"]
         assert st["n_removed_by_subgroup_threshold"] <= st["n_population_tier"]
     assert set(report["threshold_selection"]["per_label"]) == set(LABELS)
     paired = sim["paired"]
     assert "severity_vs_fifo@90" in paired and "severity_vs_prob@30" in paired
+    assert "priority_vs_fifo@90" in paired and "priority_vs_severity@30" in paired
     for entry in paired.values():
         for stats in entry.values():
             if stats is not None:
@@ -245,7 +286,9 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
 
     predictions = pd.read_csv(run_dir / "predictions.csv")
     assert len(predictions) == 1200
-    assert set(predictions["final_tier"]) <= {"auto_action", "human_review", "allow"}
+    assert set(predictions["final_tier"]) <= {"priority_review", "human_review", "allow"}
+    assert (predictions["requires_human_review"] == (predictions["final_tier"] != "allow")).all()
+    assert int(predictions["requires_human_review"].sum()) == admitted
     counts = predictions["final_tier"].value_counts().to_dict()
     for tier, stats in report["tiers"].items():
         assert stats["n_predicted_positive"] == counts.get(tier, 0)
@@ -309,7 +352,7 @@ def test_render_results_replaces_readme_block(synthetic_corpus: Path, tmp_path: 
     )
     assert proc.returncode == 0, proc.stderr
     text = readme.read_text()
-    assert text.startswith("intro\n<!-- results:start -->\n## Round-1 results")
+    assert text.startswith("intro\n<!-- results:start -->\n## Review-routing results")
     assert text.endswith("<!-- results:end -->\nouttro\n")
     assert "\nold\n" not in text
     assert "SYNTHETIC corpus" in text

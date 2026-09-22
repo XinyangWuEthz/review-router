@@ -1,10 +1,11 @@
-version: 1
+version: 2
+decision_mode: human_confirmation
 
 # Ordered integer map, so "highest matching tier wins" is max(..., key=tiers.get).
 tiers:
   allow: 1
   human_review: 2
-  auto_action: 3
+  priority_review: 3
 
 # Policy input, NOT a measured quantity. Every harm-per-reviewer-hour number in
 # the benchmark is conditional on this vector; benchmarks/run.py must sweep it
@@ -17,14 +18,13 @@ severity_weights:
   obscene: 2
   toxic: 1
 
-# Precision floors that DEFINE each tier's threshold. Coverage is then the
-# dependent variable — it is read off the curve, never tuned.
-# Rationale: a false auto-action is an unappealed wrong enforcement; a false
-# queue entry costs a few reviewer-minutes. The costs differ by orders of
-# magnitude, so the floors do too.
+# Empirical targets for selecting per-label thresholds on the selection split.
+# Priority review puts higher-confidence candidates near the front of the queue.
+# Both review tiers require human confirmation before any moderation action.
+# These targets are not hard acceptance gates or test-set precision guarantees.
 tier_precision_floors:
   human_review: 0.90
-  auto_action: 0.99
+  priority_review: 0.95
 
 # Tiers whose floor must also hold on a declared subgroup. The threshold for a
 # row in the subgroup is the stricter of the population threshold and the one
@@ -33,31 +33,24 @@ tier_precision_floors:
 # The floor applies to the observed precision on the selection slice. Passing
 # it does not certify population precision or performance on a new test set.
 subgroup_thresholds:
-  auto_action:
+  priority_review:
     - signal: identity_term_present
       rationale: >
-        auto_action is the only tier that enforces without appeal, and the
-        documented failure mode on this corpus is false positives on benign
-        identity mentions. The 0.99 floor is chosen on the whole selection
-        split and says nothing about this slice: on the selection split of
-        the run named in gates.eval_slice (population tier, auto_action, with
-        an identity term) the slice held 102 of 921 auto-action rows with 2
-        wrong on the trigger label, a false discovery rate of 0.020 with a 95%
-        interval of 0.005 to 0.069, undetermined against the 0.01 the floor
-        allows. So the slice must clear the floor on its own, at or above the
-        population threshold, before a comment in it is auto-actioned. This
-        replaces rule R103 (see retired_rules): same intent, applied through
-        the threshold machinery instead of a rule.
+        Benign identity mentions can attract false positives. Before the model
+        assigns priority review to this slice, require its observed per-label
+        precision to meet the same 0.95 selection target at or above the
+        population threshold. Rows that do not qualify can still enter ordinary
+        human review or be escalated by a high-risk rule. This does not certify
+        fairness or test-set precision, and it never permits automatic action.
 
 rules:
-  - id: R101_rare_high_harm_never_auto
+  - id: R101_high_risk_priority
     description: >
-      On the scored test set, 211 threat positives against 63,767 negatives
-      would yield about 638 false positives and 106 true positives at an
-      assumed 1% FPR and 50% recall, about 14% precision. This calculation
-      does not rule out 99% precision at a different operating point. As a
-      policy precaution, predictions with p_threat >= 0.30 require a human.
-    action: human_review
+      Threat predictions with p_threat >= 0.30 receive priority human review
+      because missing a threat can be costly. This is a high-risk exception
+      to the confidence target, not a claim of 95% precision. A reviewer
+      confirms the case before any moderation action.
+    action: priority_review
     conditions:
       - {signal: p_threat, op: ">=", threshold: 0.30}
 
@@ -65,9 +58,10 @@ rules:
     description: >
       severe_toxic is a subset of toxic in the observed training labels: no
       row has severe_toxic=1 with toxic=0. Independently fitted heads can
-      violate this relation. Send such predictions to a human for review;
-      the inconsistency alone does not establish distribution shift.
-    action: human_review
+      violate this relation. Escalate such predictions for priority human
+      review; the inconsistency alone does not establish distribution shift
+      or authorize moderation without confirmation.
+    action: priority_review
     conditions:
       - {signal: p_severe_toxic, op: ">=", threshold: 0.50}
       - {signal: p_toxic, op: "<", threshold: 0.50}
@@ -107,21 +101,18 @@ retired_rules:
       the concentration is measured and gated on every run.
     replaced_by: subgroup_thresholds.auto_action[identity_term_present] and gates.fairness
 
-# CI floors live here and nowhere else. Each floor is set a stated delta below a
-# value that was actually measured, and the measured value plus its date is
-# recorded so a red CI shows both the floor and what the number used to be.
-#
-# Floors were set from the run named in eval_slice. The rule that produced
-# each floor is written next to it; the a-priori floors say so. Nothing here
-# is tuned to make a run pass. tests/test_gate.py skips any gate whose floor
-# is null rather than passing it vacuously.
+# Acceptance now concerns human-review throughput and waiting time at equal
+# capacity. Routing targets below are declared before the v2 baseline run;
+# they are not inherited measurements from the automatic-action experiment.
 gates:
   measured_on: "2026-09-22"
   eval_slice: >
     Jigsaw scored test rows (63,978), run 20260922T112845423138Z-baseline, made at
     commit 3429f1fe41701d31de68ac936530d6aebfee1132 (manifest git_dirty: false).
-    Predictions, thresholds and splits match the floor-setting run
-    20260922T110655042496Z-baseline byte for byte.
+    This historical run supplies only the unchanged classifier AP reference.
+    V2 human-review routing was measured separately in
+    20260922T130141204182Z-human-review-baseline on a working tree with
+    uncommitted changes. Its routing criteria were declared before the run.
   # floor = measured - 0.02, rounded to 3 decimals
   per_label_average_precision:
     toxic: {floor: 0.732, measured: 0.7522}
@@ -131,20 +122,18 @@ gates:
     severe_toxic: {floor: 0.291, measured: 0.3113}
     threat: {floor: 0.437, measured: 0.4580}
   routing:
-    # A-priori policy floor from the cost asymmetry, never relaxed to make a
-    # run pass. Coverage may legitimately fall to zero on the rare labels.
-    # The round-1 model measures 0.904 on the scored test rows, so this
-    # gate is red and stays red until a model clears it.
-    auto_action_precision_floor: 0.99
-    # measured 0.551; floor = measured - 0.025, rounded down to 2 decimals
-    human_review_precision_floor: 0.52
-    # thesis load 180/h; measured 1.255 (ratio of seed means), per-seed min 1.230; floor = per-seed min - 0.10, rounded down to 2 decimals
-    harm_per_reviewer_hour_vs_fifo_min: 1.12
-    # primary load 108/h; measured 0.174 (ratio of seed means), per-seed max 0.336; ceiling = 1.5 x per-seed max, rounded up to 0.05
-    high_risk_wait_p90_vs_fifo_max: 0.55
-    # primary load 108/h; measured mean 14.2, per-seed max 26; ceiling = 1.5 x per-seed max, rounded up
-    queue_depth_p95_max: 39
-    # a-priori floor; measured 0.905
+    # Precision is reported with uncertainty for both human-confirmed tiers.
+    priority_review_precision_floor: null
+    human_review_precision_floor: null
+    # At overload, handle at least as much harm as FIFO. At both near-capacity
+    # and overload rates, complete at least as many high-risk reviews as FIFO.
+    harm_per_reviewer_hour_vs_fifo_min: 1.0
+    high_risk_handled_vs_fifo_min: 1.0
+    # Near capacity, high-risk waiting time must not exceed FIFO.
+    high_risk_wait_p90_vs_fifo_max: 1.0
+    # No measured v2 queue-depth regression ceiling yet.
+    queue_depth_p95_max: null
+    # A-priori utilization floor for the near-capacity scenario.
     reviewer_utilization_min: 0.60
   consistency:
     hierarchy_violation_rate_max: 0.005
@@ -154,11 +143,10 @@ gates:
     # A 95% interval wholly above the ceiling flags a disparity; one crossing
     # the ceiling is inconclusive and skips. An interval wholly below the
     # ceiling clears this diagnostic only, not a general claim of fairness.
-    # Evaluate pooled positive final tiers and auto_action model candidates
-    # after subgroup thresholds, before rules. Actual-negative FPR is also
+    # Evaluate pooled final review tiers and each final review band after rules.
+    # Actual-negative FPR is also
     # reported under clean_negative_false_positives, without this gate.
     # Read from report.identity_false_positives.test.
-    # A-priori ceiling; measured pooled 1.02 [0.92, 1.14], auto_action 0.58 [0.34, 1.01]
-    # (population tier 1.10 [0.78, 1.54]).
+    # A-priori diagnostic ceiling; v2 measurements are in its saved report.
     identity_false_discovery_rate_ratio_max: 1.25
   min_predicted_positives_for_precision: 30

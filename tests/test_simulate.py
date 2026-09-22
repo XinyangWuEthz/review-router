@@ -3,7 +3,14 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from review_router.simulate import Scenario, SimConfig, draw_scenario, simulate
+from review_router.simulate import (
+    STRATEGIES,
+    Scenario,
+    SimConfig,
+    draw_scenario,
+    priority_review_scores,
+    simulate,
+)
 
 CFG = SimConfig(reviewers=1, handle_minutes=10.0, horizon_hours=1.0)
 
@@ -72,6 +79,27 @@ def test_priority_pulls_high_risk_forward_under_overload() -> None:
     assert sev.high_risk_handled == 1 and sev.high_risk_wait_p50 == 0.0
     assert sev.harm_per_reviewer_hour == 10.0 and fifo.harm_per_reviewer_hour == 0.0
     assert fifo.backlog_end == sev.backlog_end == 4
+
+
+def test_priority_strategy_sorts_tier_before_severity_and_still_requires_service() -> None:
+    assert "priority" in STRATEGIES
+    scores = priority_review_scores(np.array([False, True, True]), np.array([10.0, 0.1, 0.3]))
+    assert np.argsort(-scores).tolist() == [2, 1, 0]
+    config = SimConfig(reviewers=1, handle_minutes=1.0, horizon_hours=2 / 60)
+    scenario = Scenario(0, 0.0, np.arange(3), np.zeros(3), np.ones(3))
+    out = simulate(
+        scenario,
+        scores,
+        np.array([10.0, 1.0, 2.0]),
+        np.array([True, False, False]),
+        config,
+        "priority",
+    )
+    assert out.n_handled == 2
+    assert out.harm_handled == 3.0
+    assert out.high_risk_handled == 0
+    assert out.backlog_end == 1
+    assert out.reviewer_utilization == 1.0
 
 
 def test_idle_reviewers_do_not_start_a_later_batch_before_arrival() -> None:

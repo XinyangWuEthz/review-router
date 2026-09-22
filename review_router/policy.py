@@ -1,4 +1,4 @@
-"""Policy loader: enforcement tiers, routing rules and CI gate floors.
+"""Policy loader: review priorities, routing rules and CI gate floors.
 
 Policy lives in YAML rather than code so the enforcement-cost reasoning is
 reviewable by someone who does not read Python, and so the CI floors are
@@ -8,6 +8,7 @@ declared exactly once.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from pathlib import Path
 from typing import Any
 
@@ -75,9 +76,33 @@ class Policy:
     rules: tuple[Rule, ...]
     gates: dict[str, Any]
     subgroup_thresholds: tuple[SubgroupThreshold, ...] = ()
+    decision_mode: str = "legacy"
+
+    def __post_init__(self) -> None:
+        if self.decision_mode not in {"legacy", "human_confirmation"}:
+            raise ValueError(f"unknown decision_mode {self.decision_mode!r}")
+        if self.version >= 2 and self.decision_mode != "human_confirmation":
+            raise ValueError("policy v2 requires decision_mode: human_confirmation")
+        if self.decision_mode == "human_confirmation":
+            expected = {"allow": 1, "human_review": 2, "priority_review": 3}
+            if self.tiers != expected:
+                raise ValueError(
+                    "human_confirmation requires allow/human_review/priority_review tiers "
+                    "with ranks 1/2/3; automatic action tiers are forbidden"
+                )
+            if set(self.tier_precision_floors) != {"human_review", "priority_review"}:
+                raise ValueError(
+                    "human_confirmation requires empirical targets for both review tiers"
+                )
+            if any(rule.action not in expected for rule in self.rules):
+                raise ValueError("human_confirmation rules must use review tiers or allow")
+        if any(not isfinite(v) or not 0 <= v <= 1 for v in self.tier_precision_floors.values()):
+            raise ValueError("tier precision targets must be finite values between 0 and 1")
 
     def route(self, signals: dict[str, float], default: str = "allow") -> str:
         """Highest matching tier wins; nothing matching means the default tier."""
+        if self.decision_mode == "human_confirmation" and default not in self.tiers:
+            raise ValueError(f"human_confirmation forbids fallback tier {default!r}")
         matched = [r.action for r in self.rules if r.matches(signals)]
         if not matched:
             return default
@@ -128,7 +153,7 @@ def load_policy(path: Path | str = DEFAULT_POLICY_PATH) -> Policy:
     for tier, entries in (raw.get("subgroup_thresholds") or {}).items():
         if tier not in tiers or tier not in floors:
             raise ValueError(f"subgroup_thresholds: {tier!r} is not a tier with a precision floor")
-        if tier not in {"human_review", "auto_action"}:
+        if tier not in {"human_review", "priority_review", "auto_action"}:
             raise ValueError(f"subgroup_thresholds: {tier!r} is not a model-driven tier")
         for entry in entries or []:
             signal = entry.get("signal")
@@ -148,4 +173,5 @@ def load_policy(path: Path | str = DEFAULT_POLICY_PATH) -> Policy:
         rules=tuple(rules),
         gates=dict(raw.get("gates") or {}),
         subgroup_thresholds=tuple(subgroups),
+        decision_mode=str(raw.get("decision_mode", "legacy")),
     )

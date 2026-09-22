@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 1 步：建立 baseline</title><style>
+:root { --ink: #0b0b0b; --ink2: #52514e; --line: #e6e5e1; --surface: #fcfcfb; --accent: #185ea8; --warn: #a73816; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
+nav.top { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); margin-bottom: 24px; flex-wrap: wrap; }
+nav.top a, a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+nav.top a[aria-current="page"] { font-weight: 700; color: var(--ink); }
+h1 { font-size: 26px; line-height: 1.3; margin: 0 0 8px; }
+h2 { font-size: 20px; margin: 40px 0 10px; border-top: 1px solid var(--line); padding-top: 20px; }
+h3 { font-size: 17px; margin: 26px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; color: var(--ink2); }
+p { margin: 12px 0; max-width: 78ch; }
+li { margin: 8px 0; }
+h2, h3 { scroll-margin-top: 16px; }
+.lede { color: var(--ink2); font-size: 15px; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink2); margin-right: 6px; }
+.tag.red { border-color: var(--warn); color: var(--warn); }
+.table-scroll { overflow-x: auto; margin: 12px 0 18px; }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+figure { margin: 18px 0; }
+figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+figcaption { font-size: 14px; color: var(--ink2); margin-top: 8px; max-width: 78ch; }
+.box { border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; margin: 14px 0; border-radius: 4px; background: #fff; }
+.box.warn { border-left-color: var(--warn); }
+.steps { list-style: none; padding: 0; margin: 0; }
+.steps li { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 8px 0; background: #fff; }
+.steps li a { font-weight: 600; }
+.steps li .one { color: var(--ink2); font-size: 14px; margin-top: 2px; }
+.toc { font-size: 15px; color: var(--ink2); columns: 2; margin: 8px 0 16px; }
+.toc a { display: block; padding: 3px 0; break-inside: avoid; }
+.flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 14px 0; }
+.flow .node { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 13px; }
+.flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow .arrow { align-self: center; color: var(--ink2); }
+.examples li { margin: 6px 0; font-size: 14px; }
+.examples blockquote { margin: 8px 0 18px; padding-left: 12px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
+details { margin: 18px 0; border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+summary { cursor: pointer; font-weight: 600; }
+.examples code, code { background: #f3f2ef; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+pre { background: #f3f2ef; padding: 10px 12px; border-radius: 6px; font-size: 13px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.prov { font-size: 13px; color: var(--ink2); }
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px; }
+@media (max-width: 640px) {
+  main { padding: 24px 16px 48px; }
+  h1 { font-size: 24px; }
+  .toc { columns: 1; }
+  .flow { flex-direction: column; }
+  .flow .node { flex: auto; }
+  .flow .arrow { display: none; }
+  nav.bottom { gap: 16px; flex-wrap: wrap; }
+}
+</style></head><body><main>
+<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html" aria-current="page">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><span>第 4 步：独立数据验证，待做</span></nav>
+
+<span class="tag">第 1 步</span><span class="tag">commit 93e9093 → 8bb758e</span>
+<h1>Baseline：把实验封装成一条可重跑的命令</h1>
+<p class="lede">先把数据划分、模型训练、路由和仿真连成可重跑的流程。复现时需要相同的数据、代码、配置和依赖环境；这些信息随运行保存。</p>
+<p class="prov">本页记录第一步的实现。R103 当时仍启用，后来已移除；真实数据结果和后续改动见<a href="step2-round1.html">第二步</a>。下文也修正了早期对精确率算例的过度解释。</p>
+
+<h2>起点：项目脚手架</h2>
+<p>起点是政策文件加载器、评分行过滤和一组类别比例算例。Jigsaw 的 test.csv 有 153,164 行，其中 63,978 行有评分标签，其余标签为 -1，不参与评估。</p>
+<p>下表固定召回率为 50%，再分别假设 FPR 为 1% 和 0.1%。精确率按 <code>TP / (TP + FP)</code> 计算，其中 <code>TP = 阳性数 × 召回率</code>，<code>FP = 阴性数 × FPR</code>。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">标签</th><th scope="col" class="n">阳性</th><th scope="col" class="n">阴性</th><th scope="col" class="n">精确率，FPR 1%</th><th scope="col" class="n">精确率，FPR 0.1%</th></tr></thead><tbody><tr><td>toxic</td><td class='n'>6,090</td><td class='n'>57,888</td><td class='n'>0.840</td><td class='n'>0.981</td></tr><tr><td>obscene</td><td class='n'>3,691</td><td class='n'>60,287</td><td class='n'>0.754</td><td class='n'>0.968</td></tr><tr><td>insult</td><td class='n'>3,427</td><td class='n'>60,551</td><td class='n'>0.739</td><td class='n'>0.966</td></tr><tr><td>identity_hate</td><td class='n'>712</td><td class='n'>63,266</td><td class='n'>0.360</td><td class='n'>0.849</td></tr><tr><td>severe_toxic</td><td class='n'>367</td><td class='n'>63,611</td><td class='n'>0.224</td><td class='n'>0.743</td></tr><tr><td>threat</td><td class='n'>211</td><td class='n'>63,767</td><td class='n'>0.142</td><td class='n'>0.623</td></tr></tbody></table></div>
+<figure><img src="figures/baseline_ceilings.png" alt="固定召回率 50% 时，各标签在两种 FPR 假设下的精确率"><figcaption>固定工作点的算例，不是模型实测结果，也不是所有模型的精确率上限。实际能否达到 99%，取决于模型能达到的召回率与 FPR 组合。</figcaption></figure>
+<p>这些算例说明，稀有标签的精确率对假阳性尤其敏感。因此，评估需要检查实际阈值下的精确率和覆盖率，不能仅凭 ROC-AUC 判断自动处置是否可靠。</p>
+
+<h2>实验协议</h2>
+<div class="flow">
+<div class="node"><b>数据划分</b>train.csv 按种子随机切 60 / 20 / 20；官方评分测试行单独保留</div><div class="arrow">→</div>
+<div class="node"><b>模型</b>TF-IDF（1-2 gram）+ 六个独立逻辑回归；在校准集上做 Platt 校准</div><div class="arrow">→</div>
+<div class="node"><b>阈值</b>在选择集上按精确率门槛逐标签挑：人工 0.90，自动 0.99，至少 30 条；挑不到就关闭</div><div class="arrow">→</div>
+<div class="node"><b>规则</b>政策规则优先于模型层级；规则加进队列的条数计入所有指标</div><div class="arrow">→</div>
+<div class="node"><b>队列仿真</b>4 名审核员，每条 2 分钟，8 小时；60 / 108 / 180 条每小时；FIFO、概率、严重度三种顺序共用同一批到达</div><div class="arrow">→</div>
+<div class="node"><b>报告与门槛</b>manifest、逐条预测、报告；回归门槛读报告</div>
+</div>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">部分</th><th scope="col">行数</th><th scope="col">职责</th><th scope="col">为什么这样分</th></tr></thead><tbody>
+<tr><td>train</td><td class="n">95,743</td><td>学词表，训练六个分类器</td><td>基础模型只在这部分训练</td></tr>
+<tr><td>calib</td><td class="n">31,914</td><td>Platt 校准</td><td>用独立数据的预测分数和标签拟合概率映射</td></tr>
+<tr><td>thresh，选择集</td><td class="n">31,914</td><td>选择路由阈值</td><td>避免在模型训练数据上评价候选阈值</td></tr>
+<tr><td>scored test</td><td class="n">63,978</td><td>评估冻结后的流程</td><td>不参与本次模型、校准器和路由阈值拟合</td></tr></tbody></table></div>
+<p>先声明政策目标，再选择满足目标、覆盖最多评论的阈值。自动处置直接产生执行结果，因此目标设为 0.99，人工审核设为 0.90。这是政策选择，并非由实测错误成本推导出的最优值。至少 30 条只是小样本过滤条件，不能证明真实精确率达到 99%。</p>
+<p>这几部分数据互不重叠，但官方测试行已用于多轮结果分析。它现在是迭代诊断基准；后续改进需要新的独立评估数据。</p>
+<p><b>严重度权重是政策输入，不是测量：</b>threat 10，identity_hate 6，severe_toxic 5，insult 2，obscene 2，toxic 1。仿真里的"危害"是命中标签的最高权重，它是实验里的危害代理，不能称为真实业务中减少的伤害。</p>
+
+<h2>政策文件里的三条规则（baseline 时的写法）</h2>
+<ul><li>R101：当 <code>p_threat ≥ 0.30</code> 时转人工，可覆盖模型原先的任一层级。这是针对高危预测的政策选择，不能用上面的算例证明它是唯一可行方案。</li>
+<li>R102：当模型同时给出 <code>p_severe_toxic ≥ 0.50</code> 和 <code>p_toxic &lt; 0.50</code> 时转人工。它标记违反训练标签包含关系的预测，不能单独证明输入来自分布外。</li>
+<li>R103：含身份词且 <code>p_max &lt; 0.95</code> 时转人工。原意是避免自动误处置，实际作用在第二步中重新检查。</li></ul>
+<details><summary>R103 的历史配置，现已退役</summary><pre><code>- id: R103_identity_term_low_confidence
+  description: &gt;
+    The documented failure mode on this corpus is false positives on benign
+    identity mentions. Suppress auto-action in the borderline band so
+    over-enforcement does not concentrate on one group; a human decides.
+  action: human_review
+  conditions:
+    - {signal: identity_term_present, op: &quot;==&quot;, threshold: 1}
+    - {signal: p_max, op: &quot;&lt;&quot;, threshold: 0.95}</code></pre></details>
+
+<h2>门槛（回归检查）</h2>
+<p>门槛写在政策文件里。未设置门槛或未指定评估报告时，相关测试跳过；显式指定的报告不存在时，测试失败。代码 CI 通过不等于真实数据上的评估要求全部通过。</p>
+<p>第二步根据实测值设置回归检查范围，用来发现退步。自动处置 0.99 等事先声明的政策要求单独保留。</p>
+
+<h2>产物</h2>
+<p>一次运行写出：<code>manifest.json</code>（数据哈希、各组标签计数、commit、依赖版本、种子）、<code>splits.csv</code>、<code>thresholds.json</code>、<code>model.pkl</code>、<code>predictions.csv</code>（逐条）、<code>report.json</code>（门槛读它）、<code>report.md</code>。</p>
+
+<h2>先在合成数据上跑通</h2>
+<p>真实数据当时不在机器上，先用一个和 Jigsaw 文件布局相同的合成语料（<code>scripts/make_synthetic_corpus.py</code>，含 -1 未评分行以检验过滤）把全链路跑通。合成数据的数字只用来检查流水线，不作为结果。这一步在合成数据上就暴露了 R103 的问题：它把大量良性 identity 提及推进了人工队列。</p>
+
+<h2>这一步交付了什么</h2>
+<p>第一步交付了可重跑的实验命令、逐条预测记录，以及在相同审核资源下比较三种排序策略的流程。合成语料只验证代码路径，效果判断留给真实数据实验。</p>
+
+<nav class="bottom" aria-label="前后步骤"><span><a href="index.html">← 目录</a></span><span><a href="step2-round1.html">第 2 步：首轮结果与诊断 →</a></span></nav>
+</main></body></html>

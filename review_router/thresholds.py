@@ -1,4 +1,4 @@
-"""Threshold selection from precision floors, and tier routing.
+"""Threshold selection from empirical precision targets, and review tier routing.
 
 A tier's threshold is the lowest probability at which the tier's precision
 floor still holds on the threshold-selection split, subject to a minimum count
@@ -25,8 +25,9 @@ __all__ = [
     "apply_rules",
 ]
 
-# Model-driven tiers, most severe first. `allow` is the fall-through.
-TIER_ORDER: tuple[str, ...] = ("auto_action", "human_review")
+# Model-driven review tiers, highest priority first. `allow` is the fall-through.
+TIER_ORDER: tuple[str, ...] = ("priority_review", "human_review")
+_LEGACY_TIER_ORDER: tuple[str, ...] = ("auto_action", "human_review")
 
 
 def _subgroup_mask(
@@ -115,7 +116,8 @@ def select_thresholds(
     """
     min_pos = int(policy.gates.get("min_predicted_positives_for_precision", 30))
     thresholds: dict[str, dict[str, float | None]] = {}
-    for tier in TIER_ORDER:
+    order = TIER_ORDER if policy.decision_mode == "human_confirmation" else _LEGACY_TIER_ORDER
+    for tier in order:
         floor = policy.tier_precision_floors[tier]
         thresholds[tier] = {
             label: choose_threshold(y_true[:, j], proba[:, j], floor, min_pos)
@@ -149,11 +151,16 @@ def model_tier(
 ) -> tuple[np.ndarray, np.ndarray]:
     """Per-row model tier and the boolean (n, n_labels) mask of triggering labels.
 
-    auto_action if any label meets its auto threshold, else human_review if any
-    label meets its human threshold, else allow. Rows in a declared subgroup
-    must also meet that subgroup's threshold on the label.
+    priority_review if any label meets its priority threshold, else human_review
+    if any label meets its human threshold, else allow. Neither review tier
+    authorizes an action without human confirmation. Historical threshold maps
+    retain their auto_action name when replayed explicitly. Rows in a declared
+    subgroup must also meet that subgroup's threshold on the label.
     """
     n = proba.shape[0]
+    order = TIER_ORDER if "priority_review" in thresholds.thresholds else _LEGACY_TIER_ORDER
+    if set(thresholds.thresholds) != set(order):
+        raise ValueError("thresholds must contain exactly one supported pair of review tiers")
     group_masks = {
         signal: _subgroup_mask(signals, signal, n)
         for per_signal in thresholds.subgroup.values()
@@ -161,7 +168,7 @@ def model_tier(
     }
     tiers = np.full(n, "allow", dtype=object)
     triggers = np.zeros(proba.shape, dtype=bool)
-    for tier in reversed(TIER_ORDER):  # human_review first, auto_action overrides
+    for tier in reversed(order):  # human_review first, the higher tier overrides
         mask = np.zeros(proba.shape, dtype=bool)
         for j, label in enumerate(thresholds.labels):
             t = thresholds.thresholds[tier][label]
@@ -191,7 +198,7 @@ def apply_rules(
     """Evaluate policy rules per row. Returns the rule action ('' if none) and matched ids.
 
     Rules have priority over the model tier: a matching rule's action replaces
-    it. The shipped R101 rule requires human review when p_threat >= 0.30.
+    it. The shipped R101 rule requests priority human review when p_threat >= 0.30.
     """
     n = proba.shape[0]
     actions = np.full(n, "", dtype=object)

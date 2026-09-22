@@ -10,7 +10,8 @@ from review_router.policy import DEFAULT_POLICY_PATH, load_policy
 
 def test_shipped_policy_parses() -> None:
     policy = load_policy()
-    assert policy.version == 1
+    assert policy.version == 2
+    assert policy.decision_mode == "human_confirmation"
     assert policy.rules, "shipped policy declares no rules"
 
 
@@ -26,11 +27,9 @@ def test_every_rule_states_its_rationale() -> None:
         assert len(rule.description.strip()) > 40, f"{rule.id} lacks a rationale"
 
 
-def test_auto_action_floor_is_stricter_than_human_review() -> None:
+def test_priority_review_floor_is_stricter_than_human_review() -> None:
     policy = load_policy()
-    assert (
-        policy.tier_precision_floors["auto_action"] > policy.tier_precision_floors["human_review"]
-    )
+    assert policy.tier_precision_floors == {"priority_review": 0.95, "human_review": 0.90}
 
 
 def test_highest_matching_tier_wins() -> None:
@@ -42,7 +41,7 @@ def test_highest_matching_tier_wins() -> None:
         "identity_term_present": 0.0,
         "p_max": 1.0,
     }
-    assert policy.route(signals) == "human_review"
+    assert policy.route(signals) == "priority_review"
 
 
 def test_no_matching_rule_falls_through_to_allow() -> None:
@@ -58,7 +57,7 @@ def test_no_matching_rule_falls_through_to_allow() -> None:
 
 
 def test_hierarchy_violation_is_routed_to_a_human() -> None:
-    """severe_toxic asserted without toxic is logically impossible."""
+    """Independent heads can violate the observed label hierarchy."""
     policy = load_policy()
     signals = {
         "p_threat": 0.0,
@@ -67,7 +66,7 @@ def test_hierarchy_violation_is_routed_to_a_human() -> None:
         "identity_term_present": 0.0,
         "p_max": 0.8,
     }
-    assert policy.route(signals) == "human_review"
+    assert policy.route(signals) == "priority_review"
 
 
 def test_unknown_action_is_rejected(tmp_path: Path) -> None:
@@ -148,3 +147,47 @@ def test_subgroup_threshold_rejects_unsupported_floored_tier(tmp_path: Path, tie
     )
     with pytest.raises(ValueError, match="not a model-driven tier"):
         load_policy(path)
+
+
+def test_legacy_snapshot_preserves_automatic_action_semantics(tmp_path: Path) -> None:
+    path = tmp_path / "legacy-policy.yaml"
+    path.write_text(
+        "version: 1\ntiers: {allow: 1, human_review: 2, auto_action: 3}\n"
+        "tier_precision_floors: {human_review: 0.9, auto_action: 0.99}\n"
+        "subgroup_thresholds: {auto_action: [{signal: identity_term_present}]}\n",
+        encoding="utf-8",
+    )
+    policy = load_policy(path)
+    assert policy.version == 1
+    assert policy.decision_mode == "legacy"
+    assert policy.tiers["auto_action"] == 3
+    assert policy.tier_precision_floors["auto_action"] == 0.99
+    assert policy.subgroup_thresholds[0].tier == "auto_action"
+    assert "priority_review" not in policy.tiers
+
+
+@pytest.mark.parametrize("mode", [None, "legacy"])
+def test_v2_requires_human_confirmation(tmp_path: Path, mode: str | None) -> None:
+    raw = yaml.safe_load(DEFAULT_POLICY_PATH.read_text())
+    if mode is None:
+        del raw["decision_mode"]
+    else:
+        raw["decision_mode"] = mode
+    path = tmp_path / "policy.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError, match="v2 requires decision_mode: human_confirmation"):
+        load_policy(path)
+
+
+def test_human_confirmation_rejects_automatic_action_tier(tmp_path: Path) -> None:
+    raw = yaml.safe_load(DEFAULT_POLICY_PATH.read_text())
+    raw["tiers"]["auto_action"] = 4
+    path = tmp_path / "policy.yaml"
+    path.write_text(yaml.safe_dump(raw))
+    with pytest.raises(ValueError, match="automatic action tiers are forbidden"):
+        load_policy(path)
+
+
+def test_human_confirmation_cannot_fall_through_to_an_automatic_action() -> None:
+    with pytest.raises(ValueError, match="forbids fallback tier 'auto_action'"):
+        load_policy().route({}, default="auto_action")

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 2 步：首轮结果与诊断</title><style>
+:root { --ink: #0b0b0b; --ink2: #52514e; --line: #e6e5e1; --surface: #fcfcfb; --accent: #185ea8; --warn: #a73816; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
+nav.top { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); margin-bottom: 24px; flex-wrap: wrap; }
+nav.top a, a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+nav.top a[aria-current="page"] { font-weight: 700; color: var(--ink); }
+h1 { font-size: 26px; line-height: 1.3; margin: 0 0 8px; }
+h2 { font-size: 20px; margin: 40px 0 10px; border-top: 1px solid var(--line); padding-top: 20px; }
+h3 { font-size: 17px; margin: 26px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; color: var(--ink2); }
+p { margin: 12px 0; max-width: 78ch; }
+li { margin: 8px 0; }
+h2, h3 { scroll-margin-top: 16px; }
+.lede { color: var(--ink2); font-size: 15px; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink2); margin-right: 6px; }
+.tag.red { border-color: var(--warn); color: var(--warn); }
+.table-scroll { overflow-x: auto; margin: 12px 0 18px; }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+figure { margin: 18px 0; }
+figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+figcaption { font-size: 14px; color: var(--ink2); margin-top: 8px; max-width: 78ch; }
+.box { border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; margin: 14px 0; border-radius: 4px; background: #fff; }
+.box.warn { border-left-color: var(--warn); }
+.steps { list-style: none; padding: 0; margin: 0; }
+.steps li { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 8px 0; background: #fff; }
+.steps li a { font-weight: 600; }
+.steps li .one { color: var(--ink2); font-size: 14px; margin-top: 2px; }
+.toc { font-size: 15px; color: var(--ink2); columns: 2; margin: 8px 0 16px; }
+.toc a { display: block; padding: 3px 0; break-inside: avoid; }
+.flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 14px 0; }
+.flow .node { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 13px; }
+.flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow .arrow { align-self: center; color: var(--ink2); }
+.examples li { margin: 6px 0; font-size: 14px; }
+.examples blockquote { margin: 8px 0 18px; padding-left: 12px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
+details { margin: 18px 0; border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+summary { cursor: pointer; font-weight: 600; }
+.examples code, code { background: #f3f2ef; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+pre { background: #f3f2ef; padding: 10px 12px; border-radius: 6px; font-size: 13px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.prov { font-size: 13px; color: var(--ink2); }
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px; }
+@media (max-width: 640px) {
+  main { padding: 24px 16px 48px; }
+  h1 { font-size: 24px; }
+  .toc { columns: 1; }
+  .flow { flex-direction: column; }
+  .flow .node { flex: auto; }
+  .flow .arrow { display: none; }
+  nav.bottom { gap: 16px; flex-wrap: wrap; }
+}
+</style></head><body><main>
+<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html" aria-current="page">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><span>第 4 步：独立数据验证，待做</span></nav>
+
+<span class="tag">第 2 步，历史实验</span><span class="tag red">原自动处置要求未达标</span><span class="tag">2026-09-22</span>
+<h1>首轮结果与诊断</h1>
+<p class="box">本页保留原自动处置实验及其 99% 目标。当前方案已改为优先人工审核，见<a href="step3-human-review.html">第三步</a>。历史结果不按新标准重判。</p>
+<p class="lede">本轮完成了真实数据评估，移除 R103，并检查自动处置精确率的缺口。先列最终路由结果，再比较策略改动，最后讨论诊断能支持哪些判断。</p>
+<div class="box warn"><b>先看结论：</b>自动处置精确率为 90.4%，未达到 99%；严重度排序在本次仿真中优于 FIFO。文本与标签统计能提示问题，但还不足以确认性能差距的原因。</div>
+<nav class="toc" aria-label="本页目录">
+<a href="#data">1. 数据</a><a href="#results">2. R1 结果</a><a href="#r103">3. R103 的处理</a><a href="#gates">4. 门槛</a>
+<a href="#gap">5. 未达标的诊断</a><a href="#gap1">5.1 固定阈值复核</a><a href="#gap2">5.2 选择集内部验证</a><a href="#gap3">5.3 两份数据的差异</a><a href="#gap4">5.4 假阳性样本检查</a><a href="#gap5">5.5 阈值规则对比</a><a href="#gap6">5.6 证据与限制</a><a href="#next">6. 下一步</a>
+</nav>
+
+<h2 id="data">1. 数据</h2>
+<p>数据来自 Hugging Face 镜像 <code>thesofakillers/jigsaw-toxic-comment-classification-challenge</code>，保存在 <code>data/jigsaw/</code>，不提交语料文件。train 共 159,571 行，评分测试行共 63,978 行；行数和标签计数与项目记录的基准计数一致。manifest 保存三个文件的 SHA-256，便于检查是否使用同一份输入。</p>
+<p class="prov">最终运行 <code>20260922T112845423138Z-baseline</code>，commit <code>3429f1fe4170</code>，工作区干净。下文中的政策要求来自该运行保存的快照。测试行未参与本次模型拟合，但已用于多轮诊断，不再是后续改进的全新盲测数据。</p>
+
+<h2 id="results">2. R1 结果</h2>
+<h3>最终路由结果</h3>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">层级</th><th scope="col" class='n'>n</th><th scope="col" class='n'>覆盖率</th><th scope="col" class='n'>测试集精确率</th><th scope="col">95% 区间</th><th scope="col" class='n'>选择集精确率</th></tr></thead><tbody><tr><td>auto_action</td><td class='n'>2125</td><td class='n'>0.033</td><td class='n'>0.904</td><td>[0.891, 0.916]</td><td class='n'>0.9917</td></tr><tr><td>human_review</td><td class='n'>4185</td><td class='n'>0.065</td><td class='n'>0.551</td><td>[0.536, 0.566]</td><td class='n'>0.8901</td></tr><tr><td>allow</td><td class='n'>57668</td><td class='n'>0.901</td><td class='n'>n/a</td><td></td><td class='n'>n/a</td></tr></tbody></table></div>
+<p>自动处置的测试集精确率为 0.904，选择集为 0.9917；人工审核层分别为 0.551 和 0.8901。第 5 节检查这类跨数据集差距。人工审核的 0.90 是逐标签选阈值时的目标，不是合并标签、移除自动处置、应用规则后的队列保证。</p>
+<details><summary>逐标签结果与指标说明</summary>
+<p>AP 是平均精确率，描述整条精确率与召回率曲线；P 为精确率，R 为召回率。下表 P/R 均在测试集测量，使用总体阈值，尚未加入子组限制和规则。n/a 表示没有合格阈值。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">标签</th><th scope="col" class="n">阳性</th><th scope="col" class="n">AP 选择集</th><th scope="col" class="n">AP 测试集</th><th scope="col" class="n">ROC-AUC</th><th scope="col" class="n">人工阈值</th><th scope="col" class="n">P@人工</th><th scope="col" class="n">R@人工</th><th scope="col" class="n">自动阈值</th><th scope="col" class="n">P@自动</th><th scope="col" class="n">R@自动</th></tr></thead><tbody><tr><td>toxic</td><td class='n'>6090</td><td class='n'>0.859</td><td class='n'>0.752</td><td class='n'>0.957</td><td class='n'>0.6576</td><td class='n'>0.663</td><td class='n'>0.680</td><td class='n'>0.9893</td><td class='n'>0.898</td><td class='n'>0.349</td></tr><tr><td>severe_toxic</td><td class='n'>367</td><td class='n'>0.492</td><td class='n'>0.311</td><td class='n'>0.982</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td></tr><tr><td>obscene</td><td class='n'>3691</td><td class='n'>0.874</td><td class='n'>0.773</td><td class='n'>0.972</td><td class='n'>0.6573</td><td class='n'>0.773</td><td class='n'>0.616</td><td class='n'>0.9984</td><td class='n'>0.952</td><td class='n'>0.266</td></tr><tr><td>threat</td><td class='n'>211</td><td class='n'>0.459</td><td class='n'>0.458</td><td class='n'>0.992</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td></tr><tr><td>insult</td><td class='n'>3427</td><td class='n'>0.774</td><td class='n'>0.696</td><td class='n'>0.965</td><td class='n'>0.9176</td><td class='n'>0.879</td><td class='n'>0.290</td><td class='n'>0.9998</td><td class='n'>0.985</td><td class='n'>0.038</td></tr><tr><td>identity_hate</td><td class='n'>712</td><td class='n'>0.415</td><td class='n'>0.480</td><td class='n'>0.974</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td><td class='n'>n/a</td></tr></tbody></table></div>
+<p>severe_toxic、threat、identity_hate 在选择集上没有同时满足精确率目标与至少 30 条条件的阈值，因此不能凭自身阈值触发路由。含这些标签的评论仍可能通过其他重叠标签或政策规则进入人工队列。</p>
+</details>
+<h3>队列仿真</h3>
+<p>4 名审核员，每条 2 分钟，持续 8 小时，容量 120 条/小时。从 4185 条人工审核候选评论中有放回抽样，按泊松过程到达。候选池含 429 条高危评论，高危按真实标签的最大严重度权重 ≥ 5 定义。</p>
+<p>表格为 5 个种子的均值 ± 标准差，同一种子下三种排序共用到达时间与处理时长。等待时间只统计仿真结束前已完成的评论，单位为分钟；p90 表示其中 90% 的等待不超过该值。高危剩余包含正在处理的任务，结束积压只计尚未开始的任务。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col" class="n">负载/h</th><th scope="col">顺序</th><th scope="col" class="n">处理</th><th scope="col" class="n">高危处理</th><th scope="col" class="n">高危剩余</th><th scope="col" class="n">危害/人时</th><th scope="col" class="n">高危等待 p50</th><th scope="col" class="n">高危等待 p90</th><th scope="col" class="n">结束积压</th></tr></thead><tbody><tr><td class='n'>60</td><td>fifo</td><td class='n'>468 ± 26</td><td class='n'>42.6 ± 5.9</td><td class='n'>0.0 ± 0.0</td><td class='n'>21.1 ± 1.3</td><td class='n'>0.0 ± 0.0</td><td class='n'>0.4 ± 0.2</td><td class='n'>0 ± 1</td></tr><tr><td class='n'>60</td><td>prob</td><td class='n'>468 ± 26</td><td class='n'>42.6 ± 5.9</td><td class='n'>0.0 ± 0.0</td><td class='n'>21.1 ± 1.3</td><td class='n'>0.0 ± 0.0</td><td class='n'>0.3 ± 0.2</td><td class='n'>0 ± 1</td></tr><tr><td class='n'>60</td><td>severity</td><td class='n'>468 ± 26</td><td class='n'>42.6 ± 5.9</td><td class='n'>0.0 ± 0.0</td><td class='n'>21.1 ± 1.3</td><td class='n'>0.0 ± 0.0</td><td class='n'>0.3 ± 0.2</td><td class='n'>0 ± 1</td></tr><tr><td class='n'>108</td><td>fifo</td><td class='n'>867 ± 20</td><td class='n'>88.2 ± 4.6</td><td class='n'>0.8 ± 0.7</td><td class='n'>39.7 ± 1.3</td><td class='n'>1.5 ± 0.9</td><td class='n'>6.2 ± 2.8</td><td class='n'>1 ± 2</td></tr><tr><td class='n'>108</td><td>prob</td><td class='n'>867 ± 20</td><td class='n'>88.2 ± 4.6</td><td class='n'>0.8 ± 0.7</td><td class='n'>39.7 ± 1.3</td><td class='n'>0.3 ± 0.1</td><td class='n'>1.4 ± 0.2</td><td class='n'>1 ± 2</td></tr><tr><td class='n'>108</td><td>severity</td><td class='n'>867 ± 20</td><td class='n'>88.0 ± 4.7</td><td class='n'>1.0 ± 1.1</td><td class='n'>39.6 ± 1.3</td><td class='n'>0.3 ± 0.1</td><td class='n'>1.1 ± 0.3</td><td class='n'>1 ± 2</td></tr><tr><td class='n'>180</td><td>fifo</td><td class='n'>953 ± 4</td><td class='n'>100.0 ± 3.8</td><td class='n'>47.6 ± 6.4</td><td class='n'>44.6 ± 0.9</td><td class='n'>81.8 ± 5.4</td><td class='n'>143.3 ± 9.3</td><td class='n'>465 ± 41</td></tr><tr><td class='n'>180</td><td>prob</td><td class='n'>953 ± 4</td><td class='n'>124.6 ± 3.1</td><td class='n'>23.0 ± 5.9</td><td class='n'>53.1 ± 1.0</td><td class='n'>0.5 ± 0.2</td><td class='n'>3.1 ± 1.4</td><td class='n'>465 ± 41</td></tr><tr><td class='n'>180</td><td>severity</td><td class='n'>953 ± 4</td><td class='n'>133.8 ± 5.3</td><td class='n'>13.8 ± 2.3</td><td class='n'>56.0 ± 1.3</td><td class='n'>0.5 ± 0.2</td><td class='n'>2.2 ± 1.1</td><td class='n'>465 ± 41</td></tr></tbody></table></div>
+<p>在 108 条/小时时，严重度排序的高危等待 p90 为 1.1 分钟，FIFO 为 6.2 分钟。此时队列结束仍有少量未完成任务，不能称为全部清空。</p>
+<p>在超容量的 180 条/小时时，各策略完成数量相同，但处理对象不同。严重度排序每审核人时处理的危害代理值为 FIFO 的 1.26 倍，剩余高危任务为 13.8 条，FIFO 为 47.6 条。</p>
+<p>与概率排序相比，严重度排序在 180 条/小时的 5/5 个种子中处理了更多高危任务，平均多 9.2 条。在 108 条/小时的 5/5 个种子中，其高危等待 p90 更短。</p>
+<p class="prov">这些结果支持本次仿真条件下的排序收益。排序与评价使用同一套严重度权重，结论依赖这套权重和到达假设，尚不能推断真实业务中的伤害减少。</p>
+
+<h2 id="r103">3. R103 的处理</h2>
+<p>R103 会把含身份词、最大预测概率低于 0.95 的评论转人工。下表比较启用规则、移除规则、再加入子组阈值三种配置。前两次运行来自有未提交改动的工作区；最终运行对应干净提交。各次运行信息保存在 <a href="runs.json">runs.json</a>。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">状态</th><th scope="col">运行</th><th scope="col" class="n">人工 n</th><th scope="col" class="n">人工精确率</th><th scope="col" class="n">自动 n</th><th scope="col" class="n">自动精确率</th><th scope="col" class="n">危害/人时 严重度÷FIFO @180</th><th scope="col" class="n">高危等待 p90 严重度 / FIFO @108</th></tr></thead><tbody><tr><td>R103 生效</td><td><code>20260922T100649877069Z</code></td><td class='n'>8200</td><td class='n'>0.301</td><td class='n'>2221</td><td class='n'>0.898</td><td class='n'>1.44</td><td class='n'>1.1 / 5.6</td></tr><tr><td>R103 去掉</td><td><code>20260922T101035330306Z</code></td><td class='n'>4089</td><td class='n'>0.545</td><td class='n'>2221</td><td class='n'>0.898</td><td class='n'>1.25</td><td class='n'>1.3 / 6.1</td></tr><tr><td>R103 去掉 + 子组阈值（最终）</td><td><code>20260922T112845423138Z</code></td><td class='n'>4185</td><td class='n'>0.551</td><td class='n'>2125</td><td class='n'>0.904</td><td class='n'>1.26</td><td class='n'>1.1 / 6.2</td></tr></tbody></table></div>
+<h3>移除原因</h3>
+<p>本次总体自动处置阈值为 toxic 0.9893、obscene 0.9984、insult 0.9998，均高于 0.95。因此，R103 在这组阈值下无法拦截自动处置，却会把原来应放行的评论送进人工队列。</p>
+<p>选择集上有 1,825 条含身份词评论因此进入正向路由，其中 1,670 条没有任何阳性标签。后一个数字根据最终运行中恢复放行的 1,825 条评论及其中 155 条阳性计算。</p>
+<p>启用 R103 的测试运行中，R103 匹配 4,467 行。该次运行所有规则合计把 4,129 条放行评论转人工，其中 247 条有阳性标签；人工队列精确率为 0.301。</p>
+<p class="prov">不同策略改变了人工候选池，仿真又对各候选池设定相同的队列到达率。因此，表中 1.44 与 1.26 的收益比只能分别解释各自池内的排序效果，不能直接表示端到端政策收益。</p>
+<h3>替换为子组阈值</h3>
+<p>一种选择是把所有含身份词的自动处置一律改为人工。当前采用更细的限制：在含身份词的选择集子组内，逐标签寻找满足相同精确率目标与样本数要求的阈值，且不得低于总体阈值。找不到时，该标签在子组内不能触发自动处置。这是样本上的筛选条件，不是统计认证。</p>
+<p>当前阈值为：toxic 0.9974；obscene 未找到合格阈值，在该子组内不能触发自动处置；insult 未找到合格阈值，在该子组内不能触发自动处置。这项限制从选择集的 921 条总体自动处置中移除了 31 条；从测试集的 2367 条中移除了 97 条，其中 77 条有至少一个阳性标签。</p>
+<h3>FDR 与 FPR 分别说明什么</h3>
+<p>身份词来自运行保存的 63 个整词匹配词条。这是文本分组的代理，不是作者身份标注。FDR 的分母是被标记的评论；FPR 的分母是所有实际正常的评论。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">人工审核指标</th><th scope="col">含身份词</th><th scope="col">不含身份词</th><th scope="col">问题</th></tr></thead><tbody>
+<tr><td>FDR，错误发现率</td><td class="n">43.1%</td><td class="n">45.2%</td><td>进入队列的评论中，多少没有阳性标签？</td></tr>
+<tr><td>FPR，假阳性率</td><td class="n">6.3%</td><td class="n">3.0%</td><td>所有没有阳性标签的评论中，多少进入队列？</td></tr></tbody></table></div>
+<p>两组人工队列的 FDR 接近，但正常评论进入人工队列的比例仍相差 2.08 倍。因此，FDR 检查通过不能解释为两组误报风险相同。</p>
+<p>自动处置的 FDR 比在总体阈值下为 1.10，95% 区间 [0.78, 1.54]；子组阈值后为 0.58，区间 [0.34, 1.01]。自动处置按触发标签判断正误，FPR 则只统计所有标签均为 0 的正常评论，两者的错误数量也可能不同。</p>
+
+<h2 id="gates">4. 门槛</h2>
+<p>回归门槛以首轮实测值为参照，用来发现后续退步，不能作为独立的效果证明。政策快照保存了各门槛的来源。自动处置 0.99、利用率 0.60、层级违例上限和 FDR 比上限等预设要求不随本次结果降低。</p>
+<p>FDR 比的完整 95% 区间都不高于 1.25 才通过；整个区间高于它则失败，跨越它则标为不确定并跳过。样本不足也跳过。通过只表示满足这项诊断要求。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">门槛</th><th scope="col" class="n">实测</th><th scope="col">要求</th><th scope="col">状态</th></tr></thead><tbody><tr><td>AP toxic</td><td class='n'>0.752</td><td>≥ 0.732</td><td>绿</td></tr><tr><td>AP obscene</td><td class='n'>0.773</td><td>≥ 0.753</td><td>绿</td></tr><tr><td>AP insult</td><td class='n'>0.696</td><td>≥ 0.676</td><td>绿</td></tr><tr><td>AP identity_hate</td><td class='n'>0.480</td><td>≥ 0.46</td><td>绿</td></tr><tr><td>AP severe_toxic</td><td class='n'>0.311</td><td>≥ 0.291</td><td>绿</td></tr><tr><td>AP threat</td><td class='n'>0.458</td><td>≥ 0.437</td><td>绿</td></tr><tr><td>auto_action 精确率</td><td class='n'>0.904</td><td>≥ 0.99</td><td><b>红</b></td></tr><tr><td>human_review 精确率</td><td class='n'>0.551</td><td>≥ 0.52</td><td>绿</td></tr><tr><td>危害/人时 严重度÷FIFO @ 180/h</td><td class='n'>1.255</td><td>≥ 1.12</td><td>绿</td></tr><tr><td>高危等待 p90 严重度÷FIFO @ 108/h</td><td class='n'>0.174</td><td>≤ 0.55</td><td>绿</td></tr><tr><td>队列深度 p95 @ 108/h</td><td class='n'>14.220</td><td>≤ 39</td><td>绿</td></tr><tr><td>审核员利用率 @ 108/h</td><td class='n'>0.905</td><td>≥ 0.6</td><td>绿</td></tr><tr><td>层级一致性违反率</td><td class='n'>0.000</td><td>≤ 0.005</td><td>绿</td></tr><tr><td>身份词 FDR 比，最终路由汇总</td><td class='n'>1.024，95% 区间 [0.92, 1.14]</td><td>区间上界 ≤ 1.25</td><td>绿</td></tr><tr><td>身份词 FDR 比，子组阈值之后、规则之前的自动处置</td><td class='n'>0.585，95% 区间 [0.34, 1.01]</td><td>区间上界 ≤ 1.25</td><td>绿</td></tr></tbody></table></div>
+<p>本次已配置的检查中，自动处置精确率未通过。99% 要求保持不变；以下分析用于提出下一轮需要验证的改动。</p>
+
+<h2 id="gap">5. 未达标的诊断</h2>
+<p>这一节先检查阈值选择的稳定性，再比较选择集与测试集的预测、文本和标签统计。分析只重新选择阈值，模型与校准器保持冻结；它不能把差距精确分解为某几个原因。</p>
+<div class="box"><b>两种口径：</b>最终路由包含子组阈值和规则，测试精确率为 0.904。以下诊断使用总体阈值，暂不加入这两层政策处理，测试精确率为 0.900。两者对应不同的评论集合。</div>
+
+<h3 id="gap1">5.1 固定阈值复核</h3>
+<p>将选择集上得到的总体阈值原样用于测试集，先确认差距出现在哪里。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">标签</th><th scope="col" class="n">阈值</th><th scope="col" class="n">选择集 n</th><th scope="col" class="n">选择集精确率</th><th scope="col" class="n">测试集 n</th><th scope="col" class="n">测试集精确率</th><th scope="col">测试集 95% 区间</th></tr></thead><tbody><tr><td>toxic</td><td class='n'>0.9893</td><td class='n'>921</td><td class='n'>0.990</td><td class='n'>2365</td><td class='n'>0.898</td><td>[0.885, 0.909]</td></tr><tr><td>obscene</td><td class='n'>0.9984</td><td class='n'>467</td><td class='n'>0.991</td><td class='n'>1033</td><td class='n'>0.952</td><td>[0.937, 0.963]</td></tr><tr><td>insult</td><td class='n'>0.9998</td><td class='n'>51</td><td class='n'>1.000</td><td class='n'>131</td><td class='n'>0.985</td><td>[0.946, 0.996]</td></tr><tr><th>自动处置层</th><td></td><td class='n'>921</td><td class='n'>0.990</td><td class='n'>2367</td><td class='n'>0.900</td><td>[0.887, 0.911]</td></tr></tbody></table></div>
+<figure><img src="figures/gap1_precision_by_split.png" alt="固定总体阈值在选择集与测试集上的精确率"><figcaption>总体自动处置的 2367 条测试评论中，2365 条触发 toxic，因此该层精确率主要由 toxic 决定。按当前测试标签计算的区间上界低于 0.99。</figcaption></figure>
+
+<h3 id="gap2">5.2 选择集内部验证</h3>
+<p>将选择集随机分为 5 折，每次在 4 折选择阈值，在剩余一折测量精确率，再合并留出预测。共使用 3 个划分种子；这些种子重复使用同一批数据，不是三份独立样本。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">标签</th><th scope="col" class="n">全选择集拟合并评估</th><th scope="col" class="n">留出折</th><th scope="col" class="n">每个种子留出预测数均值</th><th scope="col" class="n">官方测试集</th><th scope="col">各折阈值范围</th></tr></thead><tbody><tr><td>toxic</td><td class='n'>0.990</td><td class='n'>0.988</td><td class='n'>915</td><td class='n'>0.898</td><td>0.9770 到 0.9944</td></tr><tr><td>obscene</td><td class='n'>0.991</td><td class='n'>0.986</td><td class='n'>510</td><td class='n'>0.952</td><td>0.9907 到 0.9986</td></tr><tr><td>insult</td><td class='n'>1.000</td><td class='n'>0.971</td><td class='n'>64</td><td class='n'>0.985</td><td>0.9986 到 0.9998</td></tr><tr><th>自动处置层</th><td class='n'>0.990</td><td class='n'>0.988</td><td class='n'>916</td><td class='n'>0.900</td><td>每个种子：0.989, 0.988, 0.986</td></tr></tbody></table></div>
+<figure><img src="figures/gap2_optimism_vs_shift.png" alt="总体阈值的样本内、交叉验证和测试精确率对照"><figcaption>总体自动处置的样本内与留出折精确率相差 0.003，留出折与官方测试行相差 0.088。这是描述性比较，不是原因分解。</figcaption></figure>
+<p>留出验证能检查选择集内部的稳定性，但各折使用更少的数据、不同的阈值。样本内与留出折的差不能完全归为阈值选择的乐观偏差，剩余差距也不能直接归为分布漂移。</p>
+<p>insult 的留出预测平均只有 64 条，每折为 6 到 29 条。其精确率估计对少量错误很敏感；至少 30 条的条件不能替代不确定性评估。</p>
+
+<h3 id="gap3">5.3 两份数据的差异</h3>
+<p>以下检查使用冻结的模型分数。它们能描述差异，还不能确定差异来自文本、标注还是模型。</p>
+<h4>a. 排序质量</h4>
+<figure><img src="figures/gap3a_ap_shift.png" alt="六个标签在选择集和测试集上的平均精确率 AP"><figcaption>toxic AP 从 0.859 降到 0.752，obscene 从 0.874 降到 0.773，insult 从 0.774 降到 0.696。toxic 阳性率分别为 0.0941 和 0.0952，相对接近。</figcaption></figure>
+<p>AP 不依赖某个单独阈值。这说明需要同时检查模型排序质量，不能只检查阈值选得是否合适。</p>
+<h4>b. 概率校准</h4>
+<figure><img src="figures/gap3b_reliability.png" alt="预测概率与实际阳性比例在两份数据上的对应关系"><figcaption>横轴为预测概率，纵轴为该概率档内的实际阳性比例；越接近对角线，校准越好。只画至少 20 行的档位。</figcaption></figure>
+<details><summary>toxic 各概率档的样本量与实际阳性比例</summary>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">预测概率档</th><th scope="col" class="n">选择集 n</th><th scope="col" class="n">选择集阳性比例</th><th scope="col" class="n">测试集 n</th><th scope="col" class="n">测试集阳性比例</th><th scope="col">测试集 95% 区间</th></tr></thead><tbody><tr><td>[0.5, 0.8)</td><td class='n'>686</td><td class='n'>0.653</td><td class='n'>2461</td><td class='n'>0.347</td><td>[0.329, 0.366]</td></tr><tr><td>[0.8, 0.9)</td><td class='n'>259</td><td class='n'>0.745</td><td class='n'>968</td><td class='n'>0.490</td><td>[0.458, 0.521]</td></tr><tr><td>[0.9, 0.95)</td><td class='n'>207</td><td class='n'>0.899</td><td class='n'>712</td><td class='n'>0.549</td><td>[0.512, 0.585]</td></tr><tr><td>[0.95, 0.98)</td><td class='n'>237</td><td class='n'>0.937</td><td class='n'>646</td><td class='n'>0.649</td><td>[0.611, 0.684]</td></tr><tr><td>[0.98, 0.99)</td><td class='n'>129</td><td class='n'>0.961</td><td class='n'>399</td><td class='n'>0.777</td><td>[0.734, 0.815]</td></tr><tr><td>[0.99, 0.995)</td><td class='n'>109</td><td class='n'>0.963</td><td class='n'>358</td><td class='n'>0.779</td><td>[0.734, 0.819]</td></tr><tr><td>[0.995, 1]</td><td class='n'>801</td><td class='n'>0.994</td><td class='n'>1965</td><td class='n'>0.920</td><td>[0.907, 0.931]</td></tr></tbody></table></div>
+</details>
+<p>在最高概率档，选择集实际阳性比例为 0.994，测试集为 0.920。同一概率映射在测试行上表现较差，但这个差异本身不能识别原因。</p>
+<h4>c. 当前 toxic 分数的阈值范围</h4>
+<figure><img src="figures/gap3c_precision_curve_toxic.png" alt="当前 toxic 模型的阈值与精确率关系"><figcaption>曲线展示 0.90 到 0.9999 的阈值网格。另对满足至少 30 条预测阳性的 62,439 个不同分数阈值逐个扫描，测试精确率最高为 0.9877，对应 244 条评论。</figcaption></figure>
+<p>这次事后扫描说明：当前冻结的 toxic 模型，仅调整单一分数阈值，未在这些测试行上达到 0.99。它不限制其他模型、特征或路由方法的可达性能。扫描使用了测试标签，因此不能把这个最大值当作新方法的独立验证结果。</p>
+<h4>d. 文本与词表覆盖</h4>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">数据</th><th scope="col" class="n">抽样行数</th><th scope="col" class="n">字符数中位</th><th scope="col" class="n">字符数 p90</th><th scope="col" class="n">每条评论词表外比例均值</th><th scope="col" class="n">词表外比例 p90</th><th scope="col" class="n">无词表内 token 的评论比例</th></tr></thead><tbody><tr><td>训练集</td><td class='n'>15,000</td><td class='n'>207</td><td class='n'>901</td><td class='n'>0.030</td><td class='n'>0.086</td><td class='n'>0.000</td></tr><tr><td>选择集</td><td class='n'>15,000</td><td class='n'>202</td><td class='n'>881</td><td class='n'>0.035</td><td class='n'>0.095</td><td class='n'>0.000</td></tr><tr><td>测试集</td><td class='n'>15,000</td><td class='n'>197</td><td class='n'>852</td><td class='n'>0.061</td><td class='n'>0.142</td><td class='n'>0.012</td></tr></tbody></table></div>
+<figure><img src="figures/gap3d_text_shift.png" alt="评论长度和近似词表外比例的分布"><figcaption>选择集每条评论的词表外比例均值为 0.035，测试集为 0.061。词表从训练集拟合，因此选择集比训练集更适合作为留出对照。</figcaption></figure>
+<p class="prov">这里的词表外比例是近似诊断，分词时未完全复用模型的重音符号归一化。它描述文本覆盖差异，不能直接量化这种差异造成了多少误判。</p>
+
+<h3 id="gap4">5.4 假阳性样本检查</h3>
+<p>取 toxic 预测概率 ≥ 0.9893、但 toxic 标签为 0 的 242 条测试评论。其中 14 条有其他阳性标签，228 条的六个标签均为 0。以下检查以数据集标签为评估依据，并未人工重标。</p>
+<p>使用 35 个词的辱骂词表做整词匹配，比较假阳性、真阳性和全部阴性评论。词表无法区分辱骂、引用或讨论词语本身，部分词也有多种含义，所以匹配不等于评论应被标为 toxic。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">集合</th><th scope="col" class="n">n</th><th scope="col" class="n">匹配词表</th><th scope="col" class="n">比例</th><th scope="col">95% 区间</th></tr></thead><tbody><tr><td>测试集：假阳性（toxic=0，p ≥ 阈值）</td><td class='n'>242</td><td class='n'>149</td><td class='n'>0.62</td><td>[0.55, 0.67]</td></tr><tr><td>测试集：真阳性（toxic=1，p ≥ 阈值）</td><td class='n'>2123</td><td class='n'>1842</td><td class='n'>0.87</td><td>[0.85, 0.88]</td></tr><tr><td>测试集：全部 toxic=0 行</td><td class='n'>57888</td><td class='n'>3756</td><td class='n'>0.06</td><td>[0.06, 0.07]</td></tr><tr><td>选择集：假阳性</td><td class='n'>9</td><td class='n'>6</td><td class='n'>0.67</td><td>[0.35, 0.88]</td></tr><tr><td>选择集：真阳性</td><td class='n'>912</td><td class='n'>831</td><td class='n'>0.91</td><td>[0.89, 0.93]</td></tr><tr><td>选择集：全部 toxic=0 行</td><td class='n'>28910</td><td class='n'>554</td><td class='n'>0.02</td><td>[0.02, 0.02]</td></tr></tbody></table></div>
+<figure><img src="figures/gap4_fp_composition.png" alt="假阳性的标签构成与各评论集合的词表匹配比例"><figcaption>词表匹配描述用词，不判断标签是否正确。高分评论由词级模型筛选，因此其中某些词较常见也可能与筛选过程有关。</figcaption></figure>
+<details><summary>查看 12 条抽样原文，含辱骂内容</summary>
+<p>按是否匹配词表分层抽样，种子为 11。其中 7 条匹配、5 条不匹配；每条只显示前 240 个字符，片段可能缺少上下文。</p>
+<ol class="examples"><li><code>p=1.0000</code> 不含词表词；六个标签全为 0<blockquote>== Gay naturism ==</blockquote></li><li><code>p=1.0000</code> 不含词表词；六个标签全为 0<blockquote>you madyou madyou madyou madyou madyou madyou madyou madyou madyou madyou madz9</blockquote></li><li><code>p=0.9998</code> 不含词表词；六个标签全为 0<blockquote>SHUT UP</blockquote></li><li><code>p=0.9997</code> 含词表词；六个标签全为 0<blockquote>== I suck! ==    I suck!    - Tim McFailland</blockquote></li><li><code>p=0.9977</code> 含词表词；六个标签全为 0<blockquote>Then you stop messing around with my pag4e. I like the Civil War, and I don&#x27;t want you and your stupid puffins on my page!</blockquote></li><li><code>p=0.9961</code> 含词表词；六个标签全为 0<blockquote>== BLOCKING WIKIPEDIA ==    A METHOD FOR BLOCKING WIKIPEDIA FROM POLLUTING SEARCH RESULTS WITH ITS USELESS, INACCURATE, AND COMPLETELY GARBAGE BULLSHIT WOULD BE A GOD SEND TO THE ENTIRE INTERNET. SO TELL JIMMY WALES TO FUCK RIGHT OFF</blockquote></li><li><code>p=0.9944</code> 不含词表词；六个标签全为 0<blockquote>it is sooooo gay</blockquote></li><li><code>p=0.9941</code> 含词表词；六个标签全为 0<blockquote>Cool story bro&#x27;. What the fuck does it have to do with anything?</blockquote></li><li><code>p=0.9936</code> 不含词表词；六个标签全为 0<blockquote>Why are you people SO lame? This is why Wikipedia isn&#x27;t allowed as a legitimate academic source, and while people like me will NEVER contribute to it. You are just a bunch of limp computer dicks trolling around this site hassling people tha</blockquote></li><li><code>p=0.9924</code> 含词表词；六个标签全为 0<blockquote>&quot;    == Simcoe ==    *You live in Simcoe, Ontario, right? That article (and many others) WAS basically controlled by a mentally disabled person.   *http://www.simcoereformer.ca/2010/01/26/letters-to-the-editor-5 - He own says: &quot;&quot;As a mental</blockquote></li><li><code>p=0.9913</code> 含词表词；六个标签全为 0<blockquote>&quot;    Eric, I get told to &quot;&quot;fuck off&quot;&quot; from time to time in support / retail roles, and I know elderly patients suffering from dementia in care homes tell the nurses to &quot;&quot;go fuck themselves&quot;&quot; with optional racial and sexist slurs thrown in. </blockquote></li><li><code>p=0.9902</code> 含词表词；六个标签全为 0<blockquote>Why do you have a page, I&#x27;ve never fucking heard of you</blockquote></li></ol>
+</details>
+<p>在所有匹配词表的评论中，选择集有 1714 / 2268 被标为 toxic，比例 0.76；测试集为 3855 / 7611，比例 0.51。两组匹配了同一词表，但评论内容和语境并不相同，不能仅据此认定测试标注更宽松。</p>
+<div class="box"><b>假设情景：</b>如果把 149 条匹配词表的假阳性全部改标为 toxic，固定预测下的测试精确率会从 0.898 升到 0.961。数值上填补了到 0.99 目标之间约 68% 的差距。这个计算没有证明这些评论应改标，不能解释为标签因素的贡献或上界。</div>
+<p>其余 93 条未匹配词表的假阳性也未逐条判定。它们的近似词表外比例为 0.150，高于匹配词表的假阳性 0.080 和真阳性 0.068。这是后续抽样复核的线索，尚不能归因。</p>
+<details><summary>诊断词表</summary><p class="prov">fuck, fucking, fucked, shit, bullshit, asshole, assholes, bitch, bitches, cunt, dick, twat, suck, sucks, idiot, idiots, stupid, moron, morons, loser, losers, faggot, fag, nigger, retard, retarded, bastard, crap, pathetic, dumb, jerk, wanker, scum, pig, pigs。</p><p>这份额外词表只用于诊断，没有作为单独特征输入模型；其中的词可能与模型学到的 TF-IDF 词表重叠。</p></details>
+
+<h3 id="gap5">5.5 阈值规则对比</h3>
+<p>比较五种规则，每种都在选择集内做相同的阈值交叉验证，再用全选择集确定阈值并报告测试读数。候选规则按留出折结果比较；由于同一组验证结果也用于选择候选，最好结果还需要新的独立验证。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">规则</th><th scope="col" class="n">样本内精确率</th><th scope="col" class="n">留出折精确率</th><th scope="col" class="n">留出预测数均值</th><th scope="col" class="n">测试精确率</th><th scope="col" class="n">测试预测数</th><th scope="col">全选择集阈值</th></tr></thead><tbody><tr><td>点估计 ≥ 0.99，至少 30 条，当前规则</td><td class='n'>0.990</td><td class='n'>0.988</td><td class='n'>916</td><td class='n'>0.900</td><td class='n'>2367</td><td>toxic 0.9893, obscene 0.9984, insult 0.9998</td></tr><tr><td>Wilson 下界 ≥ 0.99，至少 30 条</td><td class='n'>0.997</td><td class='n'>0.997</td><td class='n'>751</td><td class='n'>0.926</td><td class='n'>1819</td><td>toxic 0.9965</td></tr><tr><td>点估计 ≥ 0.99，至少 100 条</td><td class='n'>0.990</td><td class='n'>0.988</td><td class='n'>916</td><td class='n'>0.900</td><td class='n'>2367</td><td>toxic 0.9893, obscene 0.9984</td></tr><tr><td>点估计 ≥ 0.99，至少 300 条</td><td class='n'>0.990</td><td class='n'>0.988</td><td class='n'>916</td><td class='n'>0.900</td><td class='n'>2367</td><td>toxic 0.9893, obscene 0.9984</td></tr><tr><td>Wilson 下界 ≥ 0.99，至少 100 条</td><td class='n'>0.997</td><td class='n'>0.997</td><td class='n'>751</td><td class='n'>0.926</td><td class='n'>1819</td><td>toxic 0.9965</td></tr></tbody></table></div>
+<figure><img src="figures/gap5_selection_rules.png" alt="五种阈值规则的精确率与预测数量对比"><figcaption>Wilson 下界规则的留出折精确率为 0.997，预测数量从 916 降到 751，约少 18%。测试精确率为 0.926，仍未达到 0.99。</figcaption></figure>
+<p>Wilson 区间用于表达比例估计的不确定性。以区间下界选阈值，比只看精确率点估计更保守；但这里扫描了多个候选阈值，单点区间并不是选择后的 95% 保证。</p>
+<p>本次两种下界规则 <code>lb_min30</code> 和 <code>lb_min100</code> 的结果相同，均只保留 toxic 的自动处置阈值。按双侧 95% Wilson 区间计算，即使没有错误，下界达到 0.99 也需要至少约 381 条，所以 30 与 100 的最低样本数在本轮均未成为约束。</p>
+<p>将点估计规则的最小样本数提高到 100 或 300，会关闭 insult 的自动处置阈值。但它原先触发的评论同时触发其他标签，因此总体自动处置数量在本轮保持不变。</p>
+
+<h3 id="gap6">5.6 证据与限制</h3>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">总体阈值的评估方式</th><th scope="col" class="n">自动处置精确率</th><th scope="col">描述性差值</th></tr></thead><tbody>
+<tr><td>全选择集拟合并评估</td><td class='n'>0.990</td><td>参照值</td></tr>
+<tr><td>选择集留出折均值</td><td class='n'>0.988</td><td>比样本内低 0.26 个百分点</td></tr>
+<tr><td>官方评分测试行</td><td class='n'>0.900</td><td>比留出折低 8.78 个百分点</td></tr></tbody></table></div>
+<figure><img src="figures/gap6_decomposition.png" alt="三种评估方式的精确率差距，不代表因果分解"><figcaption>不同评估方式的读数对照。差值受样本、阈值和数据差异共同影响，不能据此给各原因分配贡献。</figcaption></figure>
+<ul>
+<li>当前流程在测试集上未达到自动处置要求，这个结论同时出现在最终路由和总体阈值诊断中。</li>
+<li>更保守的阈值规则在选择集内部验证中表现更好，并减少自动处置数量。它值得进入下一轮比较，尚未解决测试精确率缺口。</li>
+<li>词表、概率校准和 AP 的差异提供了调查方向。没有统一标准下的人工复核，就不能确认标注差异，更不能量化它对缺口的贡献。</li>
+<li>当前 toxic 分数的阈值扫描不证明 99% 对其他方法不可达。后续仍需按事先确定的标签标准、目标和覆盖要求评估。</li>
+</ul>
+
+<h2 id="next">6. 首轮提出的下一步</h2>
+<p>以下是首轮结束时的计划。其中保留自动处置权限和 99% 要求的决定，已由第三步的人工确认方案替代；其余验证建议仍适用。</p>
+<ol>
+<li>把 Wilson 下界规则作为候选，与当前点估计规则在相同协议下比较，同时报告精确率、覆盖数量和关闭的标签。</li>
+<li>准备新增留出数据，并预先区分模型训练、校准、阈值选择和最终评估的用途。已经反复查看过的官方测试行继续用于诊断，不能切两半后当作从未使用的数据。</li>
+<li>尝试字符 n-gram 或子词特征，检查它们是否减少当前词级模型的错误。重点比较精确率与覆盖率、AP 和高概率段的校准表现；词表外比例目前只提供尝试的动机。</li>
+<li>按预先写明的标注标准抽样复核，包括含词和不含词的假阳性，以及必要的对照样本。先量化分歧，再决定是否修订标注或评估口径。</li>
+<li>保留 99% 自动处置要求，不因本轮未通过而降低。新的方法应在冻结配置、足够样本和明确覆盖率下接受独立评估。</li>
+</ol>
+<p class="prov">本节数字来自 <a href="results.json">results.json</a>，运行对照来自 <a href="runs.json">runs.json</a>。测试标签用于事后诊断和阈值范围扫描，但没有用扫描结果替换本轮冻结的路由阈值。以上改进方向都还需要新的验证；原始评估标签在本轮保持不变。</p>
+
+<nav class="bottom" aria-label="前后步骤"><span><a href="step1-baseline.html">← 第 1 步：建立 baseline</a></span><span><a href="step3-human-review.html">第 3 步：优先人工审核 →</a></span></nav>
+</main></body></html>

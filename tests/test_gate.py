@@ -43,7 +43,7 @@ def _load_report(kind: str) -> dict[str, Any]:
 
 def _floor(value: float | None, name: str) -> float:
     if value is None:
-        pytest.skip(f"{name} floor is null in policy.yaml — set it after the first run")
+        pytest.skip(f"{name} has no fixed acceptance limit; reported as a diagnostic")
     return value
 
 
@@ -70,23 +70,43 @@ def test_per_label_average_precision() -> None:
         )
 
 
-def test_auto_action_precision_is_never_relaxed() -> None:
-    """Hard policy floor.
+def test_all_flagged_comments_require_human_capacity() -> None:
+    """A priority suggestion cannot bypass human confirmation or queue capacity."""
+    report = _load_report("decision_contract")
+    assert report["decision_contract"] == {
+        "mode": "human_confirmation",
+        "requires_human_confirmation": True,
+        "automatic_actions": 0,
+    }
+    tiers = report["tiers"]
+    assert set(tiers) == {"allow", "human_review", "priority_review"}
+    priority = tiers["priority_review"]["n_predicted_positive"]
+    regular = tiers["human_review"]["n_predicted_positive"]
+    workload = report["review_workload"]
+    assert workload["n_priority_review"] == priority
+    assert workload["n_human_review"] == regular
+    assert workload["n_requires_human_review"] == priority + regular
+    assert workload["n_total"] == priority + regular + tiers["allow"]["n_predicted_positive"]
+    if priority + regular:
+        assumptions = report["simulation"]["assumptions"]
+        assert assumptions["queued_jobs"] == priority + regular
+        assert set(assumptions["queue_tiers"]) == {"priority_review", "human_review"}
 
-    Coverage falling to zero on the rare labels is the expected result and is
-    not a failure. Precision is not negotiable — a false auto-action is an
-    enforcement nobody appealed.
-    """
+
+def test_configured_priority_review_precision_floor() -> None:
+    """Precision is diagnostic by default; an explicit future target is checked."""
+    floor = _floor(
+        GATES["routing"].get("priority_review_precision_floor"), "priority review precision"
+    )
     report = _load_report("tiers")
-    stats = report["tiers"]["auto_action"]
+    stats = report["tiers"]["priority_review"]
     minimum = GATES["min_predicted_positives_for_precision"]
     if stats["n_predicted_positive"] < minimum:
         pytest.skip(
-            f"auto_action fired {stats['n_predicted_positive']}x; "
+            f"priority_review fired {stats['n_predicted_positive']}x; "
             f"precision is undefined below n={minimum}"
         )
-    floor = GATES["routing"]["auto_action_precision_floor"]
-    assert stats["precision"] >= floor, f"auto_action precision breach: {stats}"
+    assert stats["precision"] >= floor, f"priority review precision breach: {stats}"
 
 
 def test_human_review_precision() -> None:
@@ -97,7 +117,7 @@ def test_human_review_precision() -> None:
 
 
 def test_router_beats_fifo_at_equal_capacity() -> None:
-    """The whole thesis. If this fails, the router is not routing."""
+    """Empirical benchmark comparison, not statistical noninferiority evidence."""
     report = _load_report("simulation")
     floor = _floor(GATES["routing"].get("harm_per_reviewer_hour_vs_fifo_min"), "harm-vs-FIFO")
     sim = report["simulation"]
@@ -112,38 +132,59 @@ def test_router_reaches_high_risk_earlier_than_fifo() -> None:
         GATES["routing"].get("high_risk_wait_p90_vs_fifo_max"), "high-risk wait vs FIFO"
     )
     waits = report["simulation"]["high_risk_wait_p90"]
-    if waits["router"] is None or not waits["fifo"]:
+    if waits["router"] is None or waits["fifo"] is None:
         pytest.skip(f"high-risk wait p90 is undefined for this run: {waits}")
-    ratio = waits["router"] / waits["fifo"]
-    assert ratio <= ceiling, f"router no longer reaches high-risk items earlier: {waits}"
+    if waits["router"] == waits["fifo"] == 0:
+        pytest.skip(f"both waits are zero; no relative waiting-time evidence: {waits}")
+    assert waits["router"] <= ceiling * waits["fifo"], (
+        f"router no longer reaches high-risk items earlier: {waits}"
+    )
 
 
-def test_queue_clears_under_stated_capacity() -> None:
+@pytest.mark.parametrize("scenario", ["primary", "thesis"])
+def test_high_risk_completions_do_not_fall_below_fifo(scenario: str) -> None:
+    """Wait quantiles must not improve by dropping unfinished high-risk work."""
+    report = _load_report("simulation")
+    floor = _floor(
+        GATES["routing"].get("high_risk_handled_vs_fifo_min"), "high-risk completions vs FIFO"
+    )
+    values = report["simulation"]["high_risk_handled"][scenario]
+    if values["router"] is None or not values["fifo"]:
+        pytest.skip(f"high-risk completion comparison unavailable: {values}")
+    assert values["router"] / values["fifo"] >= floor, (
+        f"fewer high-risk reviews completed at {scenario} load: {values}"
+    )
+
+
+def test_queue_depth_stays_within_configured_limit() -> None:
     report = _load_report("simulation")
     sim = report["simulation"]
     depth_max = _floor(GATES["routing"].get("queue_depth_p95_max"), "queue depth p95")
-    assert sim["queue_depth_p95"] <= depth_max, f"backlog growing: {sim}"
+    assert sim["queue_depth_p95"] <= depth_max, f"queue depth exceeds limit: {sim}"
+
+
+def test_reviewer_utilization() -> None:
+    report = _load_report("simulation")
+    sim = report["simulation"]
     assert sim["reviewer_utilization"] >= GATES["routing"]["reviewer_utilization_min"], (
         f"scheduler is underutilizing reviewers: {sim}"
     )
 
 
-@pytest.mark.parametrize("tier", ["predicted_positive", "auto_action"])
+@pytest.mark.parametrize("tier", ["predicted_positive", "priority_review", "human_review"])
 def test_false_positives_do_not_concentrate_on_identity_mentions(tier: str) -> None:
     """Detect a disparity in false discoveries; this does not certify fairness.
 
     FDR has predicted positives as its denominator. A lower interval bound
     above the ceiling detects a disparity; an interval crossing it is
-    inconclusive and skips. Report both the final pooled result and the
-    automatic candidate tier after subgroup thresholds, before rules.
+    inconclusive and skips. Check pooled and each final human-review band.
     """
     report = _load_report("identity_false_positives")
     ceiling = _floor(
         GATES["fairness"].get("identity_false_discovery_rate_ratio_max"),
         "identity false-discovery ratio",
     )
-    basis = "final_tier" if tier == "predicted_positive" else "model_tier"
-    section = report["identity_false_positives"]["test"][basis][tier]
+    section = report["identity_false_positives"]["test"]["final_tier"][tier]
     minimum = GATES["min_predicted_positives_for_precision"]
     _check_discovery_rate_ratio(section, ceiling, minimum)
 
@@ -183,6 +224,61 @@ def test_missing_report_at_explicit_path_fails(
     monkeypatch.setenv(REPORT_ENV, str(tmp_path / "does-not-exist.json"))
     with pytest.raises(pytest.fail.Exception, match="produced no report"):
         _load_report("tiers")
+
+
+def test_priority_work_cannot_be_omitted_from_reviewer_capacity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Catch the old behavior that simulated only the ordinary review band."""
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps({
+        "decision_contract": {
+            "mode": "human_confirmation", "requires_human_confirmation": True,
+            "automatic_actions": 0,
+        },
+        "tiers": {
+            "priority_review": {"n_predicted_positive": 10},
+            "human_review": {"n_predicted_positive": 20},
+            "allow": {"n_predicted_positive": 70},
+        },
+        "review_workload": {
+            "n_total": 100, "n_priority_review": 10, "n_human_review": 20,
+            "n_requires_human_review": 30,
+        },
+        "simulation": {"assumptions": {
+            "queued_jobs": 20, "queue_tiers": ["human_review"],
+        }},
+    }))
+    monkeypatch.setenv(REPORT_ENV, str(path))
+    with pytest.raises(AssertionError):
+        test_all_flagged_comments_require_human_capacity()
+
+
+def test_faster_waits_do_not_hide_fewer_high_risk_completions(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps({"simulation": {
+        "high_risk_wait_p90": {"router": 1.0, "fifo": 5.0},
+        "high_risk_handled": {"primary": {"router": 8.0, "fifo": 10.0}},
+    }}))
+    monkeypatch.setenv(REPORT_ENV, str(path))
+    monkeypatch.setitem(GATES["routing"], "high_risk_handled_vs_fifo_min", 1.0)
+    with pytest.raises(AssertionError, match="fewer high-risk"):
+        test_high_risk_completions_do_not_fall_below_fifo("primary")
+
+
+def test_positive_wait_cannot_skip_against_zero_fifo_wait(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps({"simulation": {
+        "high_risk_wait_p90": {"router": 1.0, "fifo": 0.0},
+    }}))
+    monkeypatch.setenv(REPORT_ENV, str(path))
+    monkeypatch.setitem(GATES["routing"], "high_risk_wait_p90_vs_fifo_max", 1.0)
+    with pytest.raises(AssertionError, match="no longer reaches"):
+        test_router_reaches_high_risk_earlier_than_fifo()
 
 
 def test_explicit_report_with_missing_section_fails(

@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from review_router.policy import load_policy  # noqa: E402
 
 START, END = "<!-- results:start -->", "<!-- results:end -->"
-AUTO, HUMAN = "auto_action", "human_review"
+AUTO, PRIORITY, HUMAN = "auto_action", "priority_review", "human_review"
 
 
 def finite(value: Any) -> bool:
@@ -88,26 +88,34 @@ def _group_cell(group: dict[str, Any], metric: str, denominator: str) -> str:
             f"({fmt(group.get('n_false_positive'))}/{fmt(group.get(denominator))})")
 
 
-def _identity_lines(report: dict[str, Any], floors: dict[str, float]) -> list[str]:
+def _identity_lines(
+    report: dict[str, Any], floors: dict[str, float], high_tier: str = AUTO
+) -> list[str]:
     identity = report.get("identity_false_positives", {}).get("test", {})
     terms = identity.get("identity_terms")
     vocabulary = (f"The run recorded {len(terms)} whole-word terms in its `report.json`."
                   if isinstance(terms, list) else "This run did not record its identity-term vocabulary.")
+    correctness = (
+        "For both priority and standard human review, a flagged comment is a false discovery when no label is true. "
+        if high_tier == PRIORITY else
+        "For auto-action, a decision is wrong when none of its triggering labels is true; "
+        "for human review, it is wrong when no label is true. "
+    )
+    high_name = "priority-review candidates" if high_tier == PRIORITY else "auto-actions"
     lines = [
         "**Identity mentions.** " + vocabulary + " This word-list diagnostic is a proxy, not an identity annotation.",
         "",
         "False discovery rate (FDR) divides wrong positive decisions by all positive decisions in each slice. "
-        "For auto-action, a decision is wrong when none of its triggering labels is true; "
-        "for human review, it is wrong when no label is true. Ratios compare comments with an identity term to those without one.",
+        + correctness + "Ratios compare comments with an identity term to those without one.",
         "",
         "| decision basis | tier | FDR with term (wrong / decisions) | FDR without term | ratio | ratio 95% CI |",
         "|---|---|---:|---:|---:|---|",
     ]
     sources = (
-        ("population_tier", AUTO, "population thresholds"),
-        ("model_tier", AUTO, "after subgroup threshold, before rules"),
+        ("population_tier", high_tier, "population thresholds"),
+        ("model_tier", high_tier, "after subgroup threshold, before rules"),
         ("final_tier", "predicted_positive", "final routing"),
-        ("final_tier", AUTO, "final routing"),
+        ("final_tier", high_tier, "final routing"),
         ("final_tier", HUMAN, "final routing"),
     )
     for basis, tier, name in sources:
@@ -120,35 +128,39 @@ def _identity_lines(report: dict[str, Any], floors: dict[str, float]) -> list[st
         "",
         "Conventional false-positive rate (FPR) uses all actually negative comments in the slice as its denominator, "
         "including allowed comments. Here 'negative' means no positive label. It measures the fraction of clean comments "
-        "sent to each tier; it does not count wrong-trigger auto-actions on comments that have another positive label.",
+        "sent to each tier. " + (
+            "Both review tiers use the same any-positive-label definition of correctness."
+            if high_tier == PRIORITY else
+            "It does not count wrong-trigger auto-actions on comments that have another positive label."
+        ),
         "",
         "| final tier | FPR with term (clean routed / clean total) | FPR without term | ratio | ratio 95% CI |",
         "|---|---:|---:|---:|---|",
     ]
     final = identity.get("final_tier", {})
-    for tier in ("predicted_positive", AUTO, HUMAN):
+    for tier in ("predicted_positive", high_tier, HUMAN):
         e = final.get("clean_negative_false_positives", {}).get(tier, {})
         with_term = _group_cell(e.get("with_identity_term", {}), "false_positive_rate", "n_actual_negative")
         without = _group_cell(e.get("without_identity_term", {}), "false_positive_rate", "n_actual_negative")
         lines.append(f"| {tier} | {with_term} | {without} | "
                      f"{fmt(e.get('false_positive_rate_ratio'), 2)} | {ci(e.get('false_positive_rate_ratio_ci95'))} |")
     sub = report.get("subgroup_thresholds", {})
-    if AUTO in sub.get("thresholds", {}):
-        thresholds = sub["thresholds"][AUTO].get("identity_term_present", {})
+    if high_tier in sub.get("thresholds", {}):
+        thresholds = sub["thresholds"][high_tier].get("identity_term_present", {})
         descriptions = [f"{label}: {fmt(value, 4) if value is not None else 'no qualifying slice threshold'}"
                         for label, value in thresholds.items()]
-        selection = sub.get("threshold_selection", {}).get(AUTO, {})
-        test = sub.get("test", {}).get(AUTO, {})
+        selection = sub.get("threshold_selection", {}).get(high_tier, {})
+        test = sub.get("test", {}).get(high_tier, {})
         lines += [
             "",
-            f"The subgroup threshold uses the run's auto-action precision target of {fmt(floors.get(AUTO), 2)} "
+            f"The subgroup threshold uses the run's {high_tier} precision target of {fmt(floors.get(high_tier), 2)} "
             "on identity-term comments in the threshold-selection split, at or above each population threshold. "
-            "A label without a qualifying slice threshold cannot trigger auto-action on that slice. "
+            f"A label without a qualifying slice threshold cannot trigger {high_tier} on that slice. "
             "These are empirical selection targets, not statistical guarantees on test data.",
             "",
             "Slice thresholds: " + ("; ".join(descriptions) or "unavailable") + ". "
             f"They removed {fmt(selection.get('n_removed_by_subgroup_threshold'))} of "
-            f"{fmt(selection.get('n_population_tier'))} population auto-actions on selection data and "
+            f"{fmt(selection.get('n_population_tier'))} population {high_name} on selection data and "
             f"{fmt(test.get('n_removed_by_subgroup_threshold'))} of {fmt(test.get('n_population_tier'))} on test data. "
             f"Of the removed test decisions, {fmt(test.get('n_removed_truly_positive_any_label'))} had a positive label.",
         ]
@@ -176,18 +188,25 @@ def _identity_lines(report: dict[str, Any], floors: dict[str, float]) -> list[st
     return lines
 
 
-def _simulation_lines(sim: dict[str, Any]) -> list[str]:
+def _simulation_lines(sim: dict[str, Any], high_tier: str = AUTO) -> list[str]:
     summary = sim.get("summary", {})
     if not summary:
         return ["**Queue simulation.** " + sim.get("note", "No queue simulation results are available.")]
     a = sim["assumptions"]
+    review_pool = (
+        "Arrival rates are post-admission review jobs per hour, sampled from both priority_review and human_review. "
+        "They are not incoming platform-comment rates. Every admitted item uses reviewer capacity. "
+        if high_tier == PRIORITY else ""
+    )
+    if high_tier == PRIORITY and a.get("priority_order"):
+        review_pool += f"Priority ordering: {a['priority_order']}. "
     lines = [
         f"**Queue simulation.** {a['reviewers']} reviewers, {a['handle_minutes']:g} min per item, {a['horizon_hours']:g} h, "
         f"capacity {a['capacity_per_hour']:g}/h. The sampled pool has {a['queued_jobs']} queued comments "
         f"and {a['queued_high_risk']} high-risk comments; high-risk means {a.get('high_risk', 'definition unavailable')}. "
         f"The run uses {len(a['seeds'])} seeds with identical arrivals and handle times for every ordering within each seed.",
         "",
-        f"Arrival assumption: {a.get('arrivals', 'unavailable')}. Handle times: {a.get('handle_time', 'unavailable')}. "
+        review_pool + f"Arrival assumption: {a.get('arrivals', 'unavailable')}. Handle times: {a.get('handle_time', 'unavailable')}. "
         f"Harm proxy: {a.get('harm_proxy', 'unavailable')}. Waits are minutes until review starts, measured over completed items. "
         "High-risk left includes jobs still in service; backlog counts jobs not yet started. "
         "The table reports seed means and standard deviations. Completion counts at a finite horizon do not establish queue stability.",
@@ -221,11 +240,24 @@ def _simulation_lines(sim: dict[str, Any]) -> list[str]:
     return lines
 
 
-def _gate_lines(report: dict[str, Any], gates: dict[str, Any], source: Path) -> list[str]:
+def _gate_lines(
+    report: dict[str, Any], gates: dict[str, Any], source: Path, high_tier: str = AUTO
+) -> list[str]:
     sim = report.get("simulation", {})
     routing, fairness = gates.get("routing", {}), gates.get("fairness", {})
     minimum = gates.get("min_predicted_positives_for_precision", 30)
     rows = []
+    if high_tier == PRIORITY:
+        contract = report.get("decision_contract", {})
+        complete = all(key in contract for key in
+                       ("mode", "requires_human_confirmation", "automatic_actions"))
+        valid = (contract.get("mode") == "human_confirmation"
+                 and contract.get("requires_human_confirmation") is True
+                 and contract.get("automatic_actions") == 0)
+        status = "unavailable" if not complete else "green" if valid else "**red**"
+        rows.append(("human confirmation before every moderation action",
+                     f"mode={fmt(contract.get('mode'))}; automatic actions={fmt(contract.get('automatic_actions'))}",
+                     "human_confirmation; required=true; actions=0", status))
     specs = {label: spec for label, spec in gates.get("per_label_average_precision", {}).items()
              if spec.get("floor") is not None}
     statuses = [gate_status(report.get("per_label", {}).get(label, {}).get("average_precision"), spec["floor"])
@@ -233,17 +265,18 @@ def _gate_lines(report: dict[str, Any], gates: dict[str, Any], source: Path) -> 
     ap_status = ("not set" if not statuses else "**red**" if "**red**" in statuses
                  else "unavailable" if "unavailable" in statuses else "green")
     rows.append((f"per-label AP ({len(specs)} configured labels)", "see label table", "snapshot/override floors", ap_status))
-    for tier in (AUTO, HUMAN):
+    for tier in (high_tier, HUMAN):
         stats = report.get("tiers", {}).get(tier, {})
         value, floor = stats.get("precision"), routing.get(f"{tier}_precision_floor")
         status = gate_status(value, floor)
-        if tier == AUTO and floor is not None:
+        if tier == high_tier and floor is not None:
             count = stats.get("n_predicted_positive")
             if not finite(count):
                 status = "unavailable"
             elif count < minimum:
                 status = f"skipped (n < {minimum})"
-        rows.append((f"{tier} precision", fmt(value), f"≥ {fmt(floor)}", status))
+        requirement = "diagnostic; no test floor" if floor is None and high_tier == PRIORITY else f"≥ {fmt(floor)}"
+        rows.append((f"{tier} precision", fmt(value), requirement, status))
     primary = sim.get("primary", {})
     thesis = sim.get("thesis", primary)
     for metric, config_name, scenario, upper in (
@@ -254,14 +287,29 @@ def _gate_lines(report: dict[str, Any], gates: dict[str, Any], source: Path) -> 
         value = ratio(values.get("router"), values.get("fifo"))
         limit = routing.get(config_name)
         name = f"{metric}, {scenario.get('strategy', 'router')} / FIFO at {fmt(scenario.get('load_per_hour'))}/h"
-        rows.append((name, fmt(value), f"{'≤' if upper else '≥'} {fmt(limit)}", gate_status(value, limit, upper=upper)))
+        measured = fmt(value)
+        status = gate_status(value, limit, upper=upper)
+        if (high_tier == PRIORITY and metric == "high_risk_wait_p90"
+                and finite(values.get("router")) and values["router"] > 0
+                and values.get("fifo") == 0 and finite(limit)):
+            measured = f"{fmt(values['router'])} min / zero FIFO wait"
+            status = "**red**"
+        rows.append((name, measured, f"{'≤' if upper else '≥'} {fmt(limit)}", status))
+    if high_tier == PRIORITY:
+        for scenario in ("primary", "thesis"):
+            values = sim.get("high_risk_handled", {}).get(scenario, {})
+            value = ratio(values.get("router"), values.get("fifo"))
+            limit = routing.get("high_risk_handled_vs_fifo_min")
+            name = f"high-risk completed, priority / FIFO at {fmt(values.get('load_per_hour'))}/h ({scenario})"
+            rows.append((name, fmt(value), f"≥ {fmt(limit)}", gate_status(value, limit)))
     for metric, config_name, upper in (
         ("queue_depth_p95", "queue_depth_p95_max", True),
         ("reviewer_utilization", "reviewer_utilization_min", False),
     ):
         value, limit = sim.get(metric), routing.get(config_name)
         status = gate_status(value, limit, upper=upper)
-        if metric == "reviewer_utilization" and routing.get("queue_depth_p95_max") is None:
+        if (high_tier == AUTO and metric == "reviewer_utilization"
+                and routing.get("queue_depth_p95_max") is None):
             status = "skipped (queue-depth gate not set)"
         rows.append((f"{metric} at {fmt(primary.get('load_per_hour'))}/h", fmt(value),
                      f"{'≤' if upper else '≥'} {fmt(limit)}", status))
@@ -270,8 +318,15 @@ def _gate_lines(report: dict[str, Any], gates: dict[str, Any], source: Path) -> 
     rows.append(("hierarchy violation rate", fmt(value, 4), f"≤ {fmt(limit)}", gate_status(value, limit, upper=True)))
     identity = report.get("identity_false_positives", {}).get("test", {})
     ceiling = fairness.get("identity_false_discovery_rate_ratio_max")
-    for basis, tier, name in (("final_tier", "predicted_positive", "pooled, final tier"),
-                              ("model_tier", AUTO, "auto_action, after subgroup threshold before rules")):
+    fairness_sources = (
+        (("final_tier", "predicted_positive", "pooled, final tier"),
+         ("final_tier", PRIORITY, "priority_review, final tier"),
+         ("final_tier", HUMAN, "human_review, final tier"))
+        if high_tier == PRIORITY else
+        (("final_tier", "predicted_positive", "pooled, final tier"),
+         ("model_tier", AUTO, "auto_action, after subgroup threshold before rules"))
+    )
+    for basis, tier, name in fairness_sources:
         section = identity.get(basis, {}).get(tier, {})
         measured = f"{fmt(section.get('false_discovery_rate_ratio'))} [{ci(section.get('false_discovery_rate_ratio_ci95'))}]"
         rows.append((f"identity FDR ratio, {name}", measured, f"≤ {fmt(ceiling)}", fairness_gate_status(section, ceiling, minimum)))
@@ -285,11 +340,51 @@ def _gate_lines(report: dict[str, Any], gates: dict[str, Any], source: Path) -> 
     return lines
 
 
+def _criteria_lines(
+    report: dict[str, Any], gates: dict[str, Any], floors: dict[str, float], source: Path
+) -> list[str]:
+    routing = gates.get("routing", {})
+    sim = report.get("simulation", {})
+    primary, thesis = sim.get("primary", {}), sim.get("thesis", {})
+    return [
+        "**Decision contract and evaluation criteria.** Every moderation action requires human confirmation. "
+        "The model routes comments to priority_review, human_review or allow; priority_review schedules a human review earlier "
+        "and does not authorize an automatic moderation action. Automatic actions must remain zero.", "",
+        f"The run's per-label selection targets are {fmt(floors.get(PRIORITY), 2)} for priority_review "
+        f"and {fmt(floors.get(HUMAN), 2)} for human_review. These are empirical targets on the selection split, "
+        "not guarantees of test precision. Per-tier test precision remains diagnostic when its gate is not set.", "",
+        f"Comparison gates come from `{source}`. At equal reviewer capacity, the router/FIFO harm-per-reviewer-hour ratio "
+        f"at {fmt(thesis.get('load_per_hour'))}/h must be ≥ {fmt(routing.get('harm_per_reviewer_hour_vs_fifo_min'))}; "
+        f"the high-risk wait p90 ratio at {fmt(primary.get('load_per_hour'))}/h must be ≤ "
+        f"{fmt(routing.get('high_risk_wait_p90_vs_fifo_max'))}. The high-risk completed-count ratio must be ≥ "
+        f"{fmt(routing.get('high_risk_handled_vs_fifo_min'))} at both named loads. "
+        "These comparisons use ratios of seed means. They are descriptive checks that the measured result is no worse than FIFO, "
+        "not statistical non-inferiority tests. Historical automatic-enforcement results use a different contract.", "",
+    ]
+
+
+def _workload_lines(report: dict[str, Any]) -> list[str]:
+    workload = report.get("review_workload", {})
+    contract = report.get("decision_contract", {})
+    return [
+        "**Total human-review workload.** Both flagged tiers enter the same review pool and consume reviewer capacity. "
+        f"The report records {fmt(workload.get('n_requires_human_review'))} of {fmt(workload.get('n_total'))} comments "
+        f"requiring review, a fraction of {fmt(workload.get('review_fraction'))}: "
+        f"{fmt(workload.get('n_priority_review'))} priority reviews and {fmt(workload.get('n_human_review'))} standard reviews. "
+        f"Of the flagged comments, {fmt(workload.get('n_truly_positive'))} have at least one positive label. "
+        f"Combined review precision is {fmt(workload.get('precision'))}, with 95% interval "
+        f"{ci(workload.get('precision_ci95'), 3)}. Recorded automatic actions: {fmt(contract.get('automatic_actions'))}.",
+        "",
+    ]
+
+
 def render(run_dir: Path, policy_path: Path | None = None) -> str:
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     snapshot_path = run_dir / "policy.yaml"
     snapshot = load_policy(snapshot_path)
+    high_tier = PRIORITY if PRIORITY in snapshot.tiers else AUTO
+    high_label = "priority" if high_tier == PRIORITY else "auto"
     floors = snapshot.tier_precision_floors
     gates = load_policy(policy_path).gates if policy_path is not None else snapshot.gates
     gate_source = policy_path if policy_path is not None else snapshot_path
@@ -300,7 +395,8 @@ def render(run_dir: Path, policy_path: Path | None = None) -> str:
         provenance += " with uncommitted changes (manifest `git_dirty: true`)"
     synthetic = report.get("synthetic", False)
     title = "synthetic pipeline check" if synthetic else "Jigsaw scored test rows"
-    lines = [f"## Round-1 results ({title}), run `{manifest['run_id']}`", ""]
+    heading = "Review-routing results" if high_tier == PRIORITY else "Round-1 results"
+    lines = [f"## {heading} ({title}), run `{manifest['run_id']}`", ""]
     if synthetic:
         lines += ["**SYNTHETIC corpus: pipeline check only, not Jigsaw results.**", ""]
     lines += [
@@ -313,35 +409,51 @@ def render(run_dir: Path, policy_path: Path | None = None) -> str:
     ]
     if policy_path is not None:
         lines += [f"Comparison gates are explicitly overridden by `{policy_path}`; the run's precision targets remain those in its snapshot.", ""]
+    if high_tier == PRIORITY:
+        lines += _criteria_lines(report, gates, floors, gate_source)
     lines += [
         f"**Per label.** Thresholds were selected for precision targets {fmt(floors.get(HUMAN), 2)} (human) and "
-        f"{fmt(floors.get(AUTO), 2)} (auto). Selection and test AP are both shown. "
+        f"{fmt(floors.get(high_tier), 2)} ({high_label}). Selection and test AP are both shown. "
         "An AP difference describes a measured performance gap; it does not by itself identify the cause.", "",
-        "| label | positives | AP selection | AP test | ROC-AUC test | human thr | P@human | R@human | auto thr | P@auto | R@auto |",
+        f"| label | positives | AP selection | AP test | ROC-AUC test | human thr | P@human | R@human | {high_label} thr | P@{high_label} | R@{high_label} |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     selection = report.get("threshold_selection", {})
     for label, e in report.get("per_label", {}).items():
-        h, a = e["at_human_review"], e["at_auto_action"]
+        h, a = e["at_human_review"], e[f"at_{high_tier}"]
         lines.append(f"| {label} | {e['positives']} | {fmt(selection.get('per_label', {}).get(label, {}).get('average_precision'))} "
                      f"| {fmt(e['average_precision'])} | {fmt(e['roc_auc'])} | {fmt(h['threshold'], 4)} "
                      f"| {fmt(h['precision'])} | {fmt(h['recall'])} | {fmt(a['threshold'], 4)} | {fmt(a['precision'])} | {fmt(a['recall'])} |")
     rules = report.get("rules", {})
-    lines += ["", "**Routing tiers.** Matching policy rules moved "
-              f"{fmt(rules.get('n_downgraded_from_auto_action'))} auto-actions and "
-              f"{fmt(rules.get('n_added_to_queue_from_allow'))} allows to human review. These counts aggregate all matching rules.", "",
+    if high_tier == PRIORITY:
+        rule_description = (
+            "**Routing tiers.** Matching policy rules promoted "
+            f"{fmt(rules.get('n_promoted_to_priority_review'))} comments to priority review and added "
+            f"{fmt(rules.get('n_added_to_queue_from_allow'))} comments from allow to the review pool. "
+            "These aggregate counts can overlap. Both review tiers count a comment as positive when any label is true."
+        )
+        lines += [""] + _workload_lines(report)
+    else:
+        rule_description = (
+            "**Routing tiers.** Matching policy rules moved "
+            f"{fmt(rules.get('n_downgraded_from_auto_action'))} auto-actions and "
+            f"{fmt(rules.get('n_added_to_queue_from_allow'))} allows to human review. These counts aggregate all matching rules."
+        )
+    lines += ["", rule_description, "",
               "| tier | n | coverage | precision (test) | 95% CI | precision (selection split) | target |",
               "|---|---:|---:|---:|---|---:|---:|"]
     for tier, e in report.get("tiers", {}).items():
         lines.append(f"| {tier} | {e['n_predicted_positive']} | {fmt(e['coverage'])} | {fmt(e['precision'])} "
                      f"| {ci(e['precision_ci95'], 3)} | {fmt(selection.get('tiers', {}).get(tier, {}).get('precision'), 4)} "
                      f"| {fmt(floors.get(tier))} |")
-    lines += ["", "Per-label precision targets need not hold after pooling labels, removing auto-actions from the human queue, "
-              "or applying rules. Test precision is measured separately. The gates below retain the declared limits; "
+    tier_note = ("Per-label precision targets need not hold after pooling labels, partitioning the review pool "
+                 if high_tier == PRIORITY else
+                 "Per-label precision targets need not hold after pooling labels, removing auto-actions from the human queue, ")
+    lines += ["", tier_note + "or applying rules. Test precision is measured separately. The gates below retain the declared limits; "
               "changes to models, calibration or threshold selection need a fresh evaluation.", ""]
-    lines += _identity_lines(report, floors)
-    lines += [""] + _simulation_lines(report.get("simulation", {}))
-    lines += [""] + _gate_lines(report, gates, gate_source)
+    lines += _identity_lines(report, floors, high_tier)
+    lines += [""] + _simulation_lines(report.get("simulation", {}), high_tier)
+    lines += [""] + _gate_lines(report, gates, gate_source, high_tier)
     return "\n".join(lines)
 
 

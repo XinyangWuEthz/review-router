@@ -8,6 +8,7 @@ build/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.DS_Store
 
 # Corpus and run artefacts are regenerated, never committed.
 data/

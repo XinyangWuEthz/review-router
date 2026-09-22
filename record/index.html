@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>review-router 项目记录</title><style>
+:root { --ink: #0b0b0b; --ink2: #52514e; --line: #e6e5e1; --surface: #fcfcfb; --accent: #185ea8; --warn: #a73816; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
+nav.top { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); margin-bottom: 24px; flex-wrap: wrap; }
+nav.top a, a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+nav.top a[aria-current="page"] { font-weight: 700; color: var(--ink); }
+h1 { font-size: 26px; line-height: 1.3; margin: 0 0 8px; }
+h2 { font-size: 20px; margin: 40px 0 10px; border-top: 1px solid var(--line); padding-top: 20px; }
+h3 { font-size: 17px; margin: 26px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; color: var(--ink2); }
+p { margin: 12px 0; max-width: 78ch; }
+li { margin: 8px 0; }
+h2, h3 { scroll-margin-top: 16px; }
+.lede { color: var(--ink2); font-size: 15px; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink2); margin-right: 6px; }
+.tag.red { border-color: var(--warn); color: var(--warn); }
+.table-scroll { overflow-x: auto; margin: 12px 0 18px; }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+figure { margin: 18px 0; }
+figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+figcaption { font-size: 14px; color: var(--ink2); margin-top: 8px; max-width: 78ch; }
+.box { border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; margin: 14px 0; border-radius: 4px; background: #fff; }
+.box.warn { border-left-color: var(--warn); }
+.steps { list-style: none; padding: 0; margin: 0; }
+.steps li { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 8px 0; background: #fff; }
+.steps li a { font-weight: 600; }
+.steps li .one { color: var(--ink2); font-size: 14px; margin-top: 2px; }
+.toc { font-size: 15px; color: var(--ink2); columns: 2; margin: 8px 0 16px; }
+.toc a { display: block; padding: 3px 0; break-inside: avoid; }
+.flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 14px 0; }
+.flow .node { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 13px; }
+.flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow .arrow { align-self: center; color: var(--ink2); }
+.examples li { margin: 6px 0; font-size: 14px; }
+.examples blockquote { margin: 8px 0 18px; padding-left: 12px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
+details { margin: 18px 0; border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+summary { cursor: pointer; font-weight: 600; }
+.examples code, code { background: #f3f2ef; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+pre { background: #f3f2ef; padding: 10px 12px; border-radius: 6px; font-size: 13px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.prov { font-size: 13px; color: var(--ink2); }
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px; }
+@media (max-width: 640px) {
+  main { padding: 24px 16px 48px; }
+  h1 { font-size: 24px; }
+  .toc { columns: 1; }
+  .flow { flex-direction: column; }
+  .flow .node { flex: auto; }
+  .flow .arrow { display: none; }
+  nav.bottom { gap: 16px; flex-wrap: wrap; }
+}
+</style></head><body><main>
+<nav class="top" aria-label="项目步骤"><a href="index.html" aria-current="page">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><span>第 4 步：独立数据验证，待做</span></nav>
+
+<span class="tag">项目记录</span><span class="tag">当前：人工确认</span>
+<h1>review-router 项目记录</h1>
+<p class="lede">按步骤记录实验设计、测量结果和决定。前两页保留自动处置实验；第三页记录改成人工确认后的新流程与评估。</p>
+<h2>当前项目在做什么</h2>
+<p>系统将评论分为放行、普通人工审核、优先人工审核。高置信预测及规则标记的高风险评论进入优先档；任何处置都需要人工确认，两个人工档都占用审核容量。</p>
+<p>本轮共评估 63,978 条评论，6,310 条进入人工审核，占 9.86%。下一步要验证的是有限人力下的审核质量与完成量。</p>
+<div class="box">99% 是首轮自动处置实验的历史要求。当前 95% 与 90% 是选择集上的分档参数；测试精确率如实报告，项目不再以达到 99% 来判定人工辅助方案是否有效。</div>
+<h2>步骤</h2><ol class="steps"><li><a href="step1-baseline.html">第 1 步：建立 baseline</a><div class="one">把实验封装成一条可重跑的命令：数据划分、模型、阈值、规则、队列仿真、报告和回归门槛。</div></li><li><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><div class="one">在 Jigsaw 数据上评估 baseline，移除 R103，并检查自动处置精确率未达标的原因。</div></li><li><a href="step3-human-review.html">第 3 步：优先人工审核</a><div class="one">取消自动处置权限，按全部人工工作量重新比较排序效果。</div></li><li>第 4 步：独立数据验证，待做。冻结候选方案后，用新增数据验证质量与工作量。</li></ol>
+<h2>重新生成页面</h2>
+<pre><code>python -m pip install -e ".[ml,analysis]"
+python record/diagnose.py --render-only
+python record/render.py</code></pre>
+<p>以上命令读取保存的数据生成页面和图表。更新当前人工审核实验时：</p>
+<pre><code>python scripts/run_pipeline.py --config configs/baseline.yaml
+python record/collect_runs.py --human-review reports/&lt;new run&gt;
+python record/render.py</code></pre>
+<p class="prov">当前运行 <code>20260922T130141204182Z-human-review-baseline</code>。源数据与策略快照保存在 <a href="human_review_run.json">human_review_run.json</a>；历史运行保存在 <a href="runs.json">runs.json</a>。</p>
+
+<nav class="bottom" aria-label="前后步骤"><span><a href="index.html">← 目录</a></span><span><a href="step1-baseline.html">第 1 步：建立 baseline →</a></span></nav>
+</main></body></html>

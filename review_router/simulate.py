@@ -15,9 +15,27 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["SimConfig", "Scenario", "SimResult", "draw_scenario", "simulate", "STRATEGIES"]
+__all__ = [
+    "SimConfig",
+    "Scenario",
+    "SimResult",
+    "draw_scenario",
+    "simulate",
+    "STRATEGIES",
+    "priority_review_scores",
+]
 
-STRATEGIES: tuple[str, ...] = ("fifo", "prob", "severity")
+STRATEGIES: tuple[str, ...] = ("fifo", "prob", "severity", "priority")
+
+
+def priority_review_scores(is_priority: np.ndarray, severity: np.ndarray) -> np.ndarray:
+    """Sort priority-review jobs first, then predicted severity within each tier."""
+    if is_priority.shape != severity.shape or is_priority.ndim != 1:
+        raise ValueError("priority flags and severity scores must be matching vectors")
+    if not np.isfinite(severity).all() or (severity < 0).any():
+        raise ValueError("severity scores must be nonnegative and finite")
+    band_width = float(severity.max(initial=0.0)) + 1.0
+    return np.asarray(is_priority.astype(bool).astype(float) * band_width + severity)
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 3 步：优先人工审核</title><style>
+:root { --ink: #0b0b0b; --ink2: #52514e; --line: #e6e5e1; --surface: #fcfcfb; --accent: #185ea8; --warn: #a73816; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
+nav.top { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); margin-bottom: 24px; flex-wrap: wrap; }
+nav.top a, a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+nav.top a[aria-current="page"] { font-weight: 700; color: var(--ink); }
+h1 { font-size: 26px; line-height: 1.3; margin: 0 0 8px; }
+h2 { font-size: 20px; margin: 40px 0 10px; border-top: 1px solid var(--line); padding-top: 20px; }
+h3 { font-size: 17px; margin: 26px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; color: var(--ink2); }
+p { margin: 12px 0; max-width: 78ch; }
+li { margin: 8px 0; }
+h2, h3 { scroll-margin-top: 16px; }
+.lede { color: var(--ink2); font-size: 15px; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink2); margin-right: 6px; }
+.tag.red { border-color: var(--warn); color: var(--warn); }
+.table-scroll { overflow-x: auto; margin: 12px 0 18px; }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+figure { margin: 18px 0; }
+figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+figcaption { font-size: 14px; color: var(--ink2); margin-top: 8px; max-width: 78ch; }
+.box { border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; margin: 14px 0; border-radius: 4px; background: #fff; }
+.box.warn { border-left-color: var(--warn); }
+.steps { list-style: none; padding: 0; margin: 0; }
+.steps li { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 8px 0; background: #fff; }
+.steps li a { font-weight: 600; }
+.steps li .one { color: var(--ink2); font-size: 14px; margin-top: 2px; }
+.toc { font-size: 15px; color: var(--ink2); columns: 2; margin: 8px 0 16px; }
+.toc a { display: block; padding: 3px 0; break-inside: avoid; }
+.flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 14px 0; }
+.flow .node { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 13px; }
+.flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow .arrow { align-self: center; color: var(--ink2); }
+.examples li { margin: 6px 0; font-size: 14px; }
+.examples blockquote { margin: 8px 0 18px; padding-left: 12px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
+details { margin: 18px 0; border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+summary { cursor: pointer; font-weight: 600; }
+.examples code, code { background: #f3f2ef; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+pre { background: #f3f2ef; padding: 10px 12px; border-radius: 6px; font-size: 13px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.prov { font-size: 13px; color: var(--ink2); }
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px; }
+@media (max-width: 640px) {
+  main { padding: 24px 16px 48px; }
+  h1 { font-size: 24px; }
+  .toc { columns: 1; }
+  .flow { flex-direction: column; }
+  .flow .node { flex: auto; }
+  .flow .arrow { display: none; }
+  nav.bottom { gap: 16px; flex-wrap: wrap; }
+}
+</style></head><body><main>
+<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html" aria-current="page">第 3 步：优先人工审核</a><span>第 4 步：独立数据验证，待做</span></nav>
+
+<span class="tag">第 3 步</span><span class="tag">政策 v2</span>
+<h1>改为优先人工审核</h1>
+<p class="lede">用户决定将自动处置改为高置信优先审核，所有处置由人工确认。本轮据此改变路由、队列工作量和验收标准。</p>
+<h2>改变了什么</h2>
+<ul><li><code>priority_review</code> 替代当前流程中的 <code>auto_action</code>，不再绕过人工。</li>
+<li>高置信档先采用选择集精确率 0.95 作为分档参数，普通档为 0.90。这是本轮预先固定的初始设置，不是测试精确率保证。</li>
+<li>威胁和标签关系不一致规则将评论送入优先档。优先排序先区分档位，再按预测严重度排序。</li>
+<li>两个待审档都进入同一容量模型。FIFO、概率、严重度和优先档排序使用相同候选池与到达序列。</li></ul>
+<p>高置信不等于高危。先处理高置信评论可能挤占其他高危评论的审核时间，因此保留严重度排序作为对照，并直接检查高危完成数量。</p>
+<h2>本轮工作量与质量</h2>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">层级</th><th scope="col">评论数</th><th scope="col">占全部评论</th><th scope="col">测试精确率</th><th scope="col">95% 区间</th></tr></thead><tbody><tr><td>priority_review</td><td class='n'>4,625</td><td class='n'>7.23%</td><td class='n'>0.763</td><td>[0.750, 0.775]</td></tr><tr><td>human_review</td><td class='n'>1,685</td><td class='n'>2.63%</td><td class='n'>0.419</td><td>[0.396, 0.443]</td></tr><tr><td>allow</td><td class='n'>57,668</td><td class='n'>90.14%</td><td class='n'>n/a</td><td></td></tr></tbody></table></div>
+<p>总人工需求为 6,310 / 63,978 条，占 9.86%；合并人工队列精确率为 0.671，95% 区间 [0.659, 0.682]。任一真实标签为阳性就计为有审核价值。</p>
+<p>运行声明的自动处置数为 0，所有待审评论均要求人工确认。这里评估的是路由建议，未模拟人工复核的正确率或实际处罚结果。</p>
+<h2>新验收标准与结果</h2>
+<p>本轮以 FIFO 为参照：超容量下处理的危害代理值不降低；近容量下高危等待 p90 不增加；两个负载下的高危完成数量都不减少。等待只统计已完成任务，因此必须同时检查完成数量。下面的要求在看新结果前设定，是实测比值要求，不是统计非劣性证明。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">指标</th><th scope="col">优先排序</th><th scope="col">FIFO</th><th scope="col">比值</th><th scope="col">比值要求</th><th scope="col">结果</th></tr></thead><tbody><tr><td>超容量：危害代理值 / 审核人时</td><td class='n'>70.244</td><td class='n'>56.087</td><td class='n'>1.252</td><td>≥ 1</td><td>通过</td></tr><tr><td>近容量：已完成高危任务的等待 p90</td><td class='n'>1.058</td><td class='n'>5.605</td><td class='n'>0.189</td><td>≤ 1</td><td>通过</td></tr><tr><td>近容量：高危完成数量</td><td class='n'>123.600</td><td class='n'>123.400</td><td class='n'>1.002</td><td>≥ 1</td><td>通过</td></tr><tr><td>超容量：高危完成数量</td><td class='n'>184.200</td><td class='n'>137.600</td><td class='n'>1.339</td><td>≥ 1</td><td>通过</td></tr></tbody></table></div>
+<p>上述四项排序检查中有 0 项未通过。没有再要求测试精确率达到 99%，但新的排序策略仍需接受这些容量与完成量检查。</p>
+<p>与严重度排序的配对比较也需要保留。超容量时，优先排序的高危完成数量平均差值为 -4.8 条，危害代理值/人时平均差值为 -1.375，方向均为优先排序减去严重度排序。优于 FIFO 并不说明它优于所有对照。</p>
+<h2>四种排序的仿真结果</h2>
+<p>容量为 120 条/小时，4 名审核员，每条 2 分钟。表格为 5 个种子的均值 ± 标准差；等待单位为分钟。高危剩余包括仍在服务中的任务，积压只计尚未开始的任务。</p>
+<div class="box">60 / 108 / 180 条每小时是进入人工队列后的到达率。新策略改变了候选池及入队比例，不能把这里的排序收益与旧自动处置策略的收益比直接当作端到端提升。</div>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">入队负载/h</th><th scope="col">排序</th><th scope="col">完成</th><th scope="col">高危完成</th><th scope="col">高危剩余</th><th scope="col">危害代理值/人时</th><th scope="col">高危等待 p90</th><th scope="col">结束积压</th></tr></thead><tbody><tr><td>60</td><td>fifo</td><td class='n'>467.8 ± 26.5</td><td class='n'>66.6 ± 13.5</td><td class='n'>0.0 ± 0.0</td><td class='n'>27.67 ± 3.48</td><td class='n'>0.26 ± 0.10</td><td class='n'>0.4 ± 0.8</td></tr><tr><td>60</td><td>prob</td><td class='n'>467.8 ± 26.5</td><td class='n'>66.6 ± 13.5</td><td class='n'>0.0 ± 0.0</td><td class='n'>27.67 ± 3.48</td><td class='n'>0.19 ± 0.09</td><td class='n'>0.4 ± 0.8</td></tr><tr><td>60</td><td>severity</td><td class='n'>467.8 ± 26.5</td><td class='n'>66.6 ± 13.5</td><td class='n'>0.0 ± 0.0</td><td class='n'>27.67 ± 3.48</td><td class='n'>0.18 ± 0.09</td><td class='n'>0.4 ± 0.8</td></tr><tr><td>60</td><td>priority</td><td class='n'>467.8 ± 26.5</td><td class='n'>66.6 ± 13.5</td><td class='n'>0.0 ± 0.0</td><td class='n'>27.67 ± 3.48</td><td class='n'>0.19 ± 0.09</td><td class='n'>0.4 ± 0.8</td></tr><tr><td>108</td><td>fifo</td><td class='n'>867.4 ± 20.3</td><td class='n'>123.4 ± 17.7</td><td class='n'>0.4 ± 0.5</td><td class='n'>50.41 ± 3.46</td><td class='n'>5.61 ± 1.99</td><td class='n'>1.2 ± 1.6</td></tr><tr><td>108</td><td>prob</td><td class='n'>867.4 ± 20.3</td><td class='n'>123.6 ± 17.4</td><td class='n'>0.2 ± 0.4</td><td class='n'>50.46 ± 3.42</td><td class='n'>1.10 ± 0.13</td><td class='n'>1.2 ± 1.6</td></tr><tr><td>108</td><td>severity</td><td class='n'>867.4 ± 20.3</td><td class='n'>123.6 ± 17.4</td><td class='n'>0.2 ± 0.4</td><td class='n'>50.47 ± 3.40</td><td class='n'>1.05 ± 0.08</td><td class='n'>1.2 ± 1.6</td></tr><tr><td>108</td><td>priority</td><td class='n'>867.4 ± 20.3</td><td class='n'>123.6 ± 17.4</td><td class='n'>0.2 ± 0.4</td><td class='n'>50.47 ± 3.40</td><td class='n'>1.06 ± 0.08</td><td class='n'>1.2 ± 1.6</td></tr><tr><td>180</td><td>fifo</td><td class='n'>953.2 ± 3.9</td><td class='n'>137.6 ± 3.0</td><td class='n'>69.4 ± 8.6</td><td class='n'>56.09 ± 1.28</td><td class='n'>138.52 ± 9.47</td><td class='n'>464.8 ± 41.5</td></tr><tr><td>180</td><td>prob</td><td class='n'>953.2 ± 3.9</td><td class='n'>183.6 ± 6.1</td><td class='n'>23.4 ± 4.5</td><td class='n'>69.62 ± 1.97</td><td class='n'>2.10 ± 0.49</td><td class='n'>464.8 ± 41.5</td></tr><tr><td>180</td><td>severity</td><td class='n'>953.2 ± 3.9</td><td class='n'>189.0 ± 5.7</td><td class='n'>18.0 ± 5.1</td><td class='n'>71.62 ± 1.56</td><td class='n'>1.88 ± 0.68</td><td class='n'>464.8 ± 41.5</td></tr><tr><td>180</td><td>priority</td><td class='n'>953.2 ± 3.9</td><td class='n'>184.2 ± 5.6</td><td class='n'>22.8 ± 5.3</td><td class='n'>70.24 ± 1.71</td><td class='n'>1.63 ± 0.31</td><td class='n'>464.8 ± 41.5</td></tr></tbody></table></div>
+<h2>身份词子组诊断</h2>
+<p>FDR 比较待审评论中的误报占比，FPR 比较正常评论被送审的比例；比值方向均为含身份词除以不含。FDR 只在完整区间不高于设定上限时通过，跨越则不确定。FPR 单独报告，不能用 FDR 通过替代它。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">层级</th><th scope="col">FDR 比</th><th scope="col">95% 区间</th><th scope="col">FDR 检查</th><th scope="col">FPR 比</th><th scope="col">95% 区间</th></tr></thead><tbody><tr><td>predicted_positive</td><td class='n'>1.023</td><td>[0.922, 1.135]</td><td>通过</td><td class='n'>1.949</td><td>[1.722, 2.205]</td></tr><tr><td>priority_review</td><td class='n'>0.882</td><td>[0.743, 1.047]</td><td>通过</td><td class='n'>1.498</td><td>[1.237, 1.814]</td></tr><tr><td>human_review</td><td class='n'>0.995</td><td>[0.891, 1.112]</td><td>通过</td><td class='n'>2.489</td><td>[2.105, 2.942]</td></tr></tbody></table></div>
+<h2>如何复现</h2>
+<pre><code>python scripts/run_pipeline.py --config configs/baseline.yaml
+REVIEW_ROUTER_EVAL_REPORT=reports/&lt;run&gt;/report.json pytest -q tests/test_gate.py
+python scripts/render_results.py reports/&lt;run&gt;
+python record/collect_runs.py --human-review reports/&lt;run&gt;
+python record/render.py</code></pre>
+<p class="prov">运行 <code>20260922T130141204182Z-human-review-baseline</code>，commit <code>a7ee1ab214b0</code>，工作区含未提交改动。本页读取保存的 <a href="human_review_run.json">运行数据与政策快照</a>。首轮 99% 目标及未达标结果保留在<a href="step2-round1.html">历史记录</a>，没有按新标准重算。</p>
+
+<nav class="bottom" aria-label="前后步骤"><span><a href="step2-round1.html">← 第 2 步：首轮结果与诊断</a></span><span></span></nav>
+</main></body></html>

@@ -1,7 +1,7 @@
 """Evaluation metrics: per-label quality, tier precision with intervals.
 
-Precision is reported with a Wilson interval and as n/a below the minimum
-count, because 30 correct decisions out of 30 do not establish 99% precision.
+Review precision is a diagnostic, reported with a Wilson interval and as n/a
+below the minimum count. It does not authorize automated enforcement.
 """
 
 from __future__ import annotations
@@ -47,7 +47,11 @@ def per_label_metrics(
     labels: tuple[str, ...],
     thresholds: dict[str, dict[str, float | None]],
 ) -> dict[str, dict[str, Any]]:
-    """AP and ROC-AUC per label, plus precision/recall at each tier's threshold."""
+    """AP and ROC-AUC plus precision/recall at the supplied tier thresholds.
+
+    Current maps produce at_priority_review; historical maps retain
+    at_auto_action so saved version-1 reports can still be read and compared.
+    """
     out: dict[str, dict[str, Any]] = {}
     for j, label in enumerate(labels):
         y = y_true[:, j]

@@ -36,6 +36,7 @@ from review_router.simulate import (
     SimConfig,
     SimResult,
     draw_scenario,
+    priority_review_scores,
     simulate,
 )
 from review_router.thresholds import (
@@ -49,7 +50,7 @@ from review_router.thresholds import (
 __all__ = ["RunConfig", "load_config", "run"]
 
 HUMAN = "human_review"
-AUTO = "auto_action"
+PRIORITY = "priority_review"
 ALLOW = "allow"
 
 
@@ -84,7 +85,7 @@ def load_config(path: Path) -> RunConfig:
 
     sim_raw = raw.get("simulation", {})
     primary = sim_raw.get("primary", {})
-    strategy = str(primary.get("strategy", "severity"))
+    strategy = str(primary.get("strategy", "priority"))
     if strategy not in STRATEGIES:
         raise ValueError(f"unknown primary strategy {strategy!r}; choose from {STRATEGIES}")
     loads = tuple(float(x) for x in sim_raw.get("loads_per_hour", (60, 108, 180)))
@@ -194,7 +195,7 @@ def _route(
 ) -> dict[str, Any]:
     signals = {"identity_term_present": identity}
     tiers, triggers = model_tier(proba, thresholds, signals)
-    population_tiers, population_triggers = model_tier(
+    population_tiers, _ = model_tier(
         proba, TierThresholds(thresholds.thresholds, thresholds.labels), None
     )
     rule_action, rule_ids = apply_rules(proba, LABELS, identity, policy)
@@ -203,12 +204,11 @@ def _route(
     final[forced] = rule_action[forced]
 
     any_true = y.any(axis=1)
-    trigger_true = (triggers & (y == 1)).any(axis=1)
-    # auto_action is judged on the label that fired; human_review on any label.
-    correct = np.where(final == AUTO, trigger_true, any_true)
-    correct_model = np.where(tiers == AUTO, trigger_true, any_true)
-    population_trigger_true = (population_triggers & (y == 1)).any(axis=1)
-    correct_population = np.where(population_tiers == AUTO, population_trigger_true, any_true)
+    # Both flagged tiers request human review. A positive label makes the
+    # comment relevant to review; no model decision is an enforcement outcome.
+    correct = any_true.copy()
+    correct_model = any_true.copy()
+    correct_population = any_true.copy()
 
     return {
         "correct_model": correct_model,
@@ -252,14 +252,14 @@ def _rule_stats(routing: dict[str, Any], policy: Policy) -> dict[str, Any]:
     any_true: np.ndarray = routing["any_true"]
     forced = routing["rule_action"] != ""
     per_rule = {r.id: int(sum(1 for s in ids if r.id in s.split(";"))) for r in policy.rules}
-    moved_to_queue = forced & (model == ALLOW) & (final == HUMAN)
-    downgraded = forced & (model == AUTO) & (final == HUMAN)
+    moved_to_queue = forced & (model == ALLOW) & np.isin(final, (HUMAN, PRIORITY))
+    promoted = forced & (model != PRIORITY) & (final == PRIORITY)
     return {
         "matched_per_rule": per_rule,
         "n_rows_with_any_rule": int(forced.sum()),
         "n_added_to_queue_from_allow": int(moved_to_queue.sum()),
         "n_added_to_queue_from_allow_true_positive": int((moved_to_queue & any_true).sum()),
-        "n_downgraded_from_auto_action": int(downgraded.sum()),
+        "n_promoted_to_priority_review": int(promoted.sum()),
         "note": "rule-forced queue entries are included in every tier and simulation metric",
     }
 
@@ -278,6 +278,23 @@ def _consistency(proba: np.ndarray) -> dict[str, Any]:
 def _allow_false_negatives(final: np.ndarray, y: np.ndarray) -> dict[str, int]:
     allowed = final == ALLOW
     return {label: int((allowed & (y[:, j] == 1)).sum()) for j, label in enumerate(LABELS)}
+
+
+def _review_workload(final: np.ndarray, y: np.ndarray) -> dict[str, Any]:
+    """Review demand before simulation; all flagged comments consume human capacity."""
+    needs_review = np.isin(final, (PRIORITY, HUMAN))
+    n = int(needs_review.sum())
+    true_positive = int((needs_review & y.any(axis=1)).sum())
+    return {
+        "n_total": len(final),
+        "n_requires_human_review": n,
+        "n_priority_review": int((final == PRIORITY).sum()),
+        "n_human_review": int((final == HUMAN).sum()),
+        "review_fraction": n / len(final) if len(final) else 0.0,
+        "n_truly_positive": true_positive,
+        "precision": true_positive / n if n else None,
+        "precision_ci95": list(wilson_interval(true_positive, n)) if n else None,
+    }
 
 
 def _rate_ratio(
@@ -427,10 +444,8 @@ def _identity_concentration(
     and not an annotation. Reported on three bases: the population tier (the
     classifier alone, population thresholds only), the model tier (after the
     subgroup thresholds, before rules) and the final tier (what the system
-    does); pooled over the two positive tiers and per tier, because
-    auto_action is the enforcement and human_review is scrutiny. A false
-    discovery follows each tier's own precision definition: the triggering
-    label is not true for auto_action, no label is true for human_review.
+    does); pooled over the two review tiers and per tier. Both tiers require
+    human confirmation. A false discovery has no positive ground-truth label.
     Conventional FPR uses all comments with no positive label as denominator
     and is reported separately. Neither diagnostic identifies protected groups.
     """
@@ -439,9 +454,9 @@ def _identity_concentration(
     out: dict[str, Any] = {
         "definition": "identity term = any whole-word match of "
         "review_router.signals.IDENTITY_TERMS; "
-        "predicted positive = routed to auto_action or human_review; false positive = the "
-        "tier's own definition (triggering label not true for auto_action, no label true "
-        "for human_review); FDR = false positives / predicted positives; FDR ratio = "
+        "predicted positive = routed to priority_review or human_review; false positive = "
+        "no ground-truth label is positive, for both review tiers; "
+        "FDR = false positives / predicted positives; FDR ratio = "
         "with-term FDR / without-term FDR with a 95% log-ratio interval. "
         "clean_negative_false_positives separately reports FPR = clean comments routed "
         "to the tier / all clean comments in that subgroup. "
@@ -461,13 +476,13 @@ def _identity_concentration(
                 "without_identity_term": _base_rate(any_true, ~has_term),
             },
             "predicted_positive": _compare_subgroups(tiers != ALLOW, correct, has_term),
-            AUTO: _compare_subgroups(tiers == AUTO, correct, has_term),
+            PRIORITY: _compare_subgroups(tiers == PRIORITY, correct, has_term),
             HUMAN: _compare_subgroups(tiers == HUMAN, correct, has_term),
             "clean_negative_false_positives": {
                 "predicted_positive": _compare_clean_negative_subgroups(
                     tiers != ALLOW, any_true, has_term
                 ),
-                AUTO: _compare_clean_negative_subgroups(tiers == AUTO, any_true, has_term),
+                PRIORITY: _compare_clean_negative_subgroups(tiers == PRIORITY, any_true, has_term),
                 HUMAN: _compare_clean_negative_subgroups(tiers == HUMAN, any_true, has_term),
             },
             # False omission is conditioned on allowed comments, not all true
@@ -489,19 +504,30 @@ def _identity_concentration(
 def _run_simulation(
     proba: np.ndarray, y: np.ndarray, final: np.ndarray, policy: Policy, config: RunConfig
 ) -> dict[str, Any]:
-    queued = np.flatnonzero(final == HUMAN)
+    queued = np.flatnonzero(np.isin(final, (PRIORITY, HUMAN)))
+    queue_fraction = len(queued) / len(final) if len(final) else 0.0
     weights = np.array([policy.severity_weights.get(label, 0.0) for label in LABELS])
     if len(queued) == 0:
-        return {"note": "nothing was routed to human_review; simulation skipped", "table": []}
+        return {
+            "note": "nothing requires human review; simulation skipped",
+            "assumptions": {
+                "queued_jobs": 0,
+                "queue_tiers": [PRIORITY, HUMAN],
+                "queue_fraction": 0.0,
+            },
+            "table": [],
+        }
 
     p = proba[queued]
     truth = y[queued]
     harm = (truth * weights).max(axis=1)  # highest weight among the true labels
     high_risk = harm >= config.high_risk_min_weight
+    severity = (p * weights).max(axis=1)
     priorities = {
         "fifo": np.zeros(len(queued)),
         "prob": p.max(axis=1),
-        "severity": (p * weights).max(axis=1),
+        "severity": severity,
+        "priority": priority_review_scores(final[queued] == PRIORITY, severity),
     }
 
     rows: list[dict[str, Any]] = []
@@ -524,11 +550,34 @@ def _run_simulation(
         value = entry.get(field)
         return float(value["mean"]) if value else None
 
+    def high_risk_comparison(field: str) -> dict[str, dict[str, float | None]]:
+        return {
+            "primary": {
+                "router": mean(router, field),
+                "fifo": mean(fifo, field),
+                "load_per_hour": config.primary_load_per_hour,
+            },
+            "thesis": {
+                "router": mean(thesis_router, field),
+                "fifo": mean(thesis_fifo, field),
+                "load_per_hour": config.thesis_load_per_hour,
+            },
+        }
+
     return {
         "assumptions": {
             **asdict(config.sim),
             "capacity_per_hour": config.sim.capacity_per_hour,
-            "arrivals": "Poisson; jobs sampled with replacement from the human_review set",
+            "arrivals": "Post-admission Poisson review arrivals; jobs sampled with replacement "
+            "from the combined priority_review and human_review pool",
+            "arrival_rates_are": "post-admission review demand, not all incoming comments",
+            "queue_tiers": [PRIORITY, HUMAN],
+            "queue_fraction": queue_fraction,
+            "equivalent_input_loads_per_hour": [
+                load / queue_fraction for load in config.loads_per_hour
+            ],
+            "priority_order": "priority_review first, then human_review; within each tier, "
+            "higher max predicted probability times severity weight first; ties use arrival order",
             "handle_time": "deterministic",
             "harm_proxy": "max severity weight over TRUE labels (0 if clean); not real-world harm",
             "high_risk": f"harm proxy >= {config.high_risk_min_weight}",
@@ -536,6 +585,8 @@ def _run_simulation(
             "seeds": list(config.sim_seeds),
             "queued_jobs": int(len(queued)),
             "queued_high_risk": int(high_risk.sum()),
+            "queued_priority_review": int((final[queued] == PRIORITY).sum()),
+            "queued_human_review": int((final[queued] == HUMAN).sum()),
         },
         "primary": {
             "load_per_hour": config.primary_load_per_hour,
@@ -562,6 +613,8 @@ def _run_simulation(
             "fifo": mean(fifo, "high_risk_wait_p90"),
             "load_per_hour": config.primary_load_per_hour,
         },
+        "high_risk_handled": high_risk_comparison("high_risk_handled"),
+        "high_risk_arrived": high_risk_comparison("high_risk_arrived"),
         "queue_depth_p95": mean(router, "queue_depth_p95"),
         "reviewer_utilization": mean(router, "reviewer_utilization"),
         "summary": summary,
@@ -570,7 +623,14 @@ def _run_simulation(
     }
 
 
-_PAIRS: tuple[tuple[str, str], ...] = (("severity", "fifo"), ("prob", "fifo"), ("severity", "prob"))
+_PAIRS: tuple[tuple[str, str], ...] = (
+    ("priority", "fifo"),
+    ("priority", "prob"),
+    ("priority", "severity"),
+    ("severity", "fifo"),
+    ("prob", "fifo"),
+    ("severity", "prob"),
+)
 _HIGHER_IS_BETTER: dict[str, bool] = {
     "high_risk_handled": True,
     "harm_per_reviewer_hour": True,
@@ -659,6 +719,7 @@ def _fmt(value: Any, digits: int = 3) -> str:
 
 
 def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
+    workload = report["review_workload"]
     lines = [
         f"# Run {manifest['run_id']} ({manifest['label']})",
         "",
@@ -666,17 +727,27 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
         f", seed {manifest['seed']}, scored test rows "
         f"{manifest['split_label_counts']['test_scored']['rows']}.",
         "",
+        "Decision mode: human confirmation. Both priority_review and human_review require "
+        "reviewers; the router emits no automatic enforcement actions. This offline evaluation "
+        "does not observe completed human decisions.",
+        "",
+        f"Review demand: {workload['n_requires_human_review']} / {workload['n_total']} comments "
+        f"({_fmt(workload['review_fraction'])}), including "
+        f"{workload['n_priority_review']} priority "
+        f"and {workload['n_human_review']} regular reviews. Pool precision is "
+        f"{_fmt(workload['precision'])}, Wilson 95% CI {workload['precision_ci95']}.",
+        "",
         "## Per-label quality (scored test set)",
         "",
         "| label | positives | AP (selection) | AP | ROC-AUC | human thr | P@human | R@human "
-        "| auto thr | P@auto | R@auto |",
+        "| priority thr | P@priority | R@priority |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
     selection = report["threshold_selection"]["per_label"]
     if report["synthetic"]:
         lines[2:2] = ["SYNTHETIC pipeline check only; these are not Jigsaw results.", ""]
     for label, m in report["per_label"].items():
-        h, a = m["at_human_review"], m["at_auto_action"]
+        h, a = m["at_human_review"], m["at_priority_review"]
         lines.append(
             f"| {label} | {m['positives']} | {_fmt(selection[label]['average_precision'])} "
             f"| {_fmt(m['average_precision'])} | {_fmt(m['roc_auc'])} "
@@ -716,8 +787,8 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
         "",
         "## Threshold-selection split (development data, not test results)",
         "",
-        "Precision targets are selected per label. Combining labels, removing automatic "
-        "actions from the human queue and applying rules can lower final-tier precision.",
+        "Precision targets are selected per label. Combining labels, separating review "
+        "priorities and applying rules can change final-tier precision. Both tiers join the queue.",
         "",
         "| final tier | n | coverage | precision |",
         "|---|---:|---:|---:|",
@@ -730,9 +801,9 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
     lines += [
         "",
         f"On the test set, rules matched on {rules['n_rows_with_any_rule']} rows; "
-        f"{rules['n_added_to_queue_from_allow']} moved allow -> human_review "
+        f"{rules['n_added_to_queue_from_allow']} moved allow -> review "
         f"({rules['n_added_to_queue_from_allow_true_positive']} truly positive); "
-        f"{rules['n_downgraded_from_auto_action']} moved auto_action -> human_review.",
+        f"{rules['n_promoted_to_priority_review']} were promoted to priority_review.",
         f"Hierarchy violation rate: {report['consistency']['hierarchy_violation_rate']:.4%}.",
         "",
         "## Subgroup thresholds",
@@ -779,7 +850,7 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
     ]
     for split, section in report["identity_false_positives"].items():
         for basis in ("population_tier", "model_tier", "final_tier"):
-            for tier in ("predicted_positive", AUTO, HUMAN):
+            for tier in ("predicted_positive", PRIORITY, HUMAN):
                 cmp = section[basis][tier]
                 w, wo = cmp["with_identity_term"], cmp["without_identity_term"]
                 ci = cmp["false_discovery_rate_ratio_ci95"]
@@ -830,6 +901,12 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
             f"{a['reviewers']} reviewers, {a['handle_minutes']} min/item, {a['horizon_hours']} h "
             f"(capacity {a['capacity_per_hour']:g}/h); {a['queued_jobs']} queued jobs, "
             f"{a['queued_high_risk']} high-risk; harm proxy = {a['harm_proxy']}."
+        )
+        lines.append(
+            f"Arrival loads are post-admission review demand. The combined review pool is "
+            f"{a['queue_fraction']:.2%} of input comments; equivalent input rates under this "
+            f"fixed pool fraction are {a['equivalent_input_loads_per_hour']}. "
+            f"Priority order: {a['priority_order']}."
         )
         lines.append(
             "Wait quantiles are minutes until service starts, for completed jobs only. "
@@ -884,6 +961,8 @@ def run(config_path: Path) -> Path:
     config_path = config_path.resolve()
     config = load_config(config_path)
     policy = load_policy(config.policy_path)
+    if policy.decision_mode != "human_confirmation":
+        raise ValueError("the current pipeline requires a human_confirmation policy")
     corpus = load_corpus(config.data_dir, config.split_fractions, config.seed)
 
     run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + "-" + config.label
@@ -933,6 +1012,7 @@ def run(config_path: Path) -> Path:
     predictions["model_tier"] = routing["model_tier"]
     predictions["rule_ids"] = routing["rule_ids"]
     predictions["final_tier"] = routing["final_tier"]
+    predictions["requires_human_review"] = np.isin(routing["final_tier"], (PRIORITY, HUMAN))
     predictions.to_csv(run_dir / "predictions.csv", index=False)
 
     synthetic = (config.data_dir / "SYNTHETIC.txt").is_file()
@@ -940,31 +1020,39 @@ def run(config_path: Path) -> Path:
         "run_id": run_id,
         "eval_slice": "synthetic scored test rows" if synthetic else "scored test rows",
         "synthetic": synthetic,
+        "policy_version": policy.version,
+        "decision_contract": {
+            "mode": "human_confirmation",
+            "requires_human_confirmation": True,
+            "automatic_actions": 0,
+        },
+        "review_workload": _review_workload(routing["final_tier"], y_test),
         "threshold_selection": {
             "note": "development data; per-label precision targets do not guarantee tier precision",
             "per_label": per_label_metrics(y_thresh, p_thresh, LABELS, thresholds.thresholds),
+            "review_workload": _review_workload(selection_routing["final_tier"], y_thresh),
             "tiers": tier_metrics(
                 selection_routing["final_tier"],
                 selection_routing["correct"],
-                (AUTO, HUMAN, ALLOW),
+                (PRIORITY, HUMAN, ALLOW),
                 min_pos,
             ),
             "tiers_model_only": tier_metrics(
                 selection_routing["model_tier"],
                 selection_routing["correct_model"],
-                (AUTO, HUMAN, ALLOW),
+                (PRIORITY, HUMAN, ALLOW),
                 min_pos,
             ),
         },
         "per_label": per_label_metrics(y_test, proba, LABELS, thresholds.thresholds),
         "tiers": tier_metrics(
-            routing["final_tier"], routing["correct"], (AUTO, HUMAN, ALLOW), min_pos
+            routing["final_tier"], routing["correct"], (PRIORITY, HUMAN, ALLOW), min_pos
         ),
         "tiers_model_only": tier_metrics(
-            routing["model_tier"], routing["correct_model"], (AUTO, HUMAN, ALLOW), min_pos
+            routing["model_tier"], routing["correct_model"], (PRIORITY, HUMAN, ALLOW), min_pos
         ),
         "tier_correctness": {
-            AUTO: "a label that fired the auto threshold is truly positive",
+            PRIORITY: "any label is truly positive; human confirmation is still required",
             HUMAN: "any label is truly positive",
         },
         "allow_false_negatives": _allow_false_negatives(routing["final_tier"], y_test),
