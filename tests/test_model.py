@@ -41,3 +41,38 @@ def test_single_class_label_predicts_the_observed_class(observed_class: int) -> 
     model = TfidfLogitModel(ModelConfig(min_df=1)).fit(texts, y, seed=0).calibrate(texts, y)
     p = model.predict_proba(["alpha beta"])
     assert np.all(np.abs(p[0, 1:] - observed_class) < 1e-6)
+
+
+def _cue_corpus() -> tuple[list[str], np.ndarray]:
+    texts = ["nice work thanks"] * 40 + ["you stupid idiot"] * 40
+    y = np.zeros((80, 6), dtype=int)
+    y[40:, 0] = 1
+    return texts, y
+
+
+@pytest.mark.parametrize("analyzer", ["word", "char_wb", "word+char_wb"])
+def test_every_analyzer_learns_cue_words(analyzer: str) -> None:
+    texts, y = _cue_corpus()
+    config = ModelConfig(min_df=1, analyzer=analyzer)
+    model = TfidfLogitModel(config).fit(texts, y, seed=0).calibrate(texts, y)
+    p = model.predict_proba(["stupid idiot", "thanks"])
+    assert p[0, 0] > p[1, 0]
+    assert model.n_features > 0
+    assert (model.vectorizer is not None) == config.uses_word
+    assert (model.char_vectorizer is not None) == config.uses_char
+
+
+def test_char_ngrams_read_a_misspelling_the_word_vocabulary_never_saw() -> None:
+    texts, y = _cue_corpus()
+    word = TfidfLogitModel(ModelConfig(min_df=1, analyzer="word")).fit(texts, y, 0)
+    char = TfidfLogitModel(ModelConfig(min_df=1, analyzer="char_wb")).fit(texts, y, 0)
+    # "idiiot" is out of the word vocabulary: the word model has no evidence at all.
+    assert word.decision(["idiiot"])[0, 0] == pytest.approx(word.decision([""])[0, 0])
+    assert char.decision(["idiiot"])[0, 0] > char.decision([""])[0, 0]
+
+
+def test_unknown_analyzer_is_rejected() -> None:
+    with pytest.raises(ValueError, match="analyzer"):
+        ModelConfig(analyzer="bert")
+    with pytest.raises(ValueError, match="char_ngram"):
+        ModelConfig(char_ngram_min=6, char_ngram_max=5)

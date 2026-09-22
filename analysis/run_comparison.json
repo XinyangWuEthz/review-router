@@ -1,0 +1,223 @@
+{
+  "runs": [
+    {
+      "run": "20260922T131503586656Z-baseline",
+      "label": "baseline",
+      "model": {
+        "max_features": 200000,
+        "ngram_max": 2,
+        "min_df": 3,
+        "C": 4.0,
+        "max_iter": 1000
+      },
+      "auto_action": {
+        "test_precision": 0.904,
+        "test_precision_ci95": [
+          0.8907357688824067,
+          0.9158062086034517
+        ],
+        "test_n_predicted_positive": 2125,
+        "test_coverage": 0.03321454249898403,
+        "selection_precision": 0.991715976331361,
+        "selection_n_predicted_positive": 845,
+        "selection_minus_test": 0.08771597633136097
+      },
+      "human_review": {
+        "test_precision": 0.5507765830346476,
+        "test_precision_ci95": [
+          0.5356666476782052,
+          0.5657933870764892
+        ],
+        "test_n_predicted_positive": 4185,
+        "test_coverage": 0.06541311075682266,
+        "selection_precision": 0.8900565885206144,
+        "selection_n_predicted_positive": 1237,
+        "selection_minus_test": 0.3392800054859668
+      },
+      "per_label": {
+        "toxic": {
+          "average_precision": 0.752184951704409,
+          "roc_auc": 0.9569541029799007
+        },
+        "severe_toxic": {
+          "average_precision": 0.31126081415093715,
+          "roc_auc": 0.981912884414067
+        },
+        "obscene": {
+          "average_precision": 0.7733891183021634,
+          "roc_auc": 0.971524362084933
+        },
+        "threat": {
+          "average_precision": 0.45797903621474007,
+          "roc_auc": 0.9917297028570469
+        },
+        "insult": {
+          "average_precision": 0.6960639271574238,
+          "roc_auc": 0.9654037029086796
+        },
+        "identity_hate": {
+          "average_precision": 0.480036045041327,
+          "roc_auc": 0.9739788700251516
+        }
+      }
+    },
+    {
+      "run": "20260922T144755110181Z-char-ngram",
+      "label": "char-ngram",
+      "model": {
+        "max_features": 200000,
+        "ngram_max": 2,
+        "min_df": 3,
+        "C": 4.0,
+        "max_iter": 1000,
+        "analyzer": "char_wb",
+        "char_ngram_min": 2,
+        "char_ngram_max": 5,
+        "char_max_features": 300000
+      },
+      "auto_action": {
+        "test_precision": 0.898170246618934,
+        "test_precision_ci95": [
+          0.8857344117501026,
+          0.9093911085396101
+        ],
+        "test_n_predicted_positive": 2514,
+        "test_coverage": 0.03929475757291569,
+        "selection_precision": 0.9902818270165209,
+        "selection_n_predicted_positive": 1029,
+        "selection_minus_test": 0.09211158039758693
+      },
+      "human_review": {
+        "test_precision": 0.5113122171945701,
+        "test_precision_ci95": [
+          0.4965722418067051,
+          0.5260325465722364
+        ],
+        "test_n_predicted_positive": 4420,
+        "test_coverage": 0.06908624839788677,
+        "selection_precision": 0.8767812238055323,
+        "selection_n_predicted_positive": 1193,
+        "selection_minus_test": 0.36546900661096215
+      },
+      "per_label": {
+        "toxic": {
+          "average_precision": 0.7735903745205757,
+          "roc_auc": 0.962563508061771
+        },
+        "severe_toxic": {
+          "average_precision": 0.30867235388355846,
+          "roc_auc": 0.9840658717664764
+        },
+        "obscene": {
+          "average_precision": 0.7890709278618034,
+          "roc_auc": 0.9762403526521699
+        },
+        "threat": {
+          "average_precision": 0.4542312263586512,
+          "roc_auc": 0.9909978842553053
+        },
+        "insult": {
+          "average_precision": 0.724472770181319,
+          "roc_auc": 0.9700729455721905
+        },
+        "identity_hate": {
+          "average_precision": 0.5601150631828783,
+          "roc_auc": 0.9831564458357916
+        }
+      }
+    },
+    {
+      "run": "20260922T145018681873Z-word-char",
+      "label": "word-char",
+      "model": {
+        "max_features": 200000,
+        "ngram_max": 2,
+        "min_df": 3,
+        "C": 4.0,
+        "max_iter": 1000,
+        "analyzer": "word+char_wb",
+        "char_ngram_min": 2,
+        "char_ngram_max": 5,
+        "char_max_features": 300000
+      },
+      "auto_action": {
+        "test_precision": 0.906910569105691,
+        "test_precision_ci95": [
+          0.8947856886902087,
+          0.9177665933502944
+        ],
+        "test_n_predicted_positive": 2460,
+        "test_coverage": 0.03845071743411798,
+        "selection_precision": 0.9919273461150353,
+        "selection_n_predicted_positive": 991,
+        "selection_minus_test": 0.08501677700934429
+      },
+      "human_review": {
+        "test_precision": 0.5106842218864667,
+        "test_precision_ci95": [
+          0.4962871234361109,
+          0.5250636173381672
+        ],
+        "test_n_predicted_positive": 4633,
+        "test_coverage": 0.07241551783425552,
+        "selection_precision": 0.8807266982622433,
+        "selection_n_predicted_positive": 1266,
+        "selection_minus_test": 0.3700424763757766
+      },
+      "per_label": {
+        "toxic": {
+          "average_precision": 0.7797458430663513,
+          "roc_auc": 0.9641197817812052
+        },
+        "severe_toxic": {
+          "average_precision": 0.319034948534027,
+          "roc_auc": 0.9845772394600234
+        },
+        "obscene": {
+          "average_precision": 0.7962028882748183,
+          "roc_auc": 0.9777053131077155
+        },
+        "threat": {
+          "average_precision": 0.5037053192483367,
+          "roc_auc": 0.9929769494792097
+        },
+        "insult": {
+          "average_precision": 0.7313732964127642,
+          "roc_auc": 0.9714118536100609
+        },
+        "identity_hate": {
+          "average_precision": 0.5617938605235346,
+          "roc_auc": 0.9836692729857919
+        }
+      }
+    }
+  ],
+  "audit_overlap": {
+    "verdict_column": "preread_verdict",
+    "n_audited": 100,
+    "baseline": {
+      "still_auto_action": 100,
+      "by_verdict": {
+        "borderline": "33/33",
+        "clean": "27/27",
+        "toxic": "40/40"
+      }
+    },
+    "char-ngram": {
+      "still_auto_action": 54,
+      "by_verdict": {
+        "borderline": "20/33",
+        "clean": "7/27",
+        "toxic": "27/40"
+      }
+    },
+    "word-char": {
+      "still_auto_action": 68,
+      "by_verdict": {
+        "borderline": "26/33",
+        "clean": "11/27",
+        "toxic": "31/40"
+      }
+    }
+  }
+}

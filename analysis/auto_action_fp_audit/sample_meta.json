@@ -1,0 +1,59 @@
+{
+  "run": "reports/20260922T131503586656Z-baseline",
+  "seed": 20260922,
+  "n_auto_action": 2125,
+  "n_false_positive": 204,
+  "precision": 0.904,
+  "population_strata": {
+    "lex/none": 133,
+    "nolex/none": 64,
+    "lex/other": 5,
+    "nolex/other": 2
+  },
+  "sample_strata": {
+    "lex/none": 65,
+    "nolex/none": 31,
+    "lex/other": 3,
+    "nolex/other": 1
+  },
+  "n_sample": 100,
+  "verdicts": [
+    "toxic",
+    "borderline",
+    "clean"
+  ],
+  "definition": "auto_action row whose triggering label(s) are 0 in test_labels.csv",
+  "preread": {
+    "by": "claude-fable-5-1 (LLM pre-read, NOT the human verdict)",
+    "rule": "toxic = abuse directed at a person or group; borderline = profanity, self-directed or undirected rudeness; clean = no abuse",
+    "counts": {
+      "toxic": 40,
+      "borderline": 33,
+      "clean": 27
+    },
+    "precision_if_toxic_only_relabelled": 0.9424,
+    "precision_if_toxic_plus_borderline_relabelled": 0.9741,
+    "by_stratum": {
+      "lex/none": {
+        "borderline": 20,
+        "clean": 15,
+        "toxic": 30
+      },
+      "lex/other": {
+        "borderline": 2,
+        "clean": 1,
+        "toxic": 0
+      },
+      "nolex/none": {
+        "borderline": 11,
+        "clean": 11,
+        "toxic": 9
+      },
+      "nolex/other": {
+        "borderline": 0,
+        "clean": 0,
+        "toxic": 1
+      }
+    }
+  }
+}

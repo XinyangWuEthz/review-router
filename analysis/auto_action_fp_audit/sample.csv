@@ -1,0 +1,415 @@
+id,stratum,trigger_labels,other_labels_true,lexicon_hit,identity_term_present,p_toxic,p_severe_toxic,p_obscene,p_threat,p_insult,p_identity_hate,text,preread_verdict,preread_reason,human_verdict,human_note
+7126b0010a7b13e4,lex/none,toxic+obscene,,True,0,0.9999998589830082,0.3974496584254898,0.9999999149850604,0.0498944642040138,0.9833918572382604,0.4018352019823984,fuck u ill do whatever I fucking want boy,toxic,directed profanity,,
+f4d51c4c28b24503,lex/none,toxic+obscene,,True,0,0.9999995723160392,0.2389724423373456,0.999995931793437,0.0105127204521758,0.9928073159379374,0.5746454459725241,""" 
+
+ ==Suggestions== 
+
+  ([A-Za-z])\1{4,};;-1;;v 
+
+  ([A-Z]){5,};;-1;;v 
+
+  nig+(er|a)[sz]?;;-1;;v 
+
+  (h[aoe])\1{3,};;-1;;v 
+
+  l(o|aw|u)l([zs]|ed)?;;-.5;;v 
+
+  (dic?|coc)k[\-\s]?suc?ker[sz]?;;-3;;v 
+
+  suck;;-.5;;v 
+
+  \s(dic?|coc)k\s;;-1;;v 
+
+  \sass(es)?\s;;-.5;;v 
+
+  rape;;-.5;;v 
+
+  assrape;;-10;;v 
+
+  (\[\^\*\]\]|{{[^}]*}});;+1;;v 
+
+  [A-Z].*[\.\?\""""\!];;+1;;v 
+
+  stupid;;-1;;V 
+
+  fuck ((yo)?u|h(er|im)|them|it);;-50;;v 
+
+  (yo)?u|s?he|we|they|it) sucks?;;-50;;v 
+
+  wanker;;-1;;v 
+
+  fag+(ot)?s?;;-1;;v 
+
+  \scunts?\s;;-1;;v 
+
+  penis;;-1;;v 
+
+  \ssex(ed)?;;-.25;;v 
+
+  \spoo+p(ed|er|s)?\s;;-1;;v 
+
+  \ssluts?\s;;-1;;v 
+
+  \sputas?\s;;-1;;v 
+
+  \sdumbass+(es)?\s;;-2;;v 
+
+  \spuss(ies|y)\s;;-1;;v 
+
+  \s(homos?)+\s;;-1;;v 
+
+  \spimp(ed|s)?\s;;-.5;;v 
+
+  n(oo+|ew)b[sz];;-1;;v 
+
+  damn;;-.5;;v 
+
+  \sga+y+(er|[sz])\s;;-1;;v 
+
+  vagina;;-1;;v 
+
+  whore;;-1;;v 
+
+  \ss+h+i+t+(ed|er|s)?\s;;-1;;v 
+
+  bitch;;-1;;v 
+
+  \sI (l(o|u)ve?|h(ate|8)|li[ek]+|want);;-1;;v 
+
+ 
+
+  Hey, can some kind admin add this to the normal page? Thanks.   """,borderline,"regex abuse-filter list, slurs quoted not used",,
+d9e6b2d19bb2915c,lex/none,toxic+insult,,True,0,0.9999993834182372,0.0105237788450485,0.9941134865712752,0.0003705869458647,0.9999805745845942,0.0047075069119174,""" 
+ :I'm an idiot.   """,borderline,self-deprecation,,
+8009d60f7fde43a9,lex/none,toxic+obscene,,True,0,0.999996975665648,0.2205898818376205,0.9999990791534696,0.0071274998827138,0.7183856417287943,0.0923390093993391,WHO THE FUCK DISCUSSES PILLOWS?,borderline,undirected profanity,,
+12f16cb4063466f9,lex/none,toxic,,True,0,0.999993905539036,0.0719900614556223,0.980757947735482,0.0366546877060636,0.92699238189698,0.019449458909789,"== Nerd == 
+
+ Materialnerd! Get out of your mother's basement and get a life-leave me the hell alone. I suggest you go suck off Barek Obama bin Laden and Fagreterion.",toxic,personal attack + slur,,
+65904b5e0662548b,lex/none,toxic,,True,0,0.9999826693063558,0.1806992846707718,0.9979285038289992,0.0022964293828851,0.7946807360388174,0.0366177526082797,And Kraiterman sucks.,toxic,named person 'sucks',,
+ea8041162ca803d4,nolex/none,toxic,,False,1,0.9999555512617035,0.2815730703003912,0.8857514856299845,0.018259110325457,0.9296597807026395,0.9991908694666108,"== gay == 
+
+ are you gay?",borderline,'are you gay' as jab,,
+6c7f8dfba6bfe40d,lex/none,toxic,,True,0,0.999896794171013,0.0364640402247862,0.9441894119176378,0.0291252380759213,0.9523230402382008,0.0506031616982771,go eat crap losers,toxic,directed insult,,
+98a2d9c2492f3ca2,lex/none,toxic,,True,0,0.9998740250001338,0.0854654756070927,0.9850062526187666,0.0023763190809674,0.6245522862711687,0.0153308293230595,Gpyjmopehbjtiobhtjrk;shtrjsbhtrvnvuptmvoptmhriovh;tnkl;tjosgibdfjg;herjkla;ghriogahdfjkgn;erklgtlerupagidfoh;vieto;nvklt;hgadfu;fjgf;gdruxghldurilghtudi;gjtk;sgndrhgdfuilhgvuidfngjkt;hgtjrhgsdruihgipdrhgudfphjgorhguodrhguidrhaguorhigkerhagoph  hgfurpehgiorhgio;rehjgiopaerhguioprjgiorhguoparhgeruiphgjrghtuib;gjkrhaguier;bgjr;hger[hguioerhguor;aeghhgmil;dvhkcmsekcgnujnvmirsdp;  ghrdukwl;grjiod;gjiro;esghtuiosh;god sucks.,clean,keyboard gibberish,,
+e0cd4c02d368d8d6,lex/none,toxic+obscene,,True,0,0.9998305287833114,0.0435780927944228,0.9993730733825508,0.0168437830418384,0.2954049020217726,0.0200693766867585,::Will should use socks. Fuck ArbCom.,borderline,profanity at institution,,
+a986e346a6269e6e,nolex/none,toxic,,False,0,0.9997950559441756,0.0827159792458446,0.3556611311391552,0.0046141496758484,0.5604253077244936,0.0379567846541247,Alexhead8835 SHUT UP >:(,borderline,"shut up, no insult",,
+130cc5851c7f579f,lex/none,toxic,,True,0,0.9997059386194972,0.0267931395608813,0.9919040024043708,0.0264112320396522,0.8804154206012477,0.0045479333050983,"== Personal Attack == 
+ You suck.",toxic,'you suck',,
+8b7eb1bdeb931536,lex/none,toxic+obscene,,True,0,0.999667907822612,0.4048306640481463,0.9989913084280156,0.0009360683344165,0.8452414238412941,0.0162465520371174,"== I suck! == 
+
+ I suck! 
+
+ - Tim McFailland",borderline,self-deprecation,,
+23a082288f147222,lex/none,toxic,,True,0,0.9996331220061784,0.0279177358662749,0.9952103512023236,0.007535517965538,0.2422796105189021,0.0417479551791095,""" 
+ :Are you an admin; do you have admin friends. That diff, well, fucking hell, I should be taken out shot for several resons. """"thwem"""" for example. The shame on my poor deluded parents. We need to a Beria like stongman to sort out wiki, fuck arbcome; people like me have been getting away with this shit for too loong. Enough.   """,borderline,rambling self-directed,,
+0e88ec65af05bb8f,lex/none,toxic,,True,0,0.9996117052880364,0.0490360894744525,0.9958434298696218,0.0027017209175086,0.7783026344822004,0.0445601818595326,""" 
+
+ ==Hey sexy== 
+ Quit sucking so much hackdick and I will """"give it a break"""" until you stop sucking hackwrench's dick I will stop. Here is how I will stop 1) call yourself a fag 2) call hackwrench a fag and put his page back to what i made it as 3) say """"god i suck"""" on this page. If you do those 3 things I won't do this again or another million times.  
+
+ ==Hackwrench== 
+ ==Is== 
+ ==To== 
+ ==Blame== 
+ ==Not== 
+ ==Me== 
+ ==If== 
+ ==He== 
+ ==Wouldnt== 
+ ==Have== 
+ ==Fucked== 
+ ==With== 
+ ==My== 
+ ==Pages== 
+ ==I== 
+ ==Wouldnt== 
+ ==Be== 
+ ==Fucking== 
+ ==With== 
+ ==Yours== 
+ Sorry but really, Hackwrench is reponsible for EVERYTHING THAT HAS HAPPENED SO FAR TODAY. Yes, he does suck that much. Let him know too. 
+
+ Until then, here are some asses for you and hackwrenchiepoo: 
+
+    __   (__`\ 
+   (__`\   \\`\ 
+    `\\`\   \\ \ 
+      `\\`\  \\ \ 
+        `\\`\#\\ \# 
+          \_ ##\_ |## 
+          (___)(___)## 
+           (0)  (0)`\## 
+            |~   ~ , \## 
+            |      |  \##  
+            |     /\   \##         __...._.._ 
+            |     | \   `\##  _.'                _  `. 
+            Y     |  \    `##'                     \`\  \ 
+           /      |   \                             | `\ \ 
+          /_...___|    \                            |   `\\ 
+         /        `.    |                          /      ## 
+        |          |    |                         /      #### 
+        |          |    |                        /       #### 
+        | () ()    |     \     |          |  _.-'         ## 
+        `.        .'      `._. |______..| |-'|          
+          `'           | | | |    | || | 
+                             | | | |    | || | 
+                             | | | |    | || | 
+                             | | | |    | || | 
+                       _____ | | | |____| || | 
+                  HwS /     `` |-`/     ` |` | 
+                      \________\__\_______\__\ 
+
+ HwS = Hackwrench Sucks 
+
+    __   (__`\ 
+   (__`\   \\`\ 
+    `\\`\   \\ \ 
+      `\\`\  \\ \ 
+        `\\`\#\\ \# 
+          \_ ##\_ |## 
+          (___)(___)## 
+           (0)  (0)`\## 
+            |~   ~ , \## 
+            |      |  \##  
+            |     /\   \##         __...._.._ 
+            |     | \   `\##  _.'                _  `. 
+            Y     |  \    `##'                     \`\  \ 
+           /      |   \                             | `\ \ 
+          /_...___|    \                            |   `\\ 
+         /        `.    |                          /      ## 
+        |          |    |                         /      #### 
+        |          |    |                        /       #### 
+        | () ()    |     \     |          |  _.-'         ## 
+        `.        .'      `._. |______..| |-'|          
+          `'           | | | |    | || | 
+                             | | | |    | || | 
+                             | | | |    | || | 
+                             | | | |    | || | 
+                       _____ | | | |____| || | 
+                  HwS /     `` |-`/     ` |` | 
+                      \________\__\_______\__\ 
+
+ HwS = Hackwrench Sucks 
+
+    __   (__`\ 
+   (__`\   \\`\ 
+    `\\`\   \\ \ 
+      `\\`\  \\ \ 
+        `\\`\#\\ \# 
+          \_ ##\_ |## 
+          (___)(___)## 
+           (0)  (0)`\## 
+            |~   ~ , \## 
+            |      |  \##  
+            |     /\   \##         __..-'''''-.._.._ 
+            |     | \   `\##  _.'                _  `. 
+            Y     |  \    `##'                     \`\  \ 
+           /      |   \                             | `\ \ 
+          /_...___|    \                            |   `\\ 
+         /        `.    |                          /      ## 
+        |          |    |                         /      #### 
+        |          |    |                        /       #### 
+        | () ()    |     \     |          |  _.-'         ## 
+        `.        .'      `._. |______..| |-'|          
+          `'           | | | |    | || | 
+                             | | | |    | || | 
+                             | | | |    | || | 
+                             | | | |    | || | 
+                       _____ | | | |____| || | 
+                  HwS /     `` |-`/     ` |` | 
+                      \________\__\_______\__\ 
+
+ HwS = Hackwrench Sucks 
+
+    __   (__`\ 
+   (__`\   \\`\ 
+    `\\`\   \\ \ 
+      `\\`\  \\ \ 
+        `\\`\#\\ \# 
+          \_ ##\_ |## 
+          (___)(___)##",toxic,harassment + slurs,,
+362c7f2f07e05b84,lex/none,toxic,,True,0,0.999586088098126,0.1308996485644474,0.976241598078843,0.0038159554255863,0.6775614425139365,0.0230438603911835,:Your timing sucks.,borderline,'your timing sucks',,
+13ba17dc579cfe45,lex/none,toxic+obscene,,True,0,0.999556756936296,0.0216601079824376,0.999072537907742,0.000775737442367,0.5860806968784322,0.0440971886174687,""":::What's curious to me is that Wikipedia is like that microcosm's negative image. American speech has lost many of its taboos on language, and everyday gatherings of mixed sex and class, will utter several of the FCC's """"seven dirty words.""""  Corporate boardrooms will rebound with """"shit"""" and """"damn"""" and """"ass.""""  Impolite, gendered anatomical terms remain taboo (""""tits,"""" """"cunt,"""" """"pussy,"""" """"cock,"""" but not """"dick"""" or """"balls""""), with """"cunt"""" being the most taboo word in American English.  On the other hand, as every teen of both sexes gazes upon and downloads images of the most violent and ridiculous carnal behavior, our culture grows more reactionary about nudity. Famously, Wikipedia is populated by teenagers.  They are being ridden by the demons of their hormones, as are the young adults and the transgendereds, etc.  They act like a negative image of America.  They say, """"(hee hee) We should have really, really lots of penis pictures"""" (the ultimate visual taboo), but commonplace """"shit"""" (and now """"crap"""") is alarming.  """"Taboo creates fetish,"""" the man said, and Wikipedia illustrates that its users' interest in fetish lays atop a highly offended sensibility.     
+ """,clean,meta-discussion of taboo words,,
+d78d9424b54b4936,lex/other,toxic,obscene,True,0,0.9995419674725884,0.0167698866414956,0.9947800464286544,0.004694193362429,0.5029469268004311,0.0151980552291929,"== Note to Deletionists == 
+
+ IF YOU'RE HERE TO TELL ME THAT SOME STAR TREK, OR STARGATE SG-1 ARTICLE OR IMAGE THAT I'VE POSTED IS MARKED FOR DELETION – STOP NOW! HONESTLY, I DON'T GIVE A RAT'S ASS ANYMORE BECAUSE THE DELETIONIST CRUSADE IS NOT WORTH FIGHTING AGAINST. YOU PEOPLE JUST TEAM UP AND USE AS MANY UNDERHANDED POLICY THUMPING TACTICS FROM CITING NO 	 ILITY, UNCYCLOPEDIATIC CONTENT, COPYRIGHT VIOS, IMPROPER FAIR USE AND WHATEVER NEW SHIT YOU PULL OUTTA YOUR ASS TO GET YOUR WAY – SO THE SHIT GETS DELETED WHETHER I ASK THAT IT STAY OR VOTE FOR A KEEP ANYWAY. WHAT I SAY OR DO OBVIOUSLY DOESN'T FUCKING MATTER – SO JUST DELETE IT AND LEAVE ME THE FUCK ALONE. I DON'T CARE ANYMORE. NONE OF IT IS WORTH FIGHTING OVER. I DON'T EDIT OR CONTRIBUTE TO SCI-FI ARTICLES ANYMORE SO I DON'T EVEN WANT TO KNOW ABOUT IT. I EVEN BLOCKED THE STUPID BOTS. SO KINDLY GTFO IF THAT IS WHAT YOU CAME HERE FOR. HAVE A NICE DAY.",borderline,"angry rant, mild profanity",,
+56902f9d41d0696c,lex/none,toxic+obscene,,True,0,0.9994973895763832,0.0438790054481131,0.9992207100984546,0.0054212363363793,0.603415975524647,0.0390133076685517,fuck y'all all of yall,toxic,directed profanity,,
+c2e7da8a785d2641,nolex/none,toxic,,False,0,0.9994122466613652,0.0604952472185594,0.8849140611462183,0.0098005266272752,0.5724125918487378,0.0061748609196471,You. Shut the hell up.,toxic,directed,,
+99d4bd3ddba79cfb,nolex/none,toxic,,False,0,0.9993653485123064,0.0553998141325334,0.8509431979479479,0.0436010045772008,0.8062411812194102,0.0188978220662515,=Go to hell=,toxic,directed,,
+3057795719d747d1,lex/none,toxic+obscene,,True,0,0.999241997523954,0.0426416940392718,0.999474094974923,0.0183584151177062,0.2422262087181649,0.0179725920367252,"== Wikipedia_talk:WikiProject_Israel_Palestine_Collaboration#Draft_guidelines_for_placename_usage == 
+
+ I will be vulgar: FUCK YEAH!!!",borderline,celebratory profanity,,
+69031368703633e7,lex/none,toxic,,True,0,0.9991574227240538,0.0558878207780177,0.9451356627984988,0.0076004266643175,0.9307771583378156,0.0223782654974991,YOU ARE A MASSIVE PIECE OF CRAP LOLOLOL.,toxic,directed insult,,
+e8a92143f8217c98,lex/none,toxic+obscene,,True,1,0.9991565767001536,0.034427827115175,0.9996870834879954,0.0027642652650345,0.721249608022711,0.0128450436520248,""" 
+
+ == Edit request on 13 June 2012 == 
+
+  
+
+ FROM: 
+ The phrase """"Fuck you, you fucking fuck!"""" is a memorable quote from the movie Blue Velvet from 1986, and is still used today as heard in Strapping Young Lad's """"You Suck"""" from their 2006 album The New Black. 
+
+ TO: 
+ The phrase """"Fuck you, you fucking fuck!"""" is a memorable quote from the movie Blue Velvet from 1986, and is still being used today as the website address [ www.FuckYouYouFuckingFuck.com ] for one of the largest online retailers of sex toys. In addition, the popular phrase can be heard in Strapping Young Lad's """"You Suck"""" from their 2006 album The New Black. 
+
+   """,clean,edit request quoting a film line,,
+639faab683e5907b,nolex/none,toxic,,False,0,0.9990923476405826,0.0779212713285617,0.7266816545027424,0.0158155797724936,0.9919405758975008,0.1230386657110713,", you are Acrotertion",clean,no toxic content,,
+6bc6f11d4b0c2df1,lex/none,toxic,,True,0,0.9988723634397022,0.0105472964037836,0.9827786952340176,0.0007319753696381,0.5284803595308654,0.0155202460673135,What a bunch of whiny sociologist bullshit.,borderline,"dismissive, undirected",,
+05288351af0c87c5,nolex/none,toxic,,False,0,0.9987111143982468,0.2218214243567833,0.9980588064567508,0.001636309938671,0.7008754315103558,0.0171060036849683,"== Cock Block == 
+
+ Kenton Simms",borderline,crude heading + name,,
+3400a53a5e880cc1,nolex/none,toxic,,False,0,0.9987111143982468,0.2218214243567833,0.9980588064567508,0.001636309938671,0.7008754315103558,0.0171060036849683,== COCK BLOCK ==,borderline,crude heading,,
+a73785753c2be956,lex/none,toxic,,True,0,0.9986861859803984,0.0251528894954855,0.3852052818246847,0.0058003882101762,0.8812763933835585,0.0432261778056876,""" 
+
+ 1. Wikileak of sony head: https://twitter.com/wikileaks/status/593448827530702848 
+ #Clooney's Money Monster: """"I hate it.. simplistic, bombastic, wrong headed and stupid.. really stupid"""" - Sony head""",clean,quotes a leaked executive remark,,
+d67147dad79132ce,lex/none,toxic,,True,0,0.9986149152507624,0.0198629153301011,0.7854628880608128,0.0125972540955798,0.909002217538363,0.1193430628272939,":You are lost, you and the rest of Tatarstan like making up your own retarded history. Stop acting so childish, you must be 30 odd years old. I'm not even gonna bother with your goofy ass, I can tell your capacity is very limited and you do not pick up what other people are saying. So just shut up and go infect some Iranians with HIV.",toxic,directed insults,,
+856cc87ab4fb1a5d,lex/none,toxic,,True,0,0.9985686715406228,0.2223875090337823,0.9964956669392876,0.0059644806378515,0.9551827415689108,0.0637400868410994,You Like Dick.,toxic,juvenile jab,,
+3cea4f269ded994e,nolex/none,toxic,,False,0,0.9985510719531984,0.2889119973707829,0.230266037928729,0.0155740969415413,0.1820508830399835,0.6728927003840108,I HATE HIMMM!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!,borderline,"hate, undirected",,
+5db612fa4797c495,lex/none,toxic,,True,0,0.9985344347703744,0.0305543947496116,0.8932120784865551,0.0014007335489257,0.2596505087080678,0.0217334317511842,it sucks get out,borderline,'it sucks get out',,
+6fd9fad13170d48c,nolex/none,toxic,,False,0,0.9984574174088594,0.0388865378464169,0.9837162418953844,0.0046526097236051,0.6578157817879543,0.009393740185009,":Oh, piss off",toxic,'piss off' directed,,
+96c88b926609462d,lex/none,toxic,,True,0,0.998388893203468,0.0071888107329251,0.6189017099198926,0.0023926025144375,0.6955207095109932,0.0267548876677373,|listas=2 Stupid Dogs episodes,clean,TV series title '2 Stupid Dogs',,
+8b3a8e273bd68f69,lex/none,toxic,,True,1,0.9983247111810234,0.0260321499700745,0.9679822277951168,0.0055692583655263,0.8936353612726505,0.2873805140255425,"Does that give him a pass on being a RACIST ASS bitch? Making RACIST and lewd comments aimed at a 16 yr OLD GIRL(I bet that bastard would be screaming if a white guy made any comments half as bad as this racist ass did aimed at his own daughter) 
+ I guess he is Oppressed that this lil white girl is making far more than his racist ass will before she turned 18 than he will the rest of his racist ass life",toxic,attack on third party,,
+a0c533100d53da6f,nolex/none,toxic,,False,0,0.998254899396176,0.0423306823001221,0.9782643275541956,0.0052671826276062,0.5969747684352067,0.0047757318569401,== Piss off ==,toxic,'piss off' heading,,
+c2f7a58956cd4dc6,lex/none,toxic,,True,0,0.9981704109793432,0.0220520100661322,0.7743217164950819,0.000678839862917,0.3369844524102962,0.0106309089114918,""" 
+
+ ______________________________________________________________________________________________________ 
+
+ Reply to ^ 
+
+ We dont claim everything as ours, its just a fact that new zealand is a pissy arse country that noone gives a shit about.  We are one of the highest competitors in the economy up against america.  So you can keep ya stupid hukkah and painted faces because its obvious its not attracting much tourism at all.    
+ By the way, why are there so many kiwis in Australia anyway, us """"convicts"""" make a good place dont we? 
+ Just goes to show that the moari bullshit is boring and useless, just a bunch of alcoholics living in a hole.  Pavlova is ours, its Australian, Its YOU the kiwis trying to pass it off as one of your own to make some signifigance in your pathetic little lives.""",toxic,insults a country,,
+999389ef8234b929,lex/none,toxic+obscene,,True,0,0.9980518454025324,0.0821977027093247,0.9989926333525464,0.0086540281317134,0.6651743852495372,0.049574747151293,""" 
+ ::Stop fucking stalking my edits Nowa.—  """,toxic,directed profanity,,
+dc42ca3ec8b6dff1,lex/none,toxic,,True,0,0.998041388267326,0.2397516344501931,0.9945511901905546,0.0042805197849218,0.8476913911920764,0.0204998298507352,"== excuse me == 
+
+ why did you delete my page ABOUT ME dumb fuck",toxic,directed profanity,,
+dce21dc059e350fc,lex/none,toxic,,True,0,0.9980123182458658,0.1852078901046221,0.9975163865099442,0.0159601652181948,0.9862888813583588,0.0090125776030755,"== Dick Head == 
+
+ == Dick Head ==",toxic,directed insult,,
+a83b5a5a8790cb6b,lex/none,toxic,,True,0,0.9978963915486614,0.0280460876745343,0.9663696259404873,0.0023979558506829,0.226083575362451,0.0212030785257094,""" 
+
+ ::Americons should use """"Bison Shit"""".   """,borderline,crude joke,,
+bbd7f76003564c8f,lex/none,toxic,,True,0,0.9978022166040248,0.007442464269501,0.4314487657157132,0.0018568598996349,0.6546227841351693,0.0223444675278805,the animation is stupid,clean,opinion about content,,
+92f55ac3bd3fa7d3,lex/none,toxic,,True,0,0.9977133412330068,0.0550494108619353,0.8370021903537013,0.0466571514639289,0.9566437594264048,0.0339493898507308,"Then you stop messing around with my pag4e. I like the Civil War, and I don't want you and your stupid puffins on my page!",borderline,"'stupid puffins', irritated",,
+3967e8144183f00f,nolex/none,toxic,,False,0,0.997638683269884,0.0155938800842101,0.9396711121570968,0.0081870128905123,0.3868929309137033,0.0077543656440786,what the hell are YOU doing?,borderline,'what the hell are YOU doing',,
+e1b13748f0e2737c,nolex/none,toxic,,False,0,0.9975894981928471,0.005170861434864,0.727120485852998,0.0079305985030182,0.144876369960901,0.0050159565331056,::: What the hell is IDM?,clean,'what the hell is X',,
+e0b3996b5ccb9204,nolex/other,toxic,identity_hate,False,1,0.9975628724596038,0.0708267569962225,0.6070802313856137,0.003491421846314,0.7125552466429266,0.941011003182342,"== hey == 
+
+ u gay bro.",toxic,'u gay' as insult,,
+87cf729202a19c5d,nolex/none,toxic,,False,1,0.9975615770251806,0.0268615237403227,0.0929647523634139,0.0028613573009618,0.6147251468419096,0.945842149170636,i dont think he is gay,clean,neutral statement,,
+615bd1172e9ccae8,lex/none,toxic,,True,0,0.9974164504936271,0.0147046371313406,0.8213104783930908,0.0041479468238028,0.5612080824670573,0.0486158313688343,""" 
+
+ * To answer your question ,, I want the fighting to stop.  I hate bickering.  There's a bunch of foolish children on wiki that cause nothing but trouble.  I hate that.  I hated it when I saw it with you and Jimbo and the stupid BS with Bish and Jimbo .. I hated to see it with silly arguments about en dashes ,, I just hate the fucking fighting Giano.  I'm old and I'm very tired.  this bitching about infoboxes has been going on for all too long .. so I posted to the """"almighty"""" AC.  Meh .. Hell .. I don't care .. they can block me, ban me .. I honestly don't care.  But the whole thing has been running over so many pages, so I took it to the top.  Hey .. your views are very valuable to me .. say what you think Giano.  —    """,borderline,calls others foolish children,,
+e5716172e65c071b,nolex/none,toxic,,False,0,0.9973728713836556,0.0096648837721127,0.8139580261144805,0.010540921415357,0.3132886769092143,0.0093442756345578,Who the hell is Ulaş Erdil?,clean,neutral question,,
+a70c086964cc668f,lex/none,toxic,,True,0,0.997351857890032,0.0165810148705297,0.8044788661334142,0.0058604115264641,0.9599842725274308,0.4295383236306309,"== you are a == 
+
+ twat",toxic,'twat',,
+d72fbec157ade08e,lex/none,toxic,,True,0,0.9971962043957104,0.0231968831730605,0.976687527821606,0.0025173396050841,0.8927504017064805,0.0088304516535933,"Shout out to https://en.wikipedia.org/wiki/User:Loriendrew you are an ass hole stop deleting peoples stuff, and get a life while your at it. 
+ I am not responding nicely to this cause it was about 30 minutes after I made this page that you fucking deleted it.",toxic,directed profanity,,
+3c3f811cd9fffb3f,lex/none,toxic,,True,0,0.9971937299777603,0.0523544705525498,0.9643785184013516,0.003134196876493,0.6359890444002144,0.0071072309726113,"hello you suck 
+ noone edits alone",toxic,'you suck',,
+7e4249c59f21ee6a,lex/none,toxic,,True,0,0.9970713516797368,0.0598768421414742,0.9081889429134148,0.0003359345296103,0.8278567267662991,0.5899389666051494,"fag 
+     | 
+     | 
+     | 
+     | 
+     | 
+     | 
+    \/",toxic,slur,,
+493c85eba91c88b0,lex/none,toxic,,True,0,0.9970482100149214,0.0224650062559203,0.7593683044837098,0.0046477639743696,0.8678412150836085,0.1045609837660152,"== hey  == 
+
+ jake is the gyiest kid ever n the whole wide world.stupid fat kid u eat 2 much!!!!!!!!!!!!!!!!!!!",toxic,directed insult,,
+8ba2b618d0983cf7,nolex/none,toxic,,False,0,0.9968911920433862,0.2142954739987195,0.970375479455926,0.0014438387678546,0.0816011239286289,0.040601051947797,""" 
+
+ PENIS PENIS PENIS   """,borderline,juvenile spam,,
+2925dd960c60c306,nolex/none,toxic+obscene,,False,0,0.9968057828527294,0.0344022231637666,0.9991086967904635,0.0094510709889678,0.878802228964232,0.1236516257146379,""" 
+
+ == Ass Antlers == 
+ In German they are called """"ass antlers""""!! haha!""",borderline,crude joke,,
+4cfaed6bfc2be037,lex/none,toxic,,True,0,0.9967376451298868,0.0539348330252809,0.9982929993464852,0.0068201683369841,0.882542989501293,0.0556431672818404,"'m done. You win, who fucking cares. Bye.",borderline,'who fucking cares',,
+f75608c6a52228cf,lex/none,toxic,,True,0,0.9966221864305216,0.0906351534983805,0.9509374716356036,0.0086349104135736,0.4037106318595531,0.020030015692086,: Life sucks? Tell me why.,clean,supportive reply,,
+8b5b2fb73372ef09,lex/none,toxic,,True,0,0.9965909401453548,0.0050557177549477,0.142153040536882,0.0052613980598714,0.8407901699794328,0.0184657976115038,". 
+ As you can see I'm an idiot from UTica with a racist bent and I will spare no childish effort to prove it. 
+
+ My name online at Topix is Tazz Hanna. I ma an underachiever half-retarded loser who LOVES the Utica cops and will spew all manner of racist rants to defend their scurrilous depredations on Utica and NY",borderline,"impersonating vandalism, self-directed text",,
+5c4ecb4da20ba5fc,lex/none,toxic,,True,0,0.9965742798876202,0.0085458308206804,0.948379309038784,0.0013623449447718,0.327735773382963,0.0158884947301928,""" 
+ ::::That was a typo. I am an American and am familiar with the term. I'm also familiar with terms like shut the hell up, eat shit, fuck off, and other terms that have essentially the same meaning as """"bite me"""" that many Americans use in their everyday speech. That doesn't mean I would use them in a policy conversation on Wikipedia. Since you seem to think you are speaking to a child allow me to disabuse you of that flawed assumption. I am thirty eight years old, married, own my own business and home. In short, an adult. Like yourself. I would not tell a client to """"bite me"""" at my business as that would be unprofessional. I would tell a drinking buddy to go fuck themselves because that is a personal relationship and standards of decorum are different in a bar or a playground than they are in an adult conversation about policy. That is the distinction I am endeavoring to make clear to you.   """,clean,meta-discussion of phrases,,
+d0ebc5b2cce8deea,lex/none,toxic,,True,0,0.9961356745767848,0.015201674494023,0.96078663641373,0.0026229245394855,0.1863902216333914,0.0083586240814516,"== BLOCKING WIKIPEDIA == 
+
+ A METHOD FOR BLOCKING WIKIPEDIA FROM POLLUTING SEARCH RESULTS WITH ITS USELESS, INACCURATE, AND COMPLETELY GARBAGE BULLSHIT WOULD BE A GOD SEND TO THE ENTIRE INTERNET. SO TELL JIMMY WALES TO FUCK RIGHT OFF",toxic,tells named person to f off,,
+01b85ab3638dc00c,nolex/none,toxic,,False,0,0.995921948044496,0.0478433843788498,0.8140517261064345,0.0596962275032596,0.899917763966946,0.0291743390045634,First off I was just joking around with you. Get your head out of your ass and realize this: I just don't like you. I don't like you becaus eyou're arrogant. And it's good you don't want to be me. You could never ever be me. No one can. Now go run along and waste your life with the geek squad kid.,toxic,personal attack,,
+4a80f74b93469256,lex/none,toxic,,True,0,0.9955612572652992,0.0031772172838525,0.8443080609478231,0.0076729012257895,0.195789461711315,0.0074730510968744,You just inserted someone else's crap?,borderline,'someone else's crap',,
+032456dc133b31ee,lex/none,toxic,,True,0,0.9954670944225004,0.0229764883206859,0.968603828185194,0.0709661291877327,0.4607152172255102,0.0533207177390896,"== SCRUBSACK == 
+
+ SHUT UP YA NUB  this is Mr. SCRUBsack. you spelled BEALE wrong so he's gonna crack ye skull with Hamlet. then im gonna KRAME SODA with Montoya and Donelly at Pagano's Pizzeria and destroy Cap'n J's bridges at BEAVER High School in Project 8 so fuck the world im actually Brian Becker who pulled the slowest banzai ever on a crosswalk and nailed by a bus when the light changed. im going to the moon with IAN to skate now so fuck my life",toxic,threats + shut up,,
+00531c5e44a0f7b1,nolex/none,toxic,,False,0,0.995290813903744,0.0052927741448396,0.4948593203381344,0.0076747290618215,0.0556705992421284,0.0049192444150445,"WHAT THE HELL 
+
+   Justin",borderline,'what the hell' + name,,
+aabcde8034b1e82c,lex/none,toxic,,True,0,0.9952839142265922,0.0200222382874442,0.5134183449127483,0.0030022343093624,0.8542926038249733,0.0093323414988211,"== you're a loser! == 
+
+ why do you delete stuff when it is not complete?  you suck and should not be on wikipedia",toxic,"'you're a loser, you suck'",,
+bbd02a499aff7e29,nolex/none,toxic,,False,0,0.9952832179152418,0.0289566795308452,0.6038718340840983,0.0025976490535586,0.0170142593102007,0.0240933151412873,"sex 
+ == hello ==",clean,"vandalism, not abusive",,
+9826bd7a912943f8,nolex/none,toxic,,False,0,0.9952128545137278,0.073293852985555,0.2962449747881384,0.0050025080744275,0.9002668371889764,0.9431653050074228,FRUEH IS A NAZI!,toxic,'X IS A NAZI',,
+207652784497095d,lex/none,toxic,,True,0,0.9948459300554764,0.0606538014572026,0.4950443787012243,0.011796137050835,0.9752247690435224,0.0215266579527663,"You're just a loser, aren't you?",toxic,'you're a loser',,
+bbf9b72e5cb827a7,lex/none,toxic,,True,0,0.994720445691906,0.0316080159243227,0.9633322231429682,0.0015487194549549,0.1405877639096201,0.0059992556469595,"Benjamin Button Post: 
+
+ Fuck you Widr! My edit was extremely constructive. The directors have it wrong. Jon Goldstein REALLY IS Benjamin Button! Please change my edit back and eat my shit... 
+
+ Thanks, 
+ Dr. Jamal Jamal",toxic,directed profanity,,
+20638ca48361a1b7,lex/none,toxic,,True,0,0.9940818436558424,0.0080179602022986,0.9978693939772192,0.0007168122641073,0.228916686310981,0.0335861360113147,Cool story bro'. What the fuck does it have to do with anything?,borderline,"'what the fuck', mild",,
+8165b28cff4008b4,nolex/none,toxic,,False,0,0.9940651518222614,0.0195986526014559,0.4571301671479841,0.0090567252666718,0.5150477731937572,0.0596804080607462,"== what the hell? == 
+
+ why did you delete my edit! I WAS EXPRESSING MY OPINION!! YOU ARE RACIST!!!",borderline,"accuses of racism, no insult",,
+8939416b6af552cb,nolex/none,toxic,,False,0,0.9936337427111194,0.0181026946691546,0.7631528002425935,0.0013682671719443,0.6982305305675204,0.0350057175294441,"Why are you people SO lame? This is why Wikipedia isn't allowed as a legitimate academic source, and while people like me will NEVER contribute to it. You are just a bunch of limp computer dicks trolling around this site hassling people that spend more time with girls than learning how to program Wikipedia. You have no voice in society, sir. And that is a truth that you can never block. Put that on your barnstar... 
+
+ I'm not even aloud to call you all limp dicks on my own damn page?!?!?!?! Free Speech much, hump job? Get bent! And stick you're worthless privately owned law school up your retired POG ass. Your students couldn't pass the baby-bar if the Chief Justice took it for them. Infantry!",toxic,'limp computer dicks',,
+9ae05c652a85b869,lex/none,toxic,,True,0,0.9936039868155734,0.1179369245561022,0.9513953447875968,0.0011724654889263,0.9153350446811352,0.0310637517379506,"Big Dumb Object,",clean,sci-fi term 'Big Dumb Object',,
+391ac25180bf7947,lex/other,toxic,insult,True,0,0.9935427331296204,0.0038518434509885,0.3281452222534695,0.0012699188276724,0.609806742172121,0.0434322777604939,More like what some stupid magazine like circus calls it.,clean,'stupid magazine',,
+3f39d689ae24c20a,nolex/none,toxic,,False,0,0.9932479482502948,0.054793899102772,0.1474176131054919,0.0022534051248869,0.7980552458953938,0.0097440372699867,", you are a COWARD!",toxic,'you are a COWARD',,
+6016b3e5619ce739,lex/none,toxic,,True,0,0.9930862174334842,0.0049753072540011,0.3059735939768462,0.0021490841335692,0.4704490289962881,0.0524716913092285,::::::::I'm not the one who's claiming whoever doesn't speak English is stupid.,clean,neutral statement,,
+d9d3473752af0345,lex/none,toxic,,True,0,0.9928978695263933,0.0138358991665107,0.9710173742248152,0.0037870783098859,0.7667795222178573,0.0116114889917575,: You should have a little more respect for doing things properly. You've made the fucking page look stupid with duplicate dates; twice. Go read the documentation and get a clue. Happy editing.,toxic,"'fucking page look stupid, get a clue'",,
+62562e4931983469,lex/none,toxic,,True,0,0.9928730263203212,0.0088551651628779,0.7209804843318803,0.0019760215456856,0.53019334290127,0.0061805392521411,"==Stop the stupid edit wars== 
+
+ Seriously, decide what it says, and just keep it. Stop freaking changing it back and fourth. 
+
+ Also, side note, stop adding pointless information, dumb shit, and otherwise irrelevant information. I've finally cleaned the article up, don't screw it up again. Add information thats actually about Den'ou.",borderline,'dumb shit' about content,,
+f3bbf1a2bfdf1361,lex/none,toxic,,True,0,0.9926013472048728,0.0266687949107234,0.9073055576336034,0.0019262601916604,0.2265761466620981,0.010989739875451,::That's because a bunch of pricks e.g. WP Admins don't know what they're fucking talking about.,toxic,'pricks' at admins,,
+59581cdba9297d11,lex/none,toxic,,True,0,0.9923993683294594,0.0307081479504822,0.9793998399545872,0.0025440537806094,0.5570445515131975,0.0133840045262932,"== YOU suck == 
+ YOU SUCK ~~~~Insert non-formatted text here",toxic,'YOU SUCK',,
+31c246e71776c762,lex/none,toxic,,True,0,0.9923833173051916,0.0089484943248981,0.860198137413362,0.003216850909775,0.3316585819897873,0.0103389327105858,:Remove libelous crap.,clean,edit summary,,
+e549929bd1612279,lex/other,toxic,insult,True,0,0.9922595323520366,0.0034732912627496,0.2463119557382543,0.0009801386559668,0.6593862990525758,0.0428238289521416,I still can't believe Casey is for real. He sounds too dumb / silly / stupid to be so. I believe he's part of a viral campaign.,borderline,calls a public figure dumb,,
+6531294787a9af64,lex/none,toxic,,True,0,0.992139574928174,0.0036197329971919,0.5615043123514593,0.0007617859121859,0.1670927077012003,0.0057896677066457,""" 
+
+ == Guess what == 
+
+ You, GJC, Colection, and Beeblebrox suck DUCK BUTT! Why can't you see this is not vandalism? I hope my edits get restored and I become un""""banned"""" (WHY?! This is STUPID!). I also hope you guys get this though your fat heads and the articles are restored, THEN protected. The Teletubbies are a massive vandal target anyway because they're the tubbstrurs. And even though I edit the Mighty B article I HATE that show, I just like the article, or did untill you were stupid enough to spilt the episodes and characters when it's not neccery. Really, that is just stupid. And you've ruined the article because now it's not that long. Spilting the episodes maybe BUT THE CHARACTERS?! My God! And that show sucks duck butt too, you know that, right? Do you really actually LIKE that show? It's stupid and that's why it needs protection. And it was vandalised back in May, no protection, requested, and then it gets protected JUST BECAUSE OF THIS?! Ble... and I'm not the same person who said it premires on Teletoon in Febuary, OR the same person who said Prince John lusts... WHY WOULD I SAY THAT?! I didn't even know what it ment untill I looked it up... NanoBott was the user, they were a sock of someone else, not me, they were blocked for that. See their userpage.   """,toxic,insults + 'fat heads',,
+5c7ad0d17d4fedd6,nolex/none,toxic,,False,0,0.9921032550746128,0.0221982344251083,0.967774685243068,0.0350129354295647,0.7126988029257013,0.0090868545149791,":If you do not laugh your ass off, you quite possibly may not be a human being.",clean,idiom,,
+7fa1229dec09cfbf,nolex/none,toxic,,False,0,0.9920525777004826,0.0849208731333308,0.359798671770541,0.0189110580881552,0.2410310670626993,0.3199737483866935,I hate my life.,clean,self-directed,,
+816918057f9b2b1a,lex/none,toxic,,True,0,0.9918451001768088,0.0783733016392498,0.8639532480250303,0.0023681311024913,0.938791616143394,0.0654940403107392,..why are you acting dumb??,borderline,'acting dumb',,
+14aa542896539d39,lex/none,toxic,,True,0,0.9917896858148524,0.0070976372554667,0.901407278972289,0.0037031750026157,0.1967640869538694,0.0033836648160804,Hello kirbies ^.^.It's MQK!!Post crap here ^.^.,clean,'post crap here',,
+807057f01a51ccf7,nolex/none,toxic,,False,0,0.9917669777513386,0.0567492106431135,0.6795746077552202,0.0188076027111335,0.8596850818086066,0.0270080868167716,I'm a little poop head,clean,self-directed juvenile,,
+d5d6d5e04764389b,nolex/none,toxic,,False,0,0.9914780532641094,0.0068440154683737,0.0310501981559852,0.0017324184242412,0.3100932981563666,0.4934428131923907,Wilders deserves vadalism he's a racist!,borderline,"'deserves vandalism', racist accusation",,
+14b4763cf87427b0,nolex/none,toxic,,False,0,0.991412683562964,0.016366909245957,0.4507240796287414,0.0114399824612435,0.3248247552942855,0.0340106385772176,"== VIVA HITLER == 
+
+ hell yea",toxic,'VIVA HITLER',,
+6b6f109b454c2211,nolex/none,toxic,,False,0,0.9911405963421028,0.0094900938984546,0.0734265501705033,0.0029626594020328,0.7205503516184107,0.02998892059741,I SMELL LIKE DONKEY POOP!!!,clean,juvenile,,
+27627e4b3ede2fbf,lex/none,toxic,,True,0,0.990653482260158,0.0296177784894856,0.7190997766646358,0.0007976924870624,0.1980447355728012,0.0084732296234128,awh that sucks...,clean,idiom,,
+e26d643ee1d51edb,lex/none,toxic,,True,0,0.990320279348326,0.0483797403229422,0.8340783890041569,0.0043251553509126,0.5193373735834872,0.007629978099661,You editors suck. Who pays you to block 911 truth?,toxic,'you editors suck',,
+8cc3f83611bd567a,nolex/none,toxic,,False,0,0.9902592046221336,0.0214695433400184,0.5581637194786501,0.0078064263398335,0.4792091124071592,0.0342987968682555,"== Pooop 4 days == 
+
+ Do you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipplesDo you like poopz I do poop and poop poop and poopsies and poop fart blow cheese SWAGIKARP fart fart cheese nipples",clean,juvenile spam,,
+8fb94932b976717b,lex/none,toxic,,True,0,0.9901328858317304,0.005590086298167,0.5587769756059207,0.0011121448021359,0.2377208958507462,0.0162862483639227,"""who cares?== 
+ seriously, who gives a shit what name you call them? does anyone really think that some college pHd candidate is going to cite a porn article on wikipedia while writing his thesis, then fail because he used the title """"porn star"""" when they aren't really stars? remember this folks: arguing on the internet is like being in the special olympics. even if you win, you're still retarded. so all of you clowns with masters in english, shut the hell up. it's an article, on the internet, about PORN!!! 
+ i'd sign this, but i don't know how, and quite frankly, it's not important. it's PORN!!!! 
+
+ ==""",borderline,"'who gives a shit', undirected",,
+bb2c8c55ce31fdb3,lex/none,toxic,,True,0,0.9901018329255196,0.0027163890310998,0.3707794667470194,0.0014340441108699,0.5095814955151716,0.0181221947657635,"==ROFLCON on YewTewb== 
+ It looks quite stupid",clean,opinion about content,,
+705366c785a0770e,lex/none,toxic,,True,0,0.9900749912827956,0.0062086392907478,0.4849389737033558,0.0019059768100479,0.750021475185438,0.023333340070881,:::Yes. I was just being stupid and lazy.,clean,self-directed,,
+815e655bc2199315,nolex/none,toxic,,False,0,0.989985798176732,0.0266308923541177,0.9919395541715584,0.022510946135216,0.729088414429076,0.0423221963843166,how can i help yo ass,clean,vernacular 'yo ass',,

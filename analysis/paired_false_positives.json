@@ -1,0 +1,18 @@
+{
+  "char-ngram": {
+    "baseline_fp": 204,
+    "variant_fp": 256,
+    "baseline_fp_dropped": 91,
+    "new_fp_added": 143,
+    "auto_rows_shared": 1792,
+    "auto_rows_only_variant": 722
+  },
+  "word-char": {
+    "baseline_fp": 204,
+    "variant_fp": 229,
+    "baseline_fp_dropped": 62,
+    "new_fp_added": 87,
+    "auto_rows_shared": 1943,
+    "auto_rows_only_variant": 517
+  }
+}

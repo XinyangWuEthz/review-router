@@ -418,6 +418,7 @@ Not done yet:
 - [ ] Sentence-embedding signal and multi-model fusion, judged under the same protocol
 - [ ] Hierarchy constraint (`severe_toxic` is an exact subset of `toxic`); today only the violation rate is reported
 - [ ] Sensitivity sweep over the severity-weight vector
+- [x] Round 2, steps 1 and 2, run under the round-1 design that still had an auto-action tier: stratified audit sample of auto-action false positives (`scripts/audit_auto_action_fp.py`) and a character n-gram feature switch (`model.analyzer`), compared under the same protocol (`scripts/compare_runs.py`, findings in `analysis/README.md`). Neither closes the gap; the human verdict column of the audit is still to be filled
 - [ ] Improve priority review using development-data calibration and ranking diagnostics, then validate frozen choices on new independent data
 
 ## Honest scope and limitations

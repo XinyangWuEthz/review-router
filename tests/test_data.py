@@ -59,9 +59,9 @@ def editable_corpus(tmp_path: Path) -> Path:
             **{label: [0, 1] * 5 for label in LABELS},
         }
     ).to_csv(tmp_path / "train.csv", index=False)
-    pd.DataFrame(
-        {"id": ["test-0", "test-1", "test-2"], "comment_text": ["test text"] * 3}
-    ).to_csv(tmp_path / "test.csv", index=False)
+    pd.DataFrame({"id": ["test-0", "test-1", "test-2"], "comment_text": ["test text"] * 3}).to_csv(
+        tmp_path / "test.csv", index=False
+    )
     pd.DataFrame(
         {"id": ["test-0", "test-1", "test-2"], **{label: [0, 1, -1] for label in LABELS}}
     ).to_csv(tmp_path / "test_labels.csv", index=False)
