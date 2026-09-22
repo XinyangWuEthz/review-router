@@ -22,3 +22,4 @@ simulation:
   seeds: [1, 2, 3]
   high_risk_min_weight: 5
   primary: {load_per_hour: 108, strategy: severity}
+  thesis_load_per_hour: 180

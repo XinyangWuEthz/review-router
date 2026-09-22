@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import yaml
 
 from review_router.policy import DEFAULT_POLICY_PATH, load_policy
 
@@ -28,8 +29,7 @@ def test_every_rule_states_its_rationale() -> None:
 def test_auto_action_floor_is_stricter_than_human_review() -> None:
     policy = load_policy()
     assert (
-        policy.tier_precision_floors["auto_action"]
-        > policy.tier_precision_floors["human_review"]
+        policy.tier_precision_floors["auto_action"] > policy.tier_precision_floors["human_review"]
     )
 
 
@@ -101,3 +101,50 @@ def test_unknown_op_is_rejected(tmp_path: Path) -> None:
 
 def test_policy_file_ships_with_the_package() -> None:
     assert DEFAULT_POLICY_PATH.is_file()
+
+
+def test_retired_rules_are_not_active() -> None:
+    """A withdrawn rule stays in the file as evidence, never as policy."""
+    raw = yaml.safe_load(DEFAULT_POLICY_PATH.read_text(encoding="utf-8"))
+    retired = {entry["id"] for entry in raw.get("retired_rules") or []}
+    assert "R103_identity_term_low_confidence" in retired
+    active = {rule.id for rule in load_policy().rules}
+    assert not retired & active
+    for entry in raw.get("retired_rules") or []:
+        assert entry.get("retired_on") and len(str(entry.get("why", ""))) > 80, entry["id"]
+
+
+def test_subgroup_threshold_declaration_needs_a_floored_tier(tmp_path: Path) -> None:
+    bad = tmp_path / "bad.yaml"
+    bad.write_text(
+        "version: 1\ntiers: {allow: 1, human_review: 2}\n"
+        "tier_precision_floors: {human_review: 0.9}\n"
+        "subgroup_thresholds: {allow: [{signal: x, rationale: y}]}\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="not a tier with a precision floor"):
+        load_policy(bad)
+
+
+def test_shipped_subgroup_threshold_states_its_rationale() -> None:
+    policy = load_policy()
+    assert policy.subgroup_thresholds
+    for declared in policy.subgroup_thresholds:
+        assert len(declared.rationale.strip()) > 40, declared
+
+
+@pytest.mark.parametrize("tier", ["allow", "custom_tier"])
+def test_subgroup_threshold_rejects_unsupported_floored_tier(tmp_path: Path, tier: str) -> None:
+    path = tmp_path / "policy.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "tiers": {tier: 1},
+                "tier_precision_floors": {tier: 0.9},
+                "subgroup_thresholds": {tier: [{"signal": "identity_term_present"}]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="not a model-driven tier"):
+        load_policy(path)

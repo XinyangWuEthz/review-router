@@ -13,7 +13,14 @@ from typing import Any
 
 import yaml
 
-__all__ = ["Condition", "Rule", "Policy", "load_policy", "DEFAULT_POLICY_PATH"]
+__all__ = [
+    "Condition",
+    "Rule",
+    "SubgroupThreshold",
+    "Policy",
+    "load_policy",
+    "DEFAULT_POLICY_PATH",
+]
 
 DEFAULT_POLICY_PATH = Path(__file__).parent / "policy.yaml"
 
@@ -51,6 +58,15 @@ class Rule:
 
 
 @dataclass(frozen=True)
+class SubgroupThreshold:
+    """A per-label tier threshold target fitted to rows where `signal` is 1."""
+
+    tier: str
+    signal: str
+    rationale: str
+
+
+@dataclass(frozen=True)
 class Policy:
     version: int
     tiers: dict[str, int]
@@ -58,6 +74,7 @@ class Policy:
     tier_precision_floors: dict[str, float]
     rules: tuple[Rule, ...]
     gates: dict[str, Any]
+    subgroup_thresholds: tuple[SubgroupThreshold, ...] = ()
 
     def route(self, signals: dict[str, float], default: str = "allow") -> str:
         """Highest matching tier wins; nothing matching means the default tier."""
@@ -106,16 +123,29 @@ def load_policy(path: Path | str = DEFAULT_POLICY_PATH) -> Policy:
             )
         )
 
+    floors = {str(k): float(v) for k, v in (raw.get("tier_precision_floors") or {}).items()}
+    subgroups: list[SubgroupThreshold] = []
+    for tier, entries in (raw.get("subgroup_thresholds") or {}).items():
+        if tier not in tiers or tier not in floors:
+            raise ValueError(f"subgroup_thresholds: {tier!r} is not a tier with a precision floor")
+        if tier not in {"human_review", "auto_action"}:
+            raise ValueError(f"subgroup_thresholds: {tier!r} is not a model-driven tier")
+        for entry in entries or []:
+            signal = entry.get("signal")
+            if not signal:
+                raise ValueError(f"subgroup_thresholds: {tier}: entry without a signal")
+            subgroups.append(
+                SubgroupThreshold(
+                    tier=str(tier), signal=str(signal), rationale=str(entry.get("rationale", ""))
+                )
+            )
+
     return Policy(
         version=int(raw.get("version", 1)),
         tiers={str(k): int(v) for k, v in tiers.items()},
-        severity_weights={
-            str(k): float(v) for k, v in (raw.get("severity_weights") or {}).items()
-        },
-        tier_precision_floors={
-            str(k): float(v)
-            for k, v in (raw.get("tier_precision_floors") or {}).items()
-        },
+        severity_weights={str(k): float(v) for k, v in (raw.get("severity_weights") or {}).items()},
+        tier_precision_floors=floors,
         rules=tuple(rules),
         gates=dict(raw.get("gates") or {}),
+        subgroup_thresholds=tuple(subgroups),
     )

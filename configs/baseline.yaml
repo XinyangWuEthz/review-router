@@ -24,6 +24,7 @@ simulation:                     # assumptions, not measurements
   loads_per_hour: [60, 108, 180]   # below, near and above capacity
   seeds: [1, 2, 3, 4, 5]
   high_risk_min_weight: 5       # threat (10), identity_hate (6), severe_toxic (5)
-  primary:                      # the (load, strategy) pair the regression gates read
-    load_per_hour: 108
+  primary:                      # near-capacity load the queue-clearing gates read, and the
+    load_per_hour: 108          # router strategy compared against fifo on time-to-action
     strategy: severity
+  thesis_load_per_hour: 180     # overload where ordering changes harm handled per reviewer-hour

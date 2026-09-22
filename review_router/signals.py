@@ -13,7 +13,7 @@ from collections.abc import Iterable
 
 import numpy as np
 
-__all__ = ["IDENTITY_TERMS", "identity_term_present"]
+__all__ = ["IDENTITY_TERMS", "IDENTITY_PATTERN", "identity_term_present"]
 
 IDENTITY_TERMS: tuple[str, ...] = (
     "gay",
@@ -81,11 +81,13 @@ IDENTITY_TERMS: tuple[str, ...] = (
     "elderly",
 )
 
-_PATTERN = re.compile(
+IDENTITY_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(t) for t in IDENTITY_TERMS) + r")\b", re.IGNORECASE
 )
 
 
 def identity_term_present(texts: Iterable[str]) -> np.ndarray:
     """1.0 where any identity term occurs as a whole word, else 0.0."""
-    return np.array([1.0 if _PATTERN.search(str(text)) else 0.0 for text in texts], dtype=float)
+    return np.array(
+        [1.0 if IDENTITY_PATTERN.search(str(text)) else 0.0 for text in texts], dtype=float
+    )

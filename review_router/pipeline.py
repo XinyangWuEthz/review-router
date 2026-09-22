@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import pickle
 import platform
 import shutil
@@ -26,10 +27,10 @@ import yaml
 
 from review_router import __version__
 from review_router.data import LABELS, Corpus, label_counts, load_corpus
-from review_router.metrics import per_label_metrics, tier_metrics
+from review_router.metrics import per_label_metrics, tier_metrics, wilson_interval
 from review_router.model import ModelConfig, TfidfLogitModel
 from review_router.policy import DEFAULT_POLICY_PATH, Policy, load_policy
-from review_router.signals import identity_term_present
+from review_router.signals import IDENTITY_PATTERN, IDENTITY_TERMS, identity_term_present
 from review_router.simulate import (
     STRATEGIES,
     SimConfig,
@@ -38,6 +39,7 @@ from review_router.simulate import (
     simulate,
 )
 from review_router.thresholds import (
+    TIER_ORDER,
     TierThresholds,
     apply_rules,
     model_tier,
@@ -65,6 +67,7 @@ class RunConfig:
     high_risk_min_weight: float
     primary_load_per_hour: float
     primary_strategy: str
+    thesis_load_per_hour: float
     label: str
 
 
@@ -91,6 +94,9 @@ def load_config(path: Path) -> RunConfig:
         raise ValueError("loads_per_hour must contain positive finite arrival rates")
     if primary_load not in loads:
         raise ValueError("primary load_per_hour must appear in loads_per_hour")
+    thesis_load = float(sim_raw.get("thesis_load_per_hour", max(loads)))
+    if thesis_load not in loads:
+        raise ValueError("thesis_load_per_hour must appear in loads_per_hour")
     if not seeds or any(x < 0 for x in seeds):
         raise ValueError("simulation seeds must contain nonnegative integers")
     return RunConfig(
@@ -110,6 +116,7 @@ def load_config(path: Path) -> RunConfig:
         high_risk_min_weight=float(sim_raw.get("high_risk_min_weight", 5.0)),
         primary_load_per_hour=primary_load,
         primary_strategy=strategy,
+        thesis_load_per_hour=thesis_load,
         label=str(raw.get("label", path.stem)),
     )
 
@@ -120,7 +127,11 @@ def load_config(path: Path) -> RunConfig:
 def _git(*args: str) -> str | None:
     try:
         out = subprocess.run(
-            ["git", *args], capture_output=True, text=True, check=True, timeout=10,
+            ["git", *args],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=10,
             cwd=Path(__file__).resolve().parent.parent,
         )
     except (OSError, subprocess.SubprocessError):
@@ -181,7 +192,11 @@ def _route(
     thresholds: TierThresholds,
     policy: Policy,
 ) -> dict[str, Any]:
-    tiers, triggers = model_tier(proba, thresholds)
+    signals = {"identity_term_present": identity}
+    tiers, triggers = model_tier(proba, thresholds, signals)
+    population_tiers, population_triggers = model_tier(
+        proba, TierThresholds(thresholds.thresholds, thresholds.labels), None
+    )
     rule_action, rule_ids = apply_rules(proba, LABELS, identity, policy)
     final = tiers.copy()
     forced = rule_action != ""
@@ -192,9 +207,13 @@ def _route(
     # auto_action is judged on the label that fired; human_review on any label.
     correct = np.where(final == AUTO, trigger_true, any_true)
     correct_model = np.where(tiers == AUTO, trigger_true, any_true)
+    population_trigger_true = (population_triggers & (y == 1)).any(axis=1)
+    correct_population = np.where(population_tiers == AUTO, population_trigger_true, any_true)
 
     return {
         "correct_model": correct_model,
+        "correct_population": correct_population,
+        "population_tier": population_tiers,
         "model_tier": tiers,
         "final_tier": final,
         "triggers": triggers,
@@ -203,6 +222,27 @@ def _route(
         "correct": correct,
         "any_true": any_true,
     }
+
+
+def _subgroup_stats(routing: dict[str, Any], y: np.ndarray, policy: Policy) -> dict[str, Any]:
+    """What the declared subgroup thresholds changed.
+
+    Rows the population threshold alone would have placed in a tier that the
+    subgroup threshold did not.
+    """
+    population: np.ndarray = routing["population_tier"]
+    model: np.ndarray = routing["model_tier"]
+    any_true = y.any(axis=1)
+    out: dict[str, Any] = {}
+    for tier in TIER_ORDER:
+        moved = (population == tier) & (model != tier)
+        out[tier] = {
+            "n_population_tier": int((population == tier).sum()),
+            "n_removed_by_subgroup_threshold": int(moved.sum()),
+            "n_removed_truly_positive_any_label": int((moved & any_true).sum()),
+        }
+    out["declared"] = [{"tier": d.tier, "signal": d.signal} for d in policy.subgroup_thresholds]
+    return out
 
 
 def _rule_stats(routing: dict[str, Any], policy: Policy) -> dict[str, Any]:
@@ -240,6 +280,209 @@ def _allow_false_negatives(final: np.ndarray, y: np.ndarray) -> dict[str, int]:
     return {label: int((allowed & (y[:, j] == 1)).sum()) for j, label in enumerate(LABELS)}
 
 
+def _rate_ratio(
+    with_fp: int, with_n: int, without_fp: int, without_n: int
+) -> tuple[float | None, list[float] | None]:
+    """Ratio of two event rates with a 95% log-ratio (Katz) interval.
+
+    A 0.5 continuity correction is applied to the interval when a cell is
+    zero; the point ratio is None when the without-term rate is exactly zero.
+    """
+    if with_n == 0 or without_n == 0:
+        return None, None
+    a, n1, b, n2 = float(with_fp), float(with_n), float(without_fp), float(without_n)
+    ratio = (a / n1) / (b / n2) if b > 0 else None
+    if a == 0 or b == 0:
+        a, b, n1, n2 = a + 0.5, b + 0.5, n1 + 1.0, n2 + 1.0
+    estimate = (a / n1) / (b / n2)
+    se = math.sqrt(max(1 / a - 1 / n1 + 1 / b - 1 / n2, 0.0))
+    return ratio, [estimate * math.exp(-1.959964 * se), estimate * math.exp(1.959964 * se)]
+
+
+def _subgroup_false_discoveries(
+    predicted_positive: np.ndarray, correct: np.ndarray, subgroup: np.ndarray
+) -> dict[str, Any]:
+    positive = predicted_positive & subgroup
+    n_pos = int(positive.sum())
+    n_fp = int((positive & ~correct).sum())
+    return {
+        "n_rows": int(subgroup.sum()),
+        "n_predicted_positive": n_pos,
+        "n_false_positive": n_fp,
+        "false_discovery_rate": (n_fp / n_pos) if n_pos else None,
+        "false_discovery_rate_ci95": list(wilson_interval(n_fp, n_pos)) if n_pos else None,
+    }
+
+
+def _compare_subgroups(
+    predicted_positive: np.ndarray, correct: np.ndarray, has_term: np.ndarray
+) -> dict[str, Any]:
+    with_term = _subgroup_false_discoveries(predicted_positive, correct, has_term)
+    without = _subgroup_false_discoveries(predicted_positive, correct, ~has_term)
+    ratio, ci = _rate_ratio(
+        with_term["n_false_positive"],
+        with_term["n_predicted_positive"],
+        without["n_false_positive"],
+        without["n_predicted_positive"],
+    )
+    return {
+        "with_identity_term": with_term,
+        "without_identity_term": without,
+        "false_discovery_rate_ratio": ratio,
+        "false_discovery_rate_ratio_ci95": ci,
+    }
+
+
+def _compare_clean_negative_subgroups(
+    predicted_positive: np.ndarray, any_true: np.ndarray, has_term: np.ndarray
+) -> dict[str, Any]:
+    """FPR among comments with no positive label, including allowed comments."""
+    groups: dict[str, dict[str, Any]] = {}
+    for name, subgroup in (("with_identity_term", has_term), ("without_identity_term", ~has_term)):
+        negatives = subgroup & ~any_true
+        n_negative = int(negatives.sum())
+        n_fp = int((negatives & predicted_positive).sum())
+        groups[name] = {
+            "n_actual_negative": n_negative,
+            "n_false_positive": n_fp,
+            "false_positive_rate": n_fp / n_negative if n_negative else None,
+            "false_positive_rate_ci95": (
+                list(wilson_interval(n_fp, n_negative)) if n_negative else None
+            ),
+        }
+    with_term, without = groups["with_identity_term"], groups["without_identity_term"]
+    ratio, ci = _rate_ratio(
+        with_term["n_false_positive"],
+        with_term["n_actual_negative"],
+        without["n_false_positive"],
+        without["n_actual_negative"],
+    )
+    return {
+        **groups,
+        "false_positive_rate_ratio": ratio,
+        "false_positive_rate_ratio_ci95": ci,
+    }
+
+
+def _base_rate(any_true: np.ndarray, subgroup: np.ndarray) -> dict[str, Any]:
+    n = int(subgroup.sum())
+    positives = int((any_true & subgroup).sum())
+    return {
+        "n_rows": n,
+        "n_truly_positive_any_label": positives,
+        "rate": (positives / n) if n else None,
+    }
+
+
+def _subgroup_false_omission(
+    tiers: np.ndarray, any_true: np.ndarray, subgroup: np.ndarray
+) -> dict[str, Any]:
+    allowed = (tiers == ALLOW) & subgroup
+    n_allowed = int(allowed.sum())
+    n_missed = int((allowed & any_true).sum())
+    return {
+        "n_allowed": n_allowed,
+        "n_truly_positive": n_missed,
+        "false_omission_rate": (n_missed / n_allowed) if n_allowed else None,
+        "false_omission_rate_ci95": (
+            list(wilson_interval(n_missed, n_allowed)) if n_allowed else None
+        ),
+    }
+
+
+def _by_term(
+    texts: list[str], predicted_positive: np.ndarray, correct: np.ndarray, top: int = 12
+) -> list[dict[str, Any]]:
+    """False discoveries per identity term, with predicted positives as denominator."""
+    hits: dict[str, np.ndarray] = {t: np.zeros(len(texts), dtype=bool) for t in IDENTITY_TERMS}
+    for i, text in enumerate(texts):
+        if not predicted_positive[i]:
+            continue
+        for term in {m.lower() for m in IDENTITY_PATTERN.findall(text)}:
+            hits[term][i] = True
+    rows: list[dict[str, Any]] = []
+    for term, mask in hits.items():
+        n = int(mask.sum())
+        if n == 0:
+            continue
+        fp = int((mask & ~correct).sum())
+        rows.append(
+            {
+                "term": term,
+                "n_predicted_positive": n,
+                "n_false_positive": fp,
+                "false_discovery_rate": fp / n,
+            }
+        )
+    rows.sort(key=lambda r: (-int(r["n_predicted_positive"]), str(r["term"])))
+    return rows[:top]
+
+
+def _identity_concentration(
+    routing: dict[str, Any], identity: np.ndarray, texts: list[str]
+) -> dict[str, Any]:
+    """Do false positives concentrate on identity-mentioning comments?
+
+    "Identity term" is the fixed word list in review_router.signals, a proxy
+    and not an annotation. Reported on three bases: the population tier (the
+    classifier alone, population thresholds only), the model tier (after the
+    subgroup thresholds, before rules) and the final tier (what the system
+    does); pooled over the two positive tiers and per tier, because
+    auto_action is the enforcement and human_review is scrutiny. A false
+    discovery follows each tier's own precision definition: the triggering
+    label is not true for auto_action, no label is true for human_review.
+    Conventional FPR uses all comments with no positive label as denominator
+    and is reported separately. Neither diagnostic identifies protected groups.
+    """
+    any_true: np.ndarray = routing["any_true"]
+    has_term = identity.astype(bool)
+    out: dict[str, Any] = {
+        "definition": "identity term = any whole-word match of "
+        "review_router.signals.IDENTITY_TERMS; "
+        "predicted positive = routed to auto_action or human_review; false positive = the "
+        "tier's own definition (triggering label not true for auto_action, no label true "
+        "for human_review); FDR = false positives / predicted positives; FDR ratio = "
+        "with-term FDR / without-term FDR with a 95% log-ratio interval. "
+        "clean_negative_false_positives separately reports FPR = clean comments routed "
+        "to the tier / all clean comments in that subgroup. "
+        "allow_false_omission = truly positive allowed comments / all allowed comments.",
+        "identity_terms": sorted(IDENTITY_TERMS),
+    }
+    for basis, correct_key in (
+        ("population_tier", "correct_population"),
+        ("model_tier", "correct_model"),
+        ("final_tier", "correct"),
+    ):
+        tiers = routing[basis]
+        correct = routing[correct_key]
+        section: dict[str, Any] = {
+            "base_rate": {
+                "with_identity_term": _base_rate(any_true, has_term),
+                "without_identity_term": _base_rate(any_true, ~has_term),
+            },
+            "predicted_positive": _compare_subgroups(tiers != ALLOW, correct, has_term),
+            AUTO: _compare_subgroups(tiers == AUTO, correct, has_term),
+            HUMAN: _compare_subgroups(tiers == HUMAN, correct, has_term),
+            "clean_negative_false_positives": {
+                "predicted_positive": _compare_clean_negative_subgroups(
+                    tiers != ALLOW, any_true, has_term
+                ),
+                AUTO: _compare_clean_negative_subgroups(tiers == AUTO, any_true, has_term),
+                HUMAN: _compare_clean_negative_subgroups(tiers == HUMAN, any_true, has_term),
+            },
+            # False omission is conditioned on allowed comments, not all true
+            # positives. It is descriptive and may depend on subgroup base rates.
+            "allow_false_omission": {
+                "with_identity_term": _subgroup_false_omission(tiers, any_true, has_term),
+                "without_identity_term": _subgroup_false_omission(tiers, any_true, ~has_term),
+            },
+        }
+        if basis == "final_tier":
+            section["by_term"] = _by_term(texts, tiers != ALLOW, correct)
+        out[basis] = section
+    return out
+
+
 # --------------------------------------------------------------------------- simulation
 
 
@@ -272,10 +515,15 @@ def _run_simulation(
                 rows.append({"load_per_hour": load, "seed": seed, **result.as_json()})
 
     summary = _summarise(rows)
-    primary_key = (config.primary_load_per_hour, config.primary_strategy)
-    fifo_key = (config.primary_load_per_hour, "fifo")
-    router = summary.get(_key(*primary_key), {})
-    fifo = summary.get(_key(*fifo_key), {})
+    router = summary.get(_key(config.primary_load_per_hour, config.primary_strategy), {})
+    fifo = summary.get(_key(config.primary_load_per_hour, "fifo"), {})
+    thesis_router = summary.get(_key(config.thesis_load_per_hour, config.primary_strategy), {})
+    thesis_fifo = summary.get(_key(config.thesis_load_per_hour, "fifo"), {})
+
+    def mean(entry: dict[str, Any], field: str) -> float | None:
+        value = entry.get(field)
+        return float(value["mean"]) if value else None
+
     return {
         "assumptions": {
             **asdict(config.sim),
@@ -292,16 +540,81 @@ def _run_simulation(
         "primary": {
             "load_per_hour": config.primary_load_per_hour,
             "strategy": config.primary_strategy,
+            "note": "queue-clearing gates read this load; the router strategy is compared "
+            "against fifo at the same load for time-to-action",
         },
+        "thesis": {
+            "load_per_hour": config.thesis_load_per_hour,
+            "strategy": config.primary_strategy,
+            "note": "harm handled per reviewer-hour only differs between orderings when "
+            "the queue does not clear, so the FIFO comparison reads this load",
+        },
+        # Gate inputs. Ordering cannot change harm handled once everything is
+        # handled, so that ratio is read at the thesis (overload) load; the
+        # time-to-action ratio is read at the primary (near-capacity) load.
         "harm_per_reviewer_hour": {
-            "router": router.get("harm_per_reviewer_hour", {}).get("mean"),
-            "fifo": fifo.get("harm_per_reviewer_hour", {}).get("mean"),
+            "router": mean(thesis_router, "harm_per_reviewer_hour"),
+            "fifo": mean(thesis_fifo, "harm_per_reviewer_hour"),
+            "load_per_hour": config.thesis_load_per_hour,
         },
-        "queue_depth_p95": router.get("queue_depth_p95", {}).get("mean"),
-        "reviewer_utilization": router.get("reviewer_utilization", {}).get("mean"),
+        "high_risk_wait_p90": {
+            "router": mean(router, "high_risk_wait_p90"),
+            "fifo": mean(fifo, "high_risk_wait_p90"),
+            "load_per_hour": config.primary_load_per_hour,
+        },
+        "queue_depth_p95": mean(router, "queue_depth_p95"),
+        "reviewer_utilization": mean(router, "reviewer_utilization"),
         "summary": summary,
+        "paired": _paired(rows),
         "table": rows,
     }
+
+
+_PAIRS: tuple[tuple[str, str], ...] = (("severity", "fifo"), ("prob", "fifo"), ("severity", "prob"))
+_HIGHER_IS_BETTER: dict[str, bool] = {
+    "high_risk_handled": True,
+    "harm_per_reviewer_hour": True,
+    "high_risk_unhandled": False,
+    "high_risk_wait_p90": False,
+    "wait_p90": False,
+}
+
+
+def _paired(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Per-seed paired differences between orderings.
+
+    Every ordering replays the same arrivals for a given (load, seed), so the
+    honest comparison is paired: how many seeds favour the first ordering, not
+    whether the seed means overlap.
+    """
+    by = {(r["load_per_hour"], r["seed"], r["strategy"]): r for r in rows}
+    loads = sorted({r["load_per_hour"] for r in rows})
+    seeds = sorted({r["seed"] for r in rows})
+    out: dict[str, dict[str, Any]] = {}
+    for load in loads:
+        for first, second in _PAIRS:
+            entry: dict[str, Any] = {}
+            for field, higher in _HIGHER_IS_BETTER.items():
+                diffs = []
+                for seed in seeds:
+                    x = by.get((load, seed, first), {}).get(field)
+                    y = by.get((load, seed, second), {}).get(field)
+                    if x is None or y is None:
+                        continue
+                    diffs.append(float(x) - float(y))
+                if not diffs:
+                    entry[field] = None
+                    continue
+                entry[field] = {
+                    "mean_diff": float(np.mean(diffs)),
+                    "min_diff": float(min(diffs)),
+                    "max_diff": float(max(diffs)),
+                    "n_seeds": len(diffs),
+                    "n_seeds_first_better": sum(1 for d in diffs if d != 0 and (d > 0) == higher),
+                    "n_seeds_tied": sum(1 for d in diffs if d == 0),
+                }
+            out[f"{first}_vs_{second}@{load:g}"] = entry
+    return out
 
 
 def _key(load: float, strategy: str) -> str:
@@ -355,18 +668,20 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
         "",
         "## Per-label quality (scored test set)",
         "",
-        "| label | positives | AP | ROC-AUC | human thr | P@human | R@human "
+        "| label | positives | AP (selection) | AP | ROC-AUC | human thr | P@human | R@human "
         "| auto thr | P@auto | R@auto |",
-        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
+    selection = report["threshold_selection"]["per_label"]
     if report["synthetic"]:
         lines[2:2] = ["SYNTHETIC pipeline check only; these are not Jigsaw results.", ""]
     for label, m in report["per_label"].items():
         h, a = m["at_human_review"], m["at_auto_action"]
         lines.append(
-            f"| {label} | {m['positives']} | {_fmt(m['average_precision'])} | {_fmt(m['roc_auc'])} "
-            f"| {_fmt(h['threshold'])} | {_fmt(h['precision'])} | {_fmt(h['recall'])} "
-            f"| {_fmt(a['threshold'])} | {_fmt(a['precision'])} | {_fmt(a['recall'])} |"
+            f"| {label} | {m['positives']} | {_fmt(selection[label]['average_precision'])} "
+            f"| {_fmt(m['average_precision'])} | {_fmt(m['roc_auc'])} "
+            f"| {_fmt(h['threshold'], 4)} | {_fmt(h['precision'])} | {_fmt(h['recall'])} "
+            f"| {_fmt(a['threshold'], 4)} | {_fmt(a['precision'])} | {_fmt(a['recall'])} |"
         )
     lines += [
         "",
@@ -410,7 +725,7 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
     for tier, m in report["threshold_selection"]["tiers"].items():
         lines.append(
             f"| {tier} | {m['n_predicted_positive']} | {_fmt(m['coverage'])} "
-            f"| {_fmt(m['precision'])} |"
+            f"| {_fmt(m['precision'], 4)} |"
         )
     lines += [
         "",
@@ -419,6 +734,89 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
         f"({rules['n_added_to_queue_from_allow_true_positive']} truly positive); "
         f"{rules['n_downgraded_from_auto_action']} moved auto_action -> human_review.",
         f"Hierarchy violation rate: {report['consistency']['hierarchy_violation_rate']:.4%}.",
+        "",
+        "## Subgroup thresholds",
+        "",
+        f"Declared: {report['subgroup_thresholds']['threshold_selection']['declared']}. "
+        f"Thresholds on the subgroup: {report['subgroup_thresholds']['thresholds']}.",
+        "",
+        "| split | tier | population-tier rows | removed by subgroup threshold "
+        "| of which truly positive |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for split in ("threshold_selection", "test"):
+        for tier, st in report["subgroup_thresholds"][split].items():
+            if tier == "declared":
+                continue
+            lines.append(
+                f"| {split} | {tier} | {st['n_population_tier']} "
+                f"| {st['n_removed_by_subgroup_threshold']} "
+                f"| {st['n_removed_truly_positive_any_label']} |"
+            )
+    lines += [
+        "",
+        "## False discoveries and false positives on identity mentions",
+        "",
+        "Identity term = whole-word match of the fixed list in review_router/signals.py "
+        "(a proxy, not an annotation). FDR = false positives / predicted positives. "
+        "The FDR ratio compares comments with a term to comments without one. "
+        "population_tier = classifier alone; model_tier = after subgroup thresholds, before "
+        "rules; final_tier = after rules.",
+        "",
+        "| split | basis | tier | with term (FP / predicted positive) "
+        "| without term (FP / predicted positive) | FDR ratio | 95% CI |",
+        "|---|---|---|---:|---:|---:|---|",
+    ]
+    miss_lines: list[str] = []
+    fpr_lines = [
+        "",
+        "Conventional FPR uses all comments with no positive label as the denominator, "
+        "including comments the system allowed. It measures a different error rate from FDR.",
+        "",
+        "| split | basis | tier | with term (FP / clean comments) "
+        "| without term (FP / clean comments) | FPR ratio | 95% CI |",
+        "|---|---|---|---:|---:|---:|---|",
+    ]
+    for split, section in report["identity_false_positives"].items():
+        for basis in ("population_tier", "model_tier", "final_tier"):
+            for tier in ("predicted_positive", AUTO, HUMAN):
+                cmp = section[basis][tier]
+                w, wo = cmp["with_identity_term"], cmp["without_identity_term"]
+                ci = cmp["false_discovery_rate_ratio_ci95"]
+                ci_s = f"[{ci[0]:.2f}, {ci[1]:.2f}]" if ci else ""
+                lines.append(
+                    f"| {split} | {basis} | {tier} | {w['n_false_positive']} / "
+                    f"{w['n_predicted_positive']} | {wo['n_false_positive']} / "
+                    f"{wo['n_predicted_positive']} | {_fmt(cmp['false_discovery_rate_ratio'], 2)} "
+                    f"| {ci_s} |"
+                )
+                fpr = section[basis]["clean_negative_false_positives"][tier]
+                fw, fwo = fpr["with_identity_term"], fpr["without_identity_term"]
+                fci = fpr["false_positive_rate_ratio_ci95"]
+                fci_s = f"[{fci[0]:.2f}, {fci[1]:.2f}]" if fci else ""
+                fpr_lines.append(
+                    f"| {split} | {basis} | {tier} | {fw['n_false_positive']} / "
+                    f"{fw['n_actual_negative']} | {fwo['n_false_positive']} / "
+                    f"{fwo['n_actual_negative']} | {_fmt(fpr['false_positive_rate_ratio'], 2)} "
+                    f"| {fci_s} |"
+                )
+        miss = section["final_tier"]["allow_false_omission"]
+        miss_lines.append(
+            f"\nFalse omission rate, truly positive / all allowed comments ({split}, final tier): "
+            f"{_fmt(miss['with_identity_term']['false_omission_rate'])} with an identity term "
+            f"({miss['with_identity_term']['n_truly_positive']} of "
+            f"{miss['with_identity_term']['n_allowed']}) vs "
+            f"{_fmt(miss['without_identity_term']['false_omission_rate'])} without."
+        )
+    lines += fpr_lines + miss_lines
+    lines += ["", "Per term (test split, final tier, most frequent first):", ""]
+    lines += ["| term | predicted positive | false positives | FDR |", "|---|---:|---:|---:|"]
+    for row in report["identity_false_positives"]["test"]["final_tier"]["by_term"]:
+        lines.append(
+            f"| {row['term']} | {row['n_predicted_positive']} | {row['n_false_positive']} "
+            f"| {_fmt(row['false_discovery_rate'])} |"
+        )
+    lines += [
         "",
         "## Queue simulation (mean ± std over seeds)",
         "",
@@ -438,11 +836,22 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
             "High-risk unhandled includes jobs still in service at the horizon; "
             "backlog includes only jobs that have not started."
         )
+        harm, wait = sim["harm_per_reviewer_hour"], sim["high_risk_wait_p90"]
+        lines += [
+            "",
+            f"Gate inputs: harm per reviewer-hour at {harm['load_per_hour']:g}/h, "
+            f"{sim['primary']['strategy']} {_fmt(harm['router'], 2)} "
+            f"vs fifo {_fmt(harm['fifo'], 2)}; "
+            f"high-risk wait p90 at {wait['load_per_hour']:g}/h, "
+            f"{sim['primary']['strategy']} {_fmt(wait['router'], 1)} "
+            f"vs fifo {_fmt(wait['fifo'], 1)} min.",
+        ]
         lines += [
             "",
             "| load/h | strategy | arrivals | handled | high-risk handled | high-risk unhandled "
-            "| harm/reviewer-h | wait p50 | wait p90 | HR wait p50 | backlog end | util |",
-            "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| harm/reviewer-h | wait p50 | wait p90 | HR wait p50 | HR wait p90 "
+            "| backlog end | util |",
+            "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
         for entry in sim["summary"].values():
             e = entry
@@ -457,6 +866,7 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
                 _fmt(e["wait_p50"], 1),
                 _fmt(e["wait_p90"], 1),
                 _fmt(e["high_risk_wait_p50"], 1),
+                _fmt(e["high_risk_wait_p90"], 1),
                 _fmt(e["backlog_end"], 1),
                 _fmt(e["reviewer_utilization"], 2),
             ]
@@ -496,10 +906,11 @@ def run(config_path: Path) -> Path:
     model = TfidfLogitModel(config.model).fit(x_train, y_train, config.seed)
     model.calibrate(x_calib, y_calib)
     p_thresh = model.predict_proba(x_thresh)
-    thresholds = select_thresholds(y_thresh, p_thresh, LABELS, policy)
-    selection_routing = _route(
-        p_thresh, y_thresh, identity_term_present(x_thresh), thresholds, policy
+    identity_thresh = identity_term_present(x_thresh)
+    thresholds = select_thresholds(
+        y_thresh, p_thresh, LABELS, policy, {"identity_term_present": identity_thresh}
     )
+    selection_routing = _route(p_thresh, y_thresh, identity_thresh, thresholds, policy)
     (run_dir / "thresholds.json").write_text(json.dumps(thresholds.as_json(), indent=2))
     with (run_dir / "model.pkl").open("wb") as handle:
         pickle.dump(model, handle)
@@ -531,16 +942,21 @@ def run(config_path: Path) -> Path:
         "synthetic": synthetic,
         "threshold_selection": {
             "note": "development data; per-label precision targets do not guarantee tier precision",
+            "per_label": per_label_metrics(y_thresh, p_thresh, LABELS, thresholds.thresholds),
             "tiers": tier_metrics(
-                selection_routing["final_tier"], selection_routing["correct"],
-                (AUTO, HUMAN, ALLOW), min_pos,
+                selection_routing["final_tier"],
+                selection_routing["correct"],
+                (AUTO, HUMAN, ALLOW),
+                min_pos,
             ),
             "tiers_model_only": tier_metrics(
-                selection_routing["model_tier"], selection_routing["correct_model"],
-                (AUTO, HUMAN, ALLOW), min_pos,
+                selection_routing["model_tier"],
+                selection_routing["correct_model"],
+                (AUTO, HUMAN, ALLOW),
+                min_pos,
             ),
         },
-        "per_label": per_label_metrics(y_test, proba, LABELS, thresholds.as_json()),
+        "per_label": per_label_metrics(y_test, proba, LABELS, thresholds.thresholds),
         "tiers": tier_metrics(
             routing["final_tier"], routing["correct"], (AUTO, HUMAN, ALLOW), min_pos
         ),
@@ -552,7 +968,18 @@ def run(config_path: Path) -> Path:
             HUMAN: "any label is truly positive",
         },
         "allow_false_negatives": _allow_false_negatives(routing["final_tier"], y_test),
+        "identity_false_positives": {
+            "threshold_selection": _identity_concentration(
+                selection_routing, identity_thresh, x_thresh
+            ),
+            "test": _identity_concentration(routing, identity, x_test),
+        },
         "rules": _rule_stats(routing, policy),
+        "subgroup_thresholds": {
+            "thresholds": thresholds.subgroup,
+            "threshold_selection": _subgroup_stats(selection_routing, y_thresh, policy),
+            "test": _subgroup_stats(routing, y_test, policy),
+        },
         "consistency": _consistency(proba),
         "simulation": _run_simulation(proba, y_test, routing["final_tier"], policy, config),
     }

@@ -11,6 +11,7 @@ number immediately instead of just which boolean flipped.
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -54,7 +55,8 @@ def test_per_label_average_precision() -> None:
     """
     report = _load_report("per_label")
     configured = {
-        label: spec for label, spec in GATES["per_label_average_precision"].items()
+        label: spec
+        for label, spec in GATES["per_label_average_precision"].items()
         if spec.get("floor") is not None
     }
     if not configured:
@@ -103,6 +105,19 @@ def test_router_beats_fifo_at_equal_capacity() -> None:
     assert ratio >= floor, f"router no longer beats FIFO: {sim['harm_per_reviewer_hour']}"
 
 
+def test_router_reaches_high_risk_earlier_than_fifo() -> None:
+    """Time-to-action for high-risk items at the stated capacity, router over FIFO."""
+    report = _load_report("simulation")
+    ceiling = _floor(
+        GATES["routing"].get("high_risk_wait_p90_vs_fifo_max"), "high-risk wait vs FIFO"
+    )
+    waits = report["simulation"]["high_risk_wait_p90"]
+    if waits["router"] is None or not waits["fifo"]:
+        pytest.skip(f"high-risk wait p90 is undefined for this run: {waits}")
+    ratio = waits["router"] / waits["fifo"]
+    assert ratio <= ceiling, f"router no longer reaches high-risk items earlier: {waits}"
+
+
 def test_queue_clears_under_stated_capacity() -> None:
     report = _load_report("simulation")
     sim = report["simulation"]
@@ -111,6 +126,43 @@ def test_queue_clears_under_stated_capacity() -> None:
     assert sim["reviewer_utilization"] >= GATES["routing"]["reviewer_utilization_min"], (
         f"scheduler is underutilizing reviewers: {sim}"
     )
+
+
+@pytest.mark.parametrize("tier", ["predicted_positive", "auto_action"])
+def test_false_positives_do_not_concentrate_on_identity_mentions(tier: str) -> None:
+    """Detect a disparity in false discoveries; this does not certify fairness.
+
+    FDR has predicted positives as its denominator. A lower interval bound
+    above the ceiling detects a disparity; an interval crossing it is
+    inconclusive and skips. Report both the final pooled result and the
+    automatic candidate tier after subgroup thresholds, before rules.
+    """
+    report = _load_report("identity_false_positives")
+    ceiling = _floor(
+        GATES["fairness"].get("identity_false_discovery_rate_ratio_max"),
+        "identity false-discovery ratio",
+    )
+    basis = "final_tier" if tier == "predicted_positive" else "model_tier"
+    section = report["identity_false_positives"]["test"][basis][tier]
+    minimum = GATES["min_predicted_positives_for_precision"]
+    _check_discovery_rate_ratio(section, ceiling, minimum)
+
+
+def _check_discovery_rate_ratio(section: dict[str, Any], ceiling: float, minimum: int) -> None:
+    groups = (section["with_identity_term"], section["without_identity_term"])
+    if any(g["n_predicted_positive"] < minimum for g in groups):
+        pytest.skip(f"too few predicted positives to compare subgroup FDR: {section}")
+    ci = section["false_discovery_rate_ratio_ci95"]
+    if ci is None:
+        pytest.skip(f"subgroup FDR ratio interval is unavailable: {section}")
+    if len(ci) != 2 or not all(math.isfinite(x) for x in ci) or not 0 <= ci[0] <= ci[1]:
+        pytest.fail(f"invalid subgroup FDR ratio interval: {ci}")
+    assert ci[0] <= ceiling, (
+        "false discoveries concentrate on identity mentions: "
+        f"ratio {section['false_discovery_rate_ratio']}, 95% CI {ci}, ceiling {ceiling}; {section}"
+    )
+    if ci[1] > ceiling:
+        pytest.skip(f"subgroup FDR disparity is inconclusive: 95% CI {ci} crosses {ceiling}")
 
 
 def test_hierarchy_consistency() -> None:
@@ -146,11 +198,61 @@ def test_explicit_report_with_missing_section_fails(
 def test_null_label_floor_does_not_skip_other_configured_labels(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    monkeypatch.setitem(GATES, "per_label_average_precision", {
-        "toxic": {"floor": None}, "threat": {"floor": 0.8},
-    })
+    monkeypatch.setitem(
+        GATES,
+        "per_label_average_precision",
+        {
+            "toxic": {"floor": None},
+            "threat": {"floor": 0.8},
+        },
+    )
     path = tmp_path / "report.json"
     path.write_text(json.dumps({"per_label": {"threat": {"average_precision": 0.1}}}))
     monkeypatch.setenv(REPORT_ENV, str(path))
     with pytest.raises(AssertionError, match="threat AP degraded"):
         test_per_label_average_precision()
+
+
+@pytest.mark.parametrize(
+    "interval, expected",
+    [([0.6, 1.1], "pass"), ([0.6, 1.6], "inconclusive"), ([1.4, 2.0], "disparity")],
+)
+def test_discovery_disparity_gate_distinguishes_evidence_from_uncertainty(
+    interval: list[float], expected: str
+) -> None:
+    section = {
+        "with_identity_term": {"n_predicted_positive": 100},
+        "without_identity_term": {"n_predicted_positive": 100},
+        "false_discovery_rate_ratio": sum(interval) / 2,
+        "false_discovery_rate_ratio_ci95": interval,
+    }
+    if expected == "inconclusive":
+        with pytest.raises(pytest.skip.Exception, match="inconclusive"):
+            _check_discovery_rate_ratio(section, 1.25, 30)
+    elif expected == "disparity":
+        with pytest.raises(AssertionError, match="false discoveries concentrate"):
+            _check_discovery_rate_ratio(section, 1.25, 30)
+    else:
+        _check_discovery_rate_ratio(section, 1.25, 30)
+
+
+def test_discovery_disparity_gate_does_not_pass_small_samples() -> None:
+    section = {
+        "with_identity_term": {"n_predicted_positive": 5},
+        "without_identity_term": {"n_predicted_positive": 100},
+        "false_discovery_rate_ratio": 0.9,
+        "false_discovery_rate_ratio_ci95": [0.6, 1.1],
+    }
+    with pytest.raises(pytest.skip.Exception, match="too few predicted positives"):
+        _check_discovery_rate_ratio(section, 1.25, 30)
+
+
+def test_discovery_disparity_gate_rejects_nonfinite_interval() -> None:
+    section = {
+        "with_identity_term": {"n_predicted_positive": 100},
+        "without_identity_term": {"n_predicted_positive": 100},
+        "false_discovery_rate_ratio": 0.9,
+        "false_discovery_rate_ratio_ci95": [0.6, float("nan")],
+    }
+    with pytest.raises(pytest.fail.Exception, match="invalid subgroup FDR ratio interval"):
+        _check_discovery_rate_ratio(section, 1.25, 30)

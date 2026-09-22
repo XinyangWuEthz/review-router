@@ -9,7 +9,8 @@ that label (threshold None), which is the expected outcome for rare labels.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -26,6 +27,19 @@ __all__ = [
 
 # Model-driven tiers, most severe first. `allow` is the fall-through.
 TIER_ORDER: tuple[str, ...] = ("auto_action", "human_review")
+
+
+def _subgroup_mask(
+    signals: dict[str, np.ndarray] | None, signal: str, n: int
+) -> np.ndarray:
+    if signals is None or signal not in signals:
+        raise KeyError(f"subgroup threshold on {signal!r} declared but no such signal was given")
+    values = np.asarray(signals[signal])
+    if values.shape != (n,):
+        raise ValueError(f"subgroup signal {signal!r} must have shape ({n},), got {values.shape}")
+    if not np.isin(values, [0, 1]).all():
+        raise ValueError(f"subgroup signal {signal!r} must contain only binary values 0 or 1")
+    return values.astype(bool)
 
 
 def choose_threshold(
@@ -58,13 +72,26 @@ def choose_threshold(
 
 @dataclass(frozen=True)
 class TierThresholds:
-    """thresholds[tier][label] -> probability threshold, or None when disabled."""
+    """thresholds[tier][label] -> probability threshold, or None when disabled.
+
+    subgroup[tier][signal][label] -> the threshold chosen on the rows where
+    that signal is 1. A row in the subgroup must clear the stricter of the
+    population threshold and the subgroup threshold; None on the subgroup
+    disables the tier for those rows on that label.
+    """
 
     thresholds: dict[str, dict[str, float | None]]
     labels: tuple[str, ...]
+    subgroup: dict[str, dict[str, dict[str, float | None]]] = field(default_factory=dict)
 
-    def as_json(self) -> dict[str, dict[str, float | None]]:
-        return {tier: dict(per_label) for tier, per_label in self.thresholds.items()}
+    def as_json(self) -> dict[str, Any]:
+        out: dict[str, Any] = {tier: dict(per_label) for tier, per_label in self.thresholds.items()}
+        if self.subgroup:
+            out["subgroup"] = {
+                tier: {signal: dict(per_label) for signal, per_label in per_signal.items()}
+                for tier, per_signal in self.subgroup.items()
+            }
+        return out
 
 
 def select_thresholds(
@@ -72,7 +99,20 @@ def select_thresholds(
     proba: np.ndarray,
     labels: tuple[str, ...],
     policy: Policy,
+    signals: dict[str, np.ndarray] | None = None,
 ) -> TierThresholds:
+    """Population thresholds per tier and label, plus the declared subgroup thresholds.
+
+    A subgroup threshold is chosen on the subgroup rows at or above the
+    population threshold, from the same floor and minimum count, so it is
+    never below the population threshold. A slice without a qualifying
+    empirical threshold gets no tier on that label. This selection criterion
+    does not certify a population precision bound.
+
+    Targets are fitted independently for each label and subgroup. Combining
+    labels or intersecting overlapping subgroups can change routed precision
+    and counts; evaluate those routed sets separately.
+    """
     min_pos = int(policy.gates.get("min_predicted_positives_for_precision", 30))
     thresholds: dict[str, dict[str, float | None]] = {}
     for tier in TIER_ORDER:
@@ -81,27 +121,64 @@ def select_thresholds(
             label: choose_threshold(y_true[:, j], proba[:, j], floor, min_pos)
             for j, label in enumerate(labels)
         }
-    return TierThresholds(thresholds=thresholds, labels=labels)
+    subgroup: dict[str, dict[str, dict[str, float | None]]] = {}
+    for declared in policy.subgroup_thresholds:
+        mask = _subgroup_mask(signals, declared.signal, len(proba))
+        floor = policy.tier_precision_floors[declared.tier]
+        per_label: dict[str, float | None] = {}
+        for j, label in enumerate(labels):
+            population = thresholds[declared.tier][label]
+            if population is None:
+                per_label[label] = None
+                continue
+            # Evaluate the slice where it is routed: at or above the population
+            # threshold. A slice threshold below it would never bind, and the
+            # minimum count must hold at the operative threshold.
+            eligible = mask & (proba[:, j] >= population)
+            per_label[label] = choose_threshold(
+                y_true[eligible, j], proba[eligible, j], floor, min_pos
+            )
+        subgroup.setdefault(declared.tier, {})[declared.signal] = per_label
+    return TierThresholds(thresholds=thresholds, labels=labels, subgroup=subgroup)
 
 
-def model_tier(proba: np.ndarray, thresholds: TierThresholds) -> tuple[np.ndarray, np.ndarray]:
+def model_tier(
+    proba: np.ndarray,
+    thresholds: TierThresholds,
+    signals: dict[str, np.ndarray] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
     """Per-row model tier and the boolean (n, n_labels) mask of triggering labels.
 
     auto_action if any label meets its auto threshold, else human_review if any
-    label meets its human threshold, else allow.
+    label meets its human threshold, else allow. Rows in a declared subgroup
+    must also meet that subgroup's threshold on the label.
     """
     n = proba.shape[0]
+    group_masks = {
+        signal: _subgroup_mask(signals, signal, n)
+        for per_signal in thresholds.subgroup.values()
+        for signal in per_signal
+    }
     tiers = np.full(n, "allow", dtype=object)
     triggers = np.zeros(proba.shape, dtype=bool)
     for tier in reversed(TIER_ORDER):  # human_review first, auto_action overrides
         mask = np.zeros(proba.shape, dtype=bool)
         for j, label in enumerate(thresholds.labels):
             t = thresholds.thresholds[tier][label]
-            if t is not None:
-                mask[:, j] = proba[:, j] >= t
-        hit = mask.any(axis=1)
-        tiers[hit] = tier
-        triggers[hit] = mask[hit]
+            if t is None:
+                continue
+            hit = proba[:, j] >= t
+            for signal, per_label in thresholds.subgroup.get(tier, {}).items():
+                in_group = group_masks[signal]
+                sub_t = per_label[label]
+                if sub_t is None:
+                    hit &= ~in_group
+                else:
+                    hit &= ~in_group | (proba[:, j] >= max(t, sub_t))
+            mask[:, j] = hit
+        hit_any = mask.any(axis=1)
+        tiers[hit_any] = tier
+        triggers[hit_any] = mask[hit_any]
     return tiers, triggers
 
 
@@ -114,7 +191,7 @@ def apply_rules(
     """Evaluate policy rules per row. Returns the rule action ('' if none) and matched ids.
 
     Rules have priority over the model tier: a matching rule's action replaces
-    it. R101 exists precisely so that threat is never auto-actioned.
+    it. The shipped R101 rule requires human review when p_threat >= 0.30.
     """
     n = proba.shape[0]
     actions = np.full(n, "", dtype=object)

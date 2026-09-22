@@ -1,21 +1,21 @@
 # review-router
 
-A capacity-constrained content-policy router: fuse signals from several expert
-models, route each item to **allow / human-review / auto-action**, and evaluate
-the routing under a review queue that has a fixed number of reviewers.
+A capacity-constrained content-policy router that sends comments to
+**allow / human-review / auto-action** and evaluates the resulting queue with a
+fixed number of reviewers. The current baseline uses TF-IDF classifiers;
+additional model signals are planned.
 
-The modelling problem on the Jigsaw toxic-comment corpus is solved — the 2018
-winning ensemble scored 0.9886 mean column-wise ROC-AUC and an off-the-shelf
-single BERT scores 0.9864. The open problem is that a model at that AUC is still
-roughly 40% precise at a usable threshold, which is what drowns a human review
-queue. This project is about the layer above the classifier.
+A classifier's ROC-AUC does not determine the precision or workload at its
+chosen operating point. This project measures the routing layer above a
+classifier: what gets acted on, what reaches human review, and what remains
+unfinished when reviewer capacity is limited.
 
 ## The result the project is built around
 
-Precision is capped by class balance before any model exists. On the 63,978
-**scored** Jigsaw test rows, at 50% recall:
+At a fixed recall and false-positive rate, class balance determines precision.
+On the 63,978 **scored** Jigsaw test rows, assuming 50% recall:
 
-| Label | positives / negatives | ceiling @ FPR 1% | @ FPR 0.1% |
+| Label | positives / negatives | precision @ FPR 1% | @ FPR 0.1% |
 |---|---|---|---|
 | toxic | 6,090 / 57,888 | 84.0% | 98.1% |
 | obscene | 3,691 / 60,287 | 75.4% | 96.8% |
@@ -27,11 +27,11 @@ Precision is capped by class balance before any model exists. On the 63,978
 Reproduce: `python -c "from review_router.ceilings import ceiling_table; print(ceiling_table())"`
 
 For `threat`, a 1% false-positive rate produces ~638 false positives against
-~106 true positives. The rare, highest-harm labels only become actionable at
-FPR ≈ 0.1% — the extreme left edge of the ROC curve, the region that contributes
-almost nothing to the ROC-AUC integral. That is why the official metric is
-uninformative at the operating point a review queue actually runs at, and it is
-why `threat` is routed to a human by policy rather than auto-actioned.
+~106 true positives. Even at FPR 0.1%, the implied precision is only 62.3%.
+This motivates evaluating rare labels at the operating point used by the queue.
+It does not establish a universal precision ceiling: a lower FPR can give
+higher precision. The policy sends comments with a threat probability of at
+least 0.30 to a human.
 
 These are identities over the label counts, not model results.
 
@@ -46,8 +46,10 @@ These are identities over the label counts, not model results.
   live in [`review_router/policy.yaml`](review_router/policy.yaml); every rule
   carries a prose rationale for *why its tier is what it is*. The loader rejects
   unknown actions and operators, and that rejection is tested.
-- **Rules and models coexist.** Rules are the precision-critical fast path and
-  the place where policy reasoning is legible; the model supplies coverage.
+- **Rules and models coexist.** Models supply scores and rules override the
+  resulting tier when the policy requires human review.
+  Where a slice needs extra care, the floor is required on that slice
+  (`subgroup_thresholds`) rather than typed in as a probability constant.
 - **Capacity is the point.** An unbounded queue makes routing trivial. Arrival
   rate, reviewer count and handle time are explicit inputs, and the simulation
   reports the overflow point at which the backlog stops clearing.
@@ -55,9 +57,9 @@ These are identities over the label counts, not model results.
 ## Reproducing the round-1 experiment
 
 Round 1 asks one question: **with the same reviewer capacity, does risk-ordered
-review reach high-harm comments earlier than first-in-first-out?** The protocol
-is written down in
-[`docs/superpowers/specs/2026-09-22-round1-reproducible-experiment-design.md`](docs/superpowers/specs/2026-09-22-round1-reproducible-experiment-design.md).
+review reach high-harm comments earlier than first-in-first-out?** Every
+assumption of the protocol is a line in `configs/baseline.yaml` or
+`review_router/policy.yaml`, and the pipeline module docstring walks the stages.
 
 ```bash
 pip install -e ".[ml,dev]"
@@ -84,8 +86,12 @@ on `calib`, tier thresholds chosen on `thresh` from the precision floors in
 `policy.yaml`, rules applied with priority, then a fixed-capacity review queue
 (4 reviewers, 2 min per item, 8 h, loads of 60 / 108 / 180 per hour, 5 seeds)
 replayed under FIFO, probability-first and severity-first ordering. Every
-strategy sees the identical arrivals. The scored test set is touched once, for
-the final evaluation.
+strategy sees the identical arrivals. Model fitting, calibration and threshold
+selection use separate portions of the training data. The scored test set has
+now been inspected across several policy iterations, so these results are an
+iterative benchmark rather than a fresh, untouched final evaluation. Further
+model and threshold selection should use development data, with new held-out
+data needed for an independent confirmation.
 
 The 90% and 99% targets select thresholds independently for each label.
 Combining labels, removing automatic actions from the human queue and applying
@@ -94,14 +100,21 @@ on both the threshold-selection split and the held-out test set; these targets
 are not guarantees. Simulation wait quantiles include completed jobs only, so
 read them alongside the unhandled high-risk count and the remaining backlog.
 
-Regression gates read the report:
+Regression gates read the report. The README results block uses the report and
+the policy snapshot saved with that run:
 
 ```bash
 REVIEW_ROUTER_EVAL_REPORT=reports/<run_id>/report.json pytest -q tests/test_gate.py
 ```
 
+```bash
+python scripts/render_results.py reports/<run_id>
+```
+
 Gates whose floor is still `null` in `policy.yaml` skip; an explicitly requested
-report that is missing or lacks a required section fails.
+report that is missing or lacks a required section fails. Identity-disparity
+checks report inconclusive intervals as skipped rather than treating them as
+evidence that the groups have equal error rates.
 
 To check the pipeline without the corpus, generate a synthetic stand-in with
 the same file layout. Its numbers are pipeline checks, never results:
@@ -110,6 +123,13 @@ the same file layout. Its numbers are pipeline checks, never results:
 python scripts/make_synthetic_corpus.py --out data/synthetic
 python scripts/run_pipeline.py --config configs/smoke.yaml
 ```
+
+<!-- results:start -->
+## Round-1 results
+
+The results block will be generated from a baseline run made after this
+implementation is committed, using `scripts/render_results.py`.
+<!-- results:end -->
 
 ## Status
 
@@ -123,15 +143,15 @@ Built:
 - [x] Review-queue simulator with replayed arrivals and three orderings (`simulate.py`)
 - [x] Per-label and per-tier metrics with Wilson intervals (`metrics.py`)
 - [x] One-command pipeline with manifest, predictions and report (`pipeline.py`, `scripts/run_pipeline.py`)
-- [x] Regression-gate harness (`tests/test_gate.py`) — floors are set from a measured run
+- [x] Regression-gate harness (`tests/test_gate.py`) with floors set from the measured round-1 run
+- [x] Identity-mention false-positive concentration measured per tier and per term on every run, and gated; rule R103 retired and replaced by a subgroup threshold (auto-action must clear its floor on the identity-term slice too)
 
 Not done yet:
 
-- [ ] Run `configs/baseline.yaml` on the real Jigsaw files and set the gate floors from it
 - [ ] Sentence-embedding signal and multi-model fusion, judged under the same protocol
 - [ ] Hierarchy constraint (`severe_toxic` is an exact subset of `toxic`); today only the violation rate is reported
 - [ ] Sensitivity sweep over the severity-weight vector
-- [ ] False-positive concentration on identity-mentioning text
+- [ ] Investigate the selection-to-test precision gap using development-data calibration, ranking diagnostics and threshold uncertainty; retain the 0.99 auto-action requirement
 
 ## Honest scope and limitations
 
@@ -146,14 +166,16 @@ Not done yet:
   noise, not model capacity.
 - **Exposure is simulated.** Jigsaw has no view counts. Any harm-weighted
   quantity is conditional on a stated exposure model and a stated severity
-  weight vector, both of which are policy inputs and are swept for sensitivity —
-  never presented as measurements.
+  weight vector. The current simulation counts weighted labels handled within
+  its horizon and does not model views or measure prevented exposure.
+  Sensitivity to the weight vector is still to be evaluated.
 - **No identity annotations exist in the 2018 corpus.** Subgroup / BPSN / BNSP
   AUCs cannot be computed on it. Fairness work here must either pull the 2019
   Civil Comments release or use a templated probe set, labelled as synthetic.
 - **No temporal split.** Adversarial drift is the defining property of this
-  domain and the 2018 files carry no reliable timestamp. Robustness is probed
-  with obfuscation perturbations instead, which is a weaker substitute.
+  domain and the 2018 files carry no reliable timestamp. Temporal robustness
+  has not been evaluated. Obfuscation perturbations could provide a separate,
+  weaker robustness check.
 
 ## Development notes
 
