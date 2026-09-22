@@ -27,7 +27,7 @@ target-version = "py311"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
-python_version = "3.11"
+# python_version is left to the interpreter: numpy's stubs use 3.12 syntax.
 strict = true
 warn_unreachable = true
 
@@ -35,9 +35,9 @@ warn_unreachable = true
 module = "tests.*"
 disallow_untyped_defs = true
 
-# pandas is an optional extra; the type-check job installs only the core deps.
+# Allow ML dependencies that do not provide complete type stubs.
 [[tool.mypy.overrides]]
-module = "pandas.*"
+module = ["pandas.*", "sklearn.*", "scipy.*", "numpy.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

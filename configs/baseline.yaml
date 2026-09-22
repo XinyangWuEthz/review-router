@@ -1,0 +1,29 @@
+# Round-1 baseline. Every number in the report is conditional on this file.
+label: baseline
+data_dir: data/jigsaw          # train.csv, test.csv, test_labels.csv (official Jigsaw 2018)
+output_dir: reports
+seed: 20260922
+
+split:                          # of train.csv; scored test rows are held out entirely
+  train: 0.6                    # TF-IDF vocabulary + six logistic heads
+  calib: 0.2                    # Platt calibration
+  thresh: 0.2                   # tier thresholds from precision floors
+
+model:
+  max_features: 200000
+  ngram_max: 2
+  min_df: 3
+  C: 4.0
+
+policy: review_router/policy.yaml   # precision floors, severity weights, rules
+
+simulation:                     # assumptions, not measurements
+  reviewers: 4
+  handle_minutes: 2.0           # deterministic; capacity = 4 * 60 / 2 = 120 per hour
+  horizon_hours: 8
+  loads_per_hour: [60, 108, 180]   # below, near and above capacity
+  seeds: [1, 2, 3, 4, 5]
+  high_risk_min_weight: 5       # threat (10), identity_hate (6), severe_toxic (5)
+  primary:                      # the (load, strategy) pair the regression gates read
+    load_per_hour: 108
+    strategy: severity

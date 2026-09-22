@@ -52,26 +52,86 @@ These are identities over the label counts, not model results.
   rate, reviewer count and handle time are explicit inputs, and the simulation
   reports the overflow point at which the backlog stops clearing.
 
+## Reproducing the round-1 experiment
+
+Round 1 asks one question: **with the same reviewer capacity, does risk-ordered
+review reach high-harm comments earlier than first-in-first-out?** The protocol
+is written down in
+[`docs/superpowers/specs/2026-09-22-round1-reproducible-experiment-design.md`](docs/superpowers/specs/2026-09-22-round1-reproducible-experiment-design.md).
+
+```bash
+pip install -e ".[ml,dev]"
+# Put the official Jigsaw 2018 files in data/jigsaw/: train.csv, test.csv, test_labels.csv
+# (Kaggle: jigsaw-toxic-comment-classification-challenge; the corpus is not redistributed here.)
+python scripts/run_pipeline.py --config configs/baseline.yaml
+```
+
+One run writes `reports/<run_id>/` with:
+
+| file | contents |
+|---|---|
+| `manifest.json` | data file hashes, split label counts, git commit, dependency versions, seeds, the config |
+| `config.yaml`, `policy.yaml` | snapshots of the exact experiment and policy inputs |
+| `splits.csv` | every training id and its split (`train` 60% / `calib` 20% / `thresh` 20%) |
+| `thresholds.json` | per-label thresholds for each tier, `null` where the precision floor is unreachable |
+| `predictions.csv` | one row per scored test comment: labels, calibrated probabilities, model tier, matched rules, final tier |
+| `model.pkl` | fitted TF-IDF vocabulary, classifiers and calibrators |
+| `report.json` | per-label AP / precision / recall, tier precision with Wilson intervals, rule effects, hierarchy-violation rate, the three-strategy simulation table |
+| `report.md` | the same, as tables |
+
+The pipeline is: TF-IDF + six logistic heads fitted on `train`, Platt-calibrated
+on `calib`, tier thresholds chosen on `thresh` from the precision floors in
+`policy.yaml`, rules applied with priority, then a fixed-capacity review queue
+(4 reviewers, 2 min per item, 8 h, loads of 60 / 108 / 180 per hour, 5 seeds)
+replayed under FIFO, probability-first and severity-first ordering. Every
+strategy sees the identical arrivals. The scored test set is touched once, for
+the final evaluation.
+
+The 90% and 99% targets select thresholds independently for each label.
+Combining labels, removing automatic actions from the human queue and applying
+rules can lower the final tiers' precision. The report shows final-tier quality
+on both the threshold-selection split and the held-out test set; these targets
+are not guarantees. Simulation wait quantiles include completed jobs only, so
+read them alongside the unhandled high-risk count and the remaining backlog.
+
+Regression gates read the report:
+
+```bash
+REVIEW_ROUTER_EVAL_REPORT=reports/<run_id>/report.json pytest -q tests/test_gate.py
+```
+
+Gates whose floor is still `null` in `policy.yaml` skip; an explicitly requested
+report that is missing or lacks a required section fails.
+
+To check the pipeline without the corpus, generate a synthetic stand-in with
+the same file layout. Its numbers are pipeline checks, never results:
+
+```bash
+python scripts/make_synthetic_corpus.py --out data/synthetic
+python scripts/run_pipeline.py --config configs/smoke.yaml
+```
+
 ## Status
 
 Built:
 
 - [x] Arithmetic precision ceilings over the scored test set (`ceilings.py`)
 - [x] Policy schema, loader, validation and routing (`policy.py`, `policy.yaml`)
-- [x] Scored-row filter for the Jigsaw test set (`data.py`)
-- [x] Regression-gate harness (`tests/test_gate.py`) — gates skip until floors
-      are set from a measured run
+- [x] Corpus loader, scored-row filter, frozen seeded split (`data.py`)
+- [x] TF-IDF + six logistic heads with Platt calibration (`model.py`)
+- [x] Threshold selection from precision floors; model tiers; rule priority (`thresholds.py`)
+- [x] Review-queue simulator with replayed arrivals and three orderings (`simulate.py`)
+- [x] Per-label and per-tier metrics with Wilson intervals (`metrics.py`)
+- [x] One-command pipeline with manifest, predictions and report (`pipeline.py`, `scripts/run_pipeline.py`)
+- [x] Regression-gate harness (`tests/test_gate.py`) — floors are set from a measured run
 
-Not built yet:
+Not done yet:
 
-- [ ] Expert signals: TF-IDF, sentence-embedding similarity, rule heuristics
-- [ ] Calibrated meta-classifier over the fused signals, with a hierarchy
-      constraint (`severe_toxic` is an exact subset of `toxic`)
-- [ ] Review-queue simulator: arrivals, reviewer pool, priority queue, clock
-- [ ] Routing metrics: harm averted per reviewer-hour, time-to-action p50/p90/p99
-      by severity, queue depth, reviewer utilisation
+- [ ] Run `configs/baseline.yaml` on the real Jigsaw files and set the gate floors from it
+- [ ] Sentence-embedding signal and multi-model fusion, judged under the same protocol
+- [ ] Hierarchy constraint (`severe_toxic` is an exact subset of `toxic`); today only the violation rate is reported
+- [ ] Sensitivity sweep over the severity-weight vector
 - [ ] False-positive concentration on identity-mentioning text
-- [ ] `benchmarks/run.py` with frozen queries and a dated, version-stamped table
 
 ## Honest scope and limitations
 

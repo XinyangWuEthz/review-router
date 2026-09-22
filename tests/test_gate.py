@@ -27,14 +27,16 @@ REPORT_ENV = "REVIEW_ROUTER_EVAL_REPORT"
 def _load_report(kind: str) -> dict[str, Any]:
     """Load the evaluation report, or skip if no run has produced one yet."""
     path = os.environ.get(REPORT_ENV)
-    if not path or not Path(path).is_file():
+    if not path:
         pytest.skip(
-            f"no evaluation report at ${REPORT_ENV}; "
-            "run scripts/run_pipeline.py and re-run the gates"
+            f"${REPORT_ENV} is unset; run scripts/run_pipeline.py and point it at report.json"
         )
+    if not Path(path).is_file():
+        # An explicitly requested report that is missing is a failed experiment, not a skip.
+        pytest.fail(f"${REPORT_ENV}={path} does not exist; the full run produced no report")
     report: dict[str, Any] = json.loads(Path(path).read_text(encoding="utf-8"))
     if kind not in report:
-        pytest.skip(f"report has no {kind!r} section yet")
+        pytest.fail(f"explicit evaluation report has no {kind!r} section")
     return report
 
 
@@ -51,8 +53,14 @@ def test_per_label_average_precision() -> None:
     `toxic` performance, and `threat` is the label the routing policy exists for.
     """
     report = _load_report("per_label")
-    for label, spec in GATES["per_label_average_precision"].items():
-        floor = _floor(spec.get("floor"), f"{label} AP")
+    configured = {
+        label: spec for label, spec in GATES["per_label_average_precision"].items()
+        if spec.get("floor") is not None
+    }
+    if not configured:
+        pytest.skip("all per-label AP floors are null in policy.yaml")
+    for label, spec in configured.items():
+        floor = spec["floor"]
         stats = report["per_label"][label]
         assert stats["average_precision"] >= floor, (
             f"{label} AP degraded: {stats['average_precision']:.4f} < {floor:.4f} "
@@ -81,9 +89,7 @@ def test_auto_action_precision_is_never_relaxed() -> None:
 
 def test_human_review_precision() -> None:
     report = _load_report("tiers")
-    floor = _floor(
-        GATES["routing"].get("human_review_precision_floor"), "human_review precision"
-    )
+    floor = _floor(GATES["routing"].get("human_review_precision_floor"), "human_review precision")
     stats = report["tiers"]["human_review"]
     assert stats["precision"] >= floor, f"human_review precision degraded: {stats}"
 
@@ -91,9 +97,7 @@ def test_human_review_precision() -> None:
 def test_router_beats_fifo_at_equal_capacity() -> None:
     """The whole thesis. If this fails, the router is not routing."""
     report = _load_report("simulation")
-    floor = _floor(
-        GATES["routing"].get("harm_per_reviewer_hour_vs_fifo_min"), "harm-vs-FIFO"
-    )
+    floor = _floor(GATES["routing"].get("harm_per_reviewer_hour_vs_fifo_min"), "harm-vs-FIFO")
     sim = report["simulation"]
     ratio = sim["harm_per_reviewer_hour"]["router"] / sim["harm_per_reviewer_hour"]["fifo"]
     assert ratio >= floor, f"router no longer beats FIFO: {sim['harm_per_reviewer_hour']}"
@@ -118,3 +122,35 @@ def test_hierarchy_consistency() -> None:
         f"severe_toxic asserted without toxic in {rate:.4%} of predictions "
         f"(max {ceiling:.4%}); stats={report['consistency']}"
     )
+
+
+def test_missing_report_at_explicit_path_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A full run that produced no report must fail, not skip."""
+    monkeypatch.setenv(REPORT_ENV, str(tmp_path / "does-not-exist.json"))
+    with pytest.raises(pytest.fail.Exception, match="produced no report"):
+        _load_report("tiers")
+
+
+def test_explicit_report_with_missing_section_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "incomplete.json"
+    path.write_text("{}")
+    monkeypatch.setenv(REPORT_ENV, str(path))
+    with pytest.raises(pytest.fail.Exception, match="no 'tiers' section"):
+        _load_report("tiers")
+
+
+def test_null_label_floor_does_not_skip_other_configured_labels(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setitem(GATES, "per_label_average_precision", {
+        "toxic": {"floor": None}, "threat": {"floor": 0.8},
+    })
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps({"per_label": {"threat": {"average_precision": 0.1}}}))
+    monkeypatch.setenv(REPORT_ENV, str(path))
+    with pytest.raises(AssertionError, match="threat AP degraded"):
+        test_per_label_average_precision()
