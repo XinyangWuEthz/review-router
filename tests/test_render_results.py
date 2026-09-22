@@ -425,3 +425,63 @@ def test_legacy_snapshot_preserves_automatic_enforcement_meaning(run_dir: Path) 
     assert "none of its triggering labels is true" in text
     assert "priority_review" not in text
     assert "Every moderation action requires human confirmation" not in text
+
+
+def test_four_category_gates_use_named_capacity_metric(priority_run: Path) -> None:
+    path = priority_run / "policy.yaml"
+    policy = yaml.safe_load(path.read_text())
+    gates = policy["gates"]
+    gates["capacity"] = {
+        key: value for key, value in gates["routing"].items() if "precision_floor" not in key
+    }
+    gates["routing"] = {
+        "priority_review_precision_floor": None, "human_review_precision_floor": None
+    }
+    gates["capacity"].update(completion_ratio_min=0.97, backlog_end_max=10, wait_p50_max_min=1.0)
+    gates["classification"] = {
+        "per_label_average_precision": {"toxic": {"floor": 0.75}},
+        "per_label_precision_at_human_threshold": {"toxic": {"floor": 0.6}},
+        "volume_overshoot_max": {"toxic": {"ceiling": 1.0}},
+    }
+    path.write_text(yaml.safe_dump(policy))
+    report = json.loads((priority_run / "report.json").read_text())
+    report["per_label"]["toxic"]["at_human_review"]["n_predicted_positive"] = 40
+    report["prevalence_shift"] = {"toxic": {"volume_overshoot_model": 1.2}}
+    sim = report["simulation"]
+    sim.update(completion_ratio=0.99, backlog_end=1.0)
+    # A completion-latency headline must not replace the named wait p50 gate.
+    sim["headline"] = {"selected": {"router": 99}}
+    sim["time_metrics"] = {"priority@108": {"pooled_over_seeds": {"wait": {"p50": 0.4}}}}
+    text = "\n".join(RENDERER._gate_lines(report, gates, path, "priority_review"))
+    assert "AP (1 configured labels) | see label table | snapshot/override floors | green" in text
+    assert "toxic precision at human threshold | 0.700 | ≥ 0.600; n ≥ 30 | green" in text
+    assert "toxic predicted volume overshoot | 1.200 | ≤ 1.000 | **red**" in text
+    assert "wait_p50 at 108.000/h | 0.400 | ≤ 1.000 | green" in text
+    assert "completion_ratio at 108.000/h | 0.990 | ≥ 0.970 | green" in text
+    assert "(primary) | 0.800 | ≥ 1.000 | **red**" in text
+
+
+def test_record_time_tables_state_populations_and_sample_counts(priority_run: Path) -> None:
+    import numpy as np
+
+    from review_router.pipeline import _headline, load_config
+    from review_router.simulate import Scenario, SimConfig, simulate, time_metrics
+
+    sim = json.loads((priority_run / "report.json").read_text())["simulation"]
+    scenario = Scenario(1, 108, np.array([0, 0]), np.array([0.0, 0.5]), np.array([2.0, 2.0]))
+    _, records = simulate(
+        scenario, np.zeros(1), np.ones(1), np.ones(1, dtype=bool),
+        SimConfig(reviewers=1, horizon_hours=3 / 60), "fifo"
+    )
+    tm = time_metrics(records)
+    sim["time_metrics"] = {f"{s}@108": {"pooled_over_seeds": tm} for s in ("priority", "fifo")}
+    sim["headline"] = _headline(
+        sim["time_metrics"], load_config(ROOT / "configs" / "baseline.yaml")
+    )
+    text = "\n".join(RENDERER._simulation_lines(sim, "priority_review"))
+    assert "all jobs that started, including reviews still in progress" in text
+    assert "completed items" not in text
+    assert "1 / 1 / 0" in text
+    assert "n=2 / 2" in text
+    assert "no / no" in text
+    assert "subsets may differ" in text

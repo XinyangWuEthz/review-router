@@ -32,12 +32,15 @@ from review_router.model import ModelConfig, TfidfLogitModel
 from review_router.policy import DEFAULT_POLICY_PATH, Policy, load_policy
 from review_router.signals import IDENTITY_PATTERN, IDENTITY_TERMS, identity_term_present
 from review_router.simulate import (
+    P99_MIN_SAMPLES,
     STRATEGIES,
+    JobRecords,
     SimConfig,
     SimResult,
     draw_scenario,
     priority_review_scores,
     simulate,
+    time_metrics,
 )
 from review_router.thresholds import (
     TIER_ORDER,
@@ -70,6 +73,8 @@ class RunConfig:
     primary_strategy: str
     thesis_load_per_hour: float
     label: str
+    headline_metric: str = "wait"
+    headline_percentile: int = 50
 
 
 def load_config(path: Path) -> RunConfig:
@@ -100,6 +105,13 @@ def load_config(path: Path) -> RunConfig:
         raise ValueError("thesis_load_per_hour must appear in loads_per_hour")
     if not seeds or any(x < 0 for x in seeds):
         raise ValueError("simulation seeds must contain nonnegative integers")
+    headline = sim_raw.get("headline", {})
+    headline_metric = str(headline.get("metric", "wait"))
+    if headline_metric not in ("wait", "completion_latency"):
+        raise ValueError("headline metric must be 'wait' or 'completion_latency'")
+    headline_percentile = int(headline.get("percentile", 50))
+    if headline_percentile not in (50, 90, 99):
+        raise ValueError("headline percentile must be 50, 90 or 99")
     return RunConfig(
         data_dir=resolve(str(raw["data_dir"])),
         output_dir=resolve(str(raw.get("output_dir", "reports"))),
@@ -119,6 +131,8 @@ def load_config(path: Path) -> RunConfig:
         primary_strategy=strategy,
         thesis_load_per_hour=thesis_load,
         label=str(raw.get("label", path.stem)),
+        headline_metric=headline_metric,
+        headline_percentile=headline_percentile,
     )
 
 
@@ -498,15 +512,103 @@ def _identity_concentration(
     return out
 
 
+def _prevalence_shift(
+    split_counts: dict[str, dict[str, int]], y_test: np.ndarray, proba: np.ndarray
+) -> dict[str, Any]:
+    """Train-file versus test prevalence, and the volume the model expects on test.
+
+    Sum of probabilities is a model-implied positive count. Comparing it with
+    observed labels diagnoses aggregate calibration; it does not identify the
+    cause of any difference between training and test prevalence.
+    """
+    train_rows = sum(split_counts[s]["rows"] for s in ("train", "calib", "thresh"))
+    n_test = int(len(y_test))
+    out: dict[str, Any] = {
+        "definition": "volume_overshoot = model-expected positives (sum of calibrated p on the "
+        "test rows) / actual positives - 1; prevalence ratio = training-file prevalence / "
+        "test prevalence",
+        "n_train_file_rows": int(train_rows),
+        "n_test_rows": n_test,
+    }
+    for j, label in enumerate(LABELS):
+        train_pos = sum(split_counts[s][label] for s in ("train", "calib", "thresh"))
+        prev_train = train_pos / train_rows if train_rows else None
+        actual = int(y_test[:, j].sum())
+        expected_model = float(proba[:, j].sum())
+        expected_prev = (prev_train or 0.0) * n_test
+        out[label] = {
+            "prevalence_train_file": prev_train,
+            "prevalence_test": actual / n_test if n_test else None,
+            "prevalence_ratio_train_over_test": (prev_train / (actual / n_test))
+            if actual and prev_train
+            else None,
+            "actual_positives_test": actual,
+            "model_expected_positives_test": expected_model,
+            "train_prevalence_expected_positives_test": expected_prev,
+            "volume_overshoot_model": (expected_model / actual - 1) if actual else None,
+            "volume_overshoot_train_prevalence": (expected_prev / actual - 1) if actual else None,
+        }
+    return out
+
+
 # --------------------------------------------------------------------------- simulation
 
 
-def _run_simulation(
-    proba: np.ndarray, y: np.ndarray, final: np.ndarray, policy: Policy, config: RunConfig
+def queue_inputs(
+    proba: np.ndarray,
+    y: np.ndarray,
+    final: np.ndarray,
+    policy: Policy,
+    high_risk_min_weight: float,
 ) -> dict[str, Any]:
+    """The combined review pool, rebuilt identically from saved prediction columns."""
     queued = np.flatnonzero(np.isin(final, (PRIORITY, HUMAN)))
-    queue_fraction = len(queued) / len(final) if len(final) else 0.0
     weights = np.array([policy.severity_weights.get(label, 0.0) for label in LABELS])
+    p = proba[queued]
+    truth = y[queued]
+    harm = (truth * weights).max(axis=1)
+    severity = (p * weights).max(axis=1) if len(queued) else np.zeros(0)
+    return {
+        "queued": queued,
+        "harm": harm,
+        "high_risk": harm >= high_risk_min_weight,
+        "priorities": {
+            "fifo": np.zeros(len(queued)),
+            "prob": p.max(axis=1) if len(queued) else np.zeros(0),
+            "severity": severity,
+            "priority": priority_review_scores(final[queued] == PRIORITY, severity),
+        },
+    }
+
+
+def _trigger_reasons(routing: dict[str, Any]) -> np.ndarray:
+    """Why each row is where it is: the rule ids that fired and/or the model labels."""
+    triggers: np.ndarray = routing["triggers"]
+    out = np.empty(len(triggers), dtype=object)
+    for i in range(len(triggers)):
+        labels = [label for j, label in enumerate(LABELS) if triggers[i, j]]
+        parts = []
+        if routing["rule_ids"][i]:
+            parts.append("rule:" + routing["rule_ids"][i].replace(";", "+"))
+        if labels:
+            parts.append("model:" + "+".join(labels))
+        out[i] = "|".join(parts) if parts else "none"
+    return out
+
+
+def _run_simulation(
+    proba: np.ndarray,
+    y: np.ndarray,
+    routing: dict[str, Any],
+    ids: np.ndarray,
+    policy: Policy,
+    config: RunConfig,
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """Simulate every (load, seed, strategy); return the report section and the per-job rows."""
+    inputs = queue_inputs(proba, y, routing["final_tier"], policy, config.high_risk_min_weight)
+    queued: np.ndarray = inputs["queued"]
+    final = routing["final_tier"]
+    queue_fraction = len(queued) / len(final) if len(final) else 0.0
     if len(queued) == 0:
         return {
             "note": "nothing requires human review; simulation skipped",
@@ -516,31 +618,41 @@ def _run_simulation(
                 "queue_fraction": 0.0,
             },
             "table": [],
-        }
-
-    p = proba[queued]
-    truth = y[queued]
-    harm = (truth * weights).max(axis=1)  # highest weight among the true labels
-    high_risk = harm >= config.high_risk_min_weight
-    severity = (p * weights).max(axis=1)
-    priorities = {
-        "fifo": np.zeros(len(queued)),
-        "prob": p.max(axis=1),
-        "severity": severity,
-        "priority": priority_review_scores(final[queued] == PRIORITY, severity),
-    }
+        }, []
+    harm, high_risk, priorities = inputs["harm"], inputs["high_risk"], inputs["priorities"]
+    reasons = _trigger_reasons(routing)[queued]
+    queued_ids = ids[queued]
 
     rows: list[dict[str, Any]] = []
+    job_rows: list[dict[str, Any]] = []
+    pooled: dict[str, list[JobRecords]] = {}
     for load in config.loads_per_hour:
         for seed in config.sim_seeds:
             scenario = draw_scenario(seed, load, len(queued), config.sim)
             for strategy in STRATEGIES:
-                result = simulate(
+                result, records = simulate(
                     scenario, priorities[strategy], harm, high_risk, config.sim, strategy
                 )
                 rows.append({"load_per_hour": load, "seed": seed, **result.as_json()})
+                pooled.setdefault(_key(load, strategy), []).append(records)
+                job_rows.extend(
+                    records.rows(
+                        strategy=strategy,
+                        load_per_hour=load,
+                        seed=seed,
+                        comment_id=queued_ids[records.job_index],
+                        trigger_reason=reasons[records.job_index],
+                    )
+                )
 
     summary = _summarise(rows)
+    metrics = {
+        key: {
+            "pooled_over_seeds": time_metrics(JobRecords.concat(parts)),
+            "n_seeds": len(parts),
+        }
+        for key, parts in pooled.items()
+    }
     router = summary.get(_key(config.primary_load_per_hour, config.primary_strategy), {})
     fifo = summary.get(_key(config.primary_load_per_hour, "fifo"), {})
     thesis_router = summary.get(_key(config.thesis_load_per_hour, config.primary_strategy), {})
@@ -564,7 +676,8 @@ def _run_simulation(
             },
         }
 
-    return {
+    headline = _headline(metrics, config)
+    section = {
         "assumptions": {
             **asdict(config.sim),
             "capacity_per_hour": config.sim.capacity_per_hour,
@@ -579,6 +692,15 @@ def _run_simulation(
             "priority_order": "priority_review first, then human_review; within each tier, "
             "higher max predicted probability times severity weight first; ties use arrival order",
             "handle_time": "deterministic",
+            "review_completion_definition": (
+                "simulated reviewer service finished; moderation requires human confirmation; "
+                "no enforcement outcome is observed"
+            ),
+            "wait_definition": "start of review minus arrival, over jobs that started "
+            "(completed or in progress); never-started jobs are counted, not timed",
+            "completion_latency_definition": "completion minus arrival, over jobs completed "
+            "within the horizon",
+            "p99_min_samples": P99_MIN_SAMPLES,
             "harm_proxy": "max severity weight over TRUE labels (0 if clean); not real-world harm",
             "high_risk": f"harm proxy >= {config.high_risk_min_weight}",
             "loads_per_hour": list(config.loads_per_hour),
@@ -587,6 +709,8 @@ def _run_simulation(
             "queued_high_risk": int(high_risk.sum()),
             "queued_priority_review": int((final[queued] == PRIORITY).sum()),
             "queued_human_review": int((final[queued] == HUMAN).sum()),
+            "per_job_records": "simulation_jobs.csv in the run directory; every time metric "
+            "here is recomputable from it",
         },
         "primary": {
             "load_per_hour": config.primary_load_per_hour,
@@ -600,6 +724,7 @@ def _run_simulation(
             "note": "harm handled per reviewer-hour only differs between orderings when "
             "the queue does not clear, so the FIFO comparison reads this load",
         },
+        "headline": headline,
         # Gate inputs. Ordering cannot change harm handled once everything is
         # handled, so that ratio is read at the thesis (overload) load; the
         # time-to-action ratio is read at the primary (near-capacity) load.
@@ -615,11 +740,76 @@ def _run_simulation(
         },
         "high_risk_handled": high_risk_comparison("high_risk_handled"),
         "high_risk_arrived": high_risk_comparison("high_risk_arrived"),
+        "completion_ratio": mean(router, "completion_ratio"),
+        "backlog_end": mean(router, "backlog_end"),
+        "high_risk_unfinished": mean(router, "high_risk_unhandled"),
         "queue_depth_p95": mean(router, "queue_depth_p95"),
         "reviewer_utilization": mean(router, "reviewer_utilization"),
+        "time_metrics": metrics,
         "summary": summary,
         "paired": _paired(rows),
         "table": rows,
+    }
+    return section, job_rows
+
+
+def _headline(metrics: dict[str, Any], config: RunConfig) -> dict[str, Any]:
+    """The configured time metric, conditional on each strategy's observed job statuses.
+
+    Reduction = 1 - router / fifo. When the FIFO value is zero the percentage is
+    meaningless and only the absolute difference is reported. The high-risk
+    variant is supplementary and never a substitute for the headline.
+    """
+    metric, pct = config.headline_metric, config.headline_percentile
+    load = config.primary_load_per_hour
+
+    def read(strategy: str, field: str, percentile: int) -> tuple[float | None, int, bool]:
+        block = metrics.get(_key(load, strategy), {}).get("pooled_over_seeds", {}).get(field, {})
+        return (
+            block.get(f"p{percentile}"),
+            int(block.get("n", 0)),
+            bool(block.get("p99_reliable", False)),
+        )
+
+    def compare(field: str, percentile: int) -> dict[str, Any]:
+        r, n_r, rel_r = read(config.primary_strategy, field, percentile)
+        f_, n_f, rel_f = read("fifo", field, percentile)
+        out: dict[str, Any] = {
+            "router": r,
+            "fifo": f_,
+            "n_router": n_r,
+            "n_fifo": n_f,
+            "absolute_difference_min": (f_ - r) if r is not None and f_ is not None else None,
+            "reduction": None,
+        }
+        if r is not None and f_ is not None and f_ > 0:
+            out["reduction"] = 1 - r / f_
+        elif f_ == 0:
+            out["note"] = (
+                "FIFO value is zero: a percentage is meaningless, read the absolute difference"
+            )
+        else:
+            out["note"] = "No comparable samples: a percentage is unavailable"
+        if percentile == 99:
+            out["p99_reliable"] = rel_r and rel_f
+        return out
+
+    return {
+        "metric": metric,
+        "percentile": pct,
+        "load_per_hour": load,
+        "router_strategy": config.primary_strategy,
+        "population": (
+            "jobs that started, including in-progress reviews"
+            if metric == "wait"
+            else "jobs completed within the horizon"
+        ) + "; pooled over seeds; populations may differ by strategy; "
+        "read with completion and unfinished counts",
+        "selected": compare(metric, pct),
+        "supplementary_high_risk": {
+            "note": "reported alongside, never a substitute for the selected metric",
+            "wait_p90": compare("high_risk_wait", 90) | {"percentile": 90},
+        },
     }
 
 
@@ -909,7 +1099,7 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
             f"Priority order: {a['priority_order']}."
         )
         lines.append(
-            "Wait quantiles are minutes until service starts, for completed jobs only. "
+            "Wait quantiles are minutes until service starts, for all started jobs. "
             "High-risk unhandled includes jobs still in service at the horizon; "
             "backlog includes only jobs that have not started."
         )
@@ -948,6 +1138,65 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
                 _fmt(e["reviewer_utilization"], 2),
             ]
             lines.append("| " + " | ".join(cells) + " |")
+    if "time_metrics" in sim:
+        h = sim["headline"]
+        sel = h["selected"]
+        lines += [
+            "",
+            f"Headline ({h['metric']} p{h['percentile']}, {h['router_strategy']} vs fifo at "
+            f"{h['load_per_hour']:g}/h, pooled over seeds): {_fmt(sel['router'], 2)} vs "
+            f"{_fmt(sel['fifo'], 2)} min (n = {sel['n_router']} / {sel['n_fifo']}); "
+            + (
+                f"reduction {100 * sel['reduction']:.0f}%."
+                if sel.get("reduction") is not None
+                else f"absolute difference {_fmt(sel['absolute_difference_min'], 2)} min "
+                f"({sel.get('note', 'percentage unavailable')})."
+            ),
+            "",
+            "Time metrics from the per-job records, pooled over seeds (minutes):",
+            "",
+            "| load/h | strategy | arrivals | completed | in progress | not started "
+            "| HR completed / in progress / not started | wait p50 / p90 / p99 (n) "
+            "| completion p50 / p90 / p99 (n) | p99 reliable |",
+            "|---:|---|---:|---:|---:|---:|---|---|---|---|",
+        ]
+        for key, block in sim["time_metrics"].items():
+            tm = block["pooled_over_seeds"]
+            strategy, load = key.split("@")
+            st, hr = tm["status"], tm["high_risk_status"]
+            w, c = tm["wait"], tm["completion_latency"]
+            lines.append(
+                f"| {load} | {strategy} | {tm['n_arrivals']} | {st['completed']} | "
+                f"{st['in_progress']} | {st['not_started']} | {hr['completed']} / "
+                f"{hr['in_progress']} / {hr['not_started']} | {_fmt(w['p50'], 1)} / "
+                f"{_fmt(w['p90'], 1)} / {_fmt(w['p99'], 1)} ({w['n']}) | {_fmt(c['p50'], 1)} / "
+                f"{_fmt(c['p90'], 1)} / {_fmt(c['p99'], 1)} ({c['n']}) | "
+                f"{'yes' if w['p99_reliable'] and c['p99_reliable'] else 'no'} |"
+            )
+    ps = report.get("prevalence_shift")
+    if ps:
+        lines += [
+            "",
+            "## Prevalence shift and predicted volume",
+            "",
+            "| label | prevalence train file | prevalence test | ratio | actual positives "
+            "| model-expected positives | volume overshoot | ROC-AUC test | AP selection "
+            "| AP test |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ]
+        for label in LABELS:
+            e = ps[label]
+            m = report["per_label"][label]
+            lines.append(
+                f"| {label} | {_fmt(e['prevalence_train_file'], 4)} "
+                f"| {_fmt(e['prevalence_test'], 4)} "
+                f"| {_fmt(e['prevalence_ratio_train_over_test'], 2)} "
+                f"| {e['actual_positives_test']} "
+                f"| {_fmt(e['model_expected_positives_test'], 0)} "
+                f"| {_fmt(e['volume_overshoot_model'], 2)} | {_fmt(m['roc_auc'])} "
+                f"| {_fmt(report['threshold_selection']['per_label'][label]['average_precision'])} "
+                f"| {_fmt(m['average_precision'])} |"
+            )
     lines.append("")
     return "\n".join(lines)
 
@@ -1069,8 +1318,20 @@ def run(config_path: Path) -> Path:
             "test": _subgroup_stats(routing, y_test, policy),
         },
         "consistency": _consistency(proba),
-        "simulation": _run_simulation(proba, y_test, routing["final_tier"], policy, config),
+        "prevalence_shift": _prevalence_shift(manifest["split_label_counts"], y_test, proba),
     }
+    simulation, job_rows = _run_simulation(
+        proba, y_test, routing, corpus.test["id"].to_numpy(), policy, config
+    )
+    report["simulation"] = simulation
+    record_columns = [
+        "strategy", "load_per_hour", "seed", "comment_id", "trigger_reason", "job_index",
+        "arrival_min", "start_min", "completion_min", "status", "high_risk", "harm",
+        "priority_score", "wait_min", "completion_latency_min",
+    ]
+    pd.DataFrame(job_rows, columns=record_columns).to_csv(
+        run_dir / "simulation_jobs.csv", index=False
+    )
     manifest["finished_utc"] = datetime.now(UTC).isoformat(timespec="seconds")
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
     (run_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))

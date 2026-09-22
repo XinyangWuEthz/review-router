@@ -1,0 +1,84 @@
+name: Real evaluation
+
+# Second layer of the two-layer CI. ci.yml is the code-check layer (lint, types,
+# unit tests, synthetic pipeline test; the gates skip there). This workflow
+# fetches the official Jigsaw files, verifies them against the pinned hashes,
+# runs the pipeline WITH THE CODE UNDER TEST, points the gates at the report it
+# just produced and archives the run. It never re-checks an old report, and it
+# fails when a configured gate is red. Precision of the human-review bands
+# remains diagnostic; every flagged case consumes human reviewer capacity.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,ml]"
+      - name: Restore the corpus cache
+        id: corpus
+        uses: actions/cache@v4
+        with:
+          path: data/jigsaw
+          key: jigsaw-${{ hashFiles('configs/jigsaw.sha256') }}
+      - name: Fetch the corpus
+        if: steps.corpus.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p data/jigsaw
+          for f in train.csv test.csv test_labels.csv; do
+            curl -sSL --fail -o "data/jigsaw/$f" \
+              "https://huggingface.co/datasets/thesofakillers/jigsaw-toxic-comment-classification-challenge/resolve/main/$f"
+          done
+      - name: Verify the corpus against the pinned hashes
+        run: python scripts/verify_data.py data/jigsaw configs/jigsaw.sha256
+      - name: Run the evaluation with the code under test
+        id: run
+        run: |
+          python scripts/run_pipeline.py --config configs/baseline.yaml > "$RUNNER_TEMP/review-router-eval.log"
+          RUN_DIR=$(head -n 1 "$RUNNER_TEMP/review-router-eval.log")
+          echo "run_dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
+          echo "report=$RUN_DIR/report.json" >> "$GITHUB_OUTPUT"
+      - name: Archive the run (report, manifest, config, policy, predictions, per-job records)
+        if: always() && steps.run.outputs.run_dir != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-${{ github.sha }}
+          path: ${{ steps.run.outputs.run_dir }}
+          if-no-files-found: error
+          retention-days: 90
+      - name: Regression gates against the report just produced
+        env:
+          REVIEW_ROUTER_EVAL_REPORT: ${{ steps.run.outputs.report }}
+          REVIEW_ROUTER_EVAL_REQUIRE_CLEAN: "1"
+          REVIEW_ROUTER_EVAL_REQUIRE_REAL: "1"
+          REVIEW_ROUTER_EVAL_CONFIG: configs/baseline.yaml
+        run: pytest -q tests/test_gate.py -rs
+
+  negative-check:
+    # Proves the gates block, on every run, without the corpus: a synthetic run
+    # supplies controlled fixtures. Each targeted gate must pass its control
+    # and fail the corresponding mutation; unrelated failures cannot count.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev,ml]"
+      - name: Controlled failures must be caught
+        run: python scripts/ci_negative_check.py

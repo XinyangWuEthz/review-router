@@ -1,3 +1,6 @@
+# Code-check layer: lint, types, unit tests, synthetic pipeline test. The
+# regression gates skip here because no real report is passed in; the
+# real-evaluation layer is .github/workflows/real-eval.yml.
 name: CI
 
 on:

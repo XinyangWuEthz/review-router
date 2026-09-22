@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -11,10 +12,12 @@ import pytest
 
 from review_router.data import LABELS
 from review_router.pipeline import (
+    _headline,
     _identity_concentration,
     _route,
     _run_simulation,
     load_config,
+    queue_inputs,
     run,
 )
 from review_router.policy import load_policy
@@ -169,13 +172,80 @@ def test_simulation_queues_priority_items_when_no_regular_items_exist(tmp_path: 
     proba = np.full((2, len(LABELS)), 0.1)
     y = np.zeros((2, len(LABELS)), dtype=int)
     y[0, LABELS.index("threat")] = 1
-    sim = _run_simulation(
-        proba, y, np.array(["priority_review", "priority_review"]), load_policy(), config
+    sim, records = _run_simulation(
+        proba, y,
+        {
+            "final_tier": np.array(["priority_review", "priority_review"]),
+            "triggers": np.zeros_like(proba, dtype=bool),
+            "rule_ids": ["", ""],
+        },
+        np.array(["a", "b"]), load_policy(), config
     )
     assert sim["assumptions"]["queued_jobs"] == 2
     assert sim["assumptions"]["queued_priority_review"] == 2
     assert sim["assumptions"]["queued_human_review"] == 0
     assert {row["strategy"] for row in sim["table"]} == {"fifo", "prob", "severity", "priority"}
+    assert {row["comment_id"] for row in records} == {"a", "b"}
+    assert {row["strategy"] for row in records} == {"fifo", "prob", "severity", "priority"}
+
+
+def test_queue_inputs_includes_both_human_tiers_and_excludes_allowed_items() -> None:
+    proba = np.array([[0.99] * 6, [0.9] * 6, [0.1] * 6])
+    truth = np.ones((3, 6), dtype=int)
+    final = np.array(["allow", "human_review", "priority_review"])
+    inputs = queue_inputs(proba, truth, final, load_policy(), 5)
+    assert inputs["queued"].tolist() == [1, 2]
+    assert inputs["priorities"]["severity"][0] > inputs["priorities"]["severity"][1]
+    assert inputs["priorities"]["priority"][0] < inputs["priorities"]["priority"][1]
+
+
+def test_simulation_skips_empty_review_pool(tmp_path: Path, synthetic_corpus: Path) -> None:
+    config = load_config(_config(tmp_path, synthetic_corpus))
+    routing = {"final_tier": np.array(["allow", "allow"])}
+    sim, records = _run_simulation(
+        np.zeros((2, 6)), np.zeros((2, 6)), routing, np.array(["a", "b"]), load_policy(), config
+    )
+    assert records == [] and sim["table"] == []
+    assert sim["assumptions"]["queued_jobs"] == 0
+    assert sim["assumptions"]["queue_tiers"] == ["priority_review", "human_review"]
+
+
+@pytest.mark.parametrize("percentile", [50, 99])
+def test_supplementary_high_risk_wait_always_uses_p90(
+    tmp_path: Path, synthetic_corpus: Path, percentile: int
+) -> None:
+    config = replace(
+        load_config(_config(tmp_path, synthetic_corpus)), headline_percentile=percentile
+    )
+    metrics = {
+        "priority@90": {
+            "pooled_over_seeds": {
+                "wait": {"p50": 1.0, "p99": 8.0, "n": 200, "p99_reliable": True},
+                "high_risk_wait": {"p50": 0.0, "p90": 2.0, "p99": 7.0, "n": 120},
+            }
+        },
+        "fifo@90": {
+            "pooled_over_seeds": {
+                "wait": {"p50": 2.0, "p99": 16.0, "n": 200, "p99_reliable": True},
+                "high_risk_wait": {"p50": 1.0, "p90": 8.0, "p99": 14.0, "n": 120},
+            }
+        },
+    }
+    result = _headline(metrics, config)
+    assert result["selected"]["reduction"] == 0.5
+    high_risk = result["supplementary_high_risk"]["wait_p90"]
+    assert high_risk["router"] == 2.0 and high_risk["fifo"] == 8.0
+    assert high_risk["reduction"] == 0.75
+    assert "populations may differ" in result["population"]
+
+
+def test_headline_with_no_samples_does_not_claim_fifo_zero(
+    tmp_path: Path, synthetic_corpus: Path
+) -> None:
+    config = load_config(_config(tmp_path, synthetic_corpus))
+    result = _headline({}, config)
+    assert result["selected"]["reduction"] is None
+    assert result["selected"]["note"] == "No comparable samples: a percentage is unavailable"
 
 
 def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: Path) -> None:
@@ -189,6 +259,7 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
         "thresholds.json",
         "model.pkl",
         "predictions.csv",
+        "simulation_jobs.csv",
         "report.json",
         "report.md",
     ):
@@ -357,3 +428,74 @@ def test_render_results_replaces_readme_block(synthetic_corpus: Path, tmp_path: 
     assert "\nold\n" not in text
     assert "SYNTHETIC corpus" in text
     assert "| gate | measured | requirement | status |" in text
+
+
+def test_per_job_records_reproduce_every_time_metric(
+    synthetic_corpus: Path, tmp_path: Path
+) -> None:
+    from review_router.simulate import JobRecords, time_metrics
+
+    run_dir = run(_config(tmp_path, synthetic_corpus))
+    report = json.loads((run_dir / "report.json").read_text())
+    rows = pd.read_csv(run_dir / "simulation_jobs.csv", dtype={"comment_id": str})
+    expected_cols = {
+        "comment_id",
+        "arrival_min",
+        "start_min",
+        "completion_min",
+        "strategy",
+        "trigger_reason",
+        "high_risk",
+        "status",
+        "wait_min",
+        "completion_latency_min",
+        "seed",
+        "load_per_hour",
+    }
+    assert expected_cols <= set(rows.columns)
+    assert set(rows["status"]) <= {"not_started", "in_progress", "completed"}
+    sim = report["simulation"]
+    horizon = sim["assumptions"]["horizon_hours"] * 60
+    assert "no enforcement outcome" in sim["assumptions"]["review_completion_definition"]
+    for key, block in sim["time_metrics"].items():
+        strategy, load = key.split("@")
+        subset = rows[(rows["strategy"] == strategy) & (rows["load_per_hour"] == float(load))]
+        rec = JobRecords.from_rows(subset.to_dict(orient="records"), horizon)
+        tm = time_metrics(rec)
+        pooled = block["pooled_over_seeds"]
+        assert tm["status"] == pooled["status"]
+        assert tm["wait"]["p50"] == pytest.approx(pooled["wait"]["p50"], abs=1e-9)
+        assert tm["completion_latency"]["p90"] == pytest.approx(
+            pooled["completion_latency"]["p90"], abs=1e-9
+        )
+    head = sim["headline"]
+    assert head["metric"] == "wait" and head["percentile"] == 50
+    sel = head["selected"]
+    if sel["fifo"]:
+        assert sel["reduction"] == pytest.approx(1 - sel["router"] / sel["fifo"])
+    else:
+        assert sel["reduction"] is None and "absolute" in sel["note"]
+
+
+def test_prevalence_shift_is_hand_computable() -> None:
+    from review_router.pipeline import _prevalence_shift
+
+    counts = {
+        "train": {"rows": 60, **{label: 6 for label in LABELS}},
+        "calib": {"rows": 20, **{label: 2 for label in LABELS}},
+        "thresh": {"rows": 20, **{label: 2 for label in LABELS}},
+    }
+    y = np.zeros((10, len(LABELS)), dtype=int)
+    y[:2, 0] = 1  # toxic: 2 of 10 on "test"
+    proba = np.full((10, len(LABELS)), 0.3)  # model expects 3 positives per label
+    out = _prevalence_shift(counts, y, proba)
+    toxic = out["toxic"]
+    assert toxic["prevalence_train_file"] == pytest.approx(0.10)
+    assert toxic["prevalence_test"] == pytest.approx(0.20)
+    assert toxic["prevalence_ratio_train_over_test"] == pytest.approx(0.5)
+    assert toxic["model_expected_positives_test"] == pytest.approx(3.0)
+    assert toxic["volume_overshoot_model"] == pytest.approx(0.5)  # 3 expected / 2 actual - 1
+    assert toxic["volume_overshoot_train_prevalence"] == pytest.approx(
+        -0.5
+    )  # 1 expected / 2 actual - 1
+    assert out["severe_toxic"]["volume_overshoot_model"] is None  # no positives on test

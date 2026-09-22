@@ -1,8 +1,8 @@
 {
-  "run_id": "20260922T130141204182Z-human-review-baseline",
-  "git_commit": "a7ee1ab214b0b9db1e15a0592f48b407ec44bc28",
+  "run_id": "20260922T141853710066Z-human-review-baseline",
+  "git_commit": "563a0bf38226814ed9c86cffbe8190b8f1c2cf38",
   "git_dirty": true,
-  "finished_utc": "2026-09-22T13:02:11+00:00",
+  "finished_utc": "2026-09-22T14:19:24+00:00",
   "data_sha256": {
     "train": "bd4084611bd27c939ba98e5e63bc3e5a2c1a4e99477dcba46c829e4c986c429d",
     "test": "c2513ce4abb98c4d1d216e3ca0d4377d57589a0989aa8c06a840509a16c786e8",
@@ -125,44 +125,89 @@
     ],
     "gates": {
       "measured_on": "2026-09-22",
-      "eval_slice": "Jigsaw scored test rows (63,978), run 20260922T112845423138Z-baseline, made at commit 3429f1fe41701d31de68ac936530d6aebfee1132 (manifest git_dirty: false). This historical run supplies only the unchanged classifier AP reference. No v2 routing baseline has been measured yet.\n",
-      "per_label_average_precision": {
-        "toxic": {
-          "floor": 0.732,
-          "measured": 0.7522
+      "eval_slice": "Classification references use the unchanged classifier heads: clean run 20260922T112845423138Z-baseline at commit 3429f1fe41701d31de68ac936530d6aebfee1132 supplies AP; feature-branch run 20260922T131021772191Z-baseline on a dirty worktree supplies the human operating-point precision and volume diagnostics. V2 human-review routing was measured separately in 20260922T130141204182Z-human-review-baseline on a dirty worktree. The v2 no-worse-FIFO criteria were declared before that run. The absolute capacity limits below are adopted before the new merged v2 run and are not measurements or fitted tolerances from that run.\n",
+      "classification": {
+        "per_label_average_precision": {
+          "toxic": {
+            "floor": 0.732,
+            "measured": 0.7522
+          },
+          "obscene": {
+            "floor": 0.753,
+            "measured": 0.7734
+          },
+          "insult": {
+            "floor": 0.676,
+            "measured": 0.6961
+          },
+          "identity_hate": {
+            "floor": 0.46,
+            "measured": 0.48
+          },
+          "severe_toxic": {
+            "floor": 0.291,
+            "measured": 0.3113
+          },
+          "threat": {
+            "floor": 0.438,
+            "measured": 0.458
+          }
         },
-        "obscene": {
-          "floor": 0.753,
-          "measured": 0.7734
+        "per_label_precision_at_human_threshold": {
+          "toxic": {
+            "floor": 0.643,
+            "measured": 0.6631
+          },
+          "obscene": {
+            "floor": 0.753,
+            "measured": 0.7731
+          },
+          "insult": {
+            "floor": 0.858,
+            "measured": 0.8788
+          },
+          "severe_toxic": {
+            "floor": null,
+            "measured": null
+          },
+          "threat": {
+            "floor": null,
+            "measured": null
+          },
+          "identity_hate": {
+            "floor": null,
+            "measured": null
+          }
         },
-        "insult": {
-          "floor": 0.676,
-          "measured": 0.6961
-        },
-        "identity_hate": {
-          "floor": 0.46,
-          "measured": 0.48
-        },
-        "severe_toxic": {
-          "floor": 0.291,
-          "measured": 0.3113
-        },
-        "threat": {
-          "floor": 0.437,
-          "measured": 0.458
+        "hierarchy_violation_rate_max": 0.005,
+        "volume_overshoot_max": {
+          "severe_toxic": {
+            "ceiling": 1.0,
+            "measured": 0.916
+          }
         }
       },
       "routing": {
         "priority_review_precision_floor": null,
-        "human_review_precision_floor": null,
+        "human_review_precision_floor": null
+      },
+      "capacity": {
         "harm_per_reviewer_hour_vs_fifo_min": 1.0,
         "high_risk_handled_vs_fifo_min": 1.0,
         "high_risk_wait_p90_vs_fifo_max": 1.0,
-        "queue_depth_p95_max": null,
+        "completion_ratio_min": 0.97,
+        "backlog_end_max": 10,
+        "wait_p50_max_min": 1.0,
+        "queue_depth_p95_max": 39,
         "reviewer_utilization_min": 0.6
       },
-      "consistency": {
-        "hierarchy_violation_rate_max": 0.005
+      "reproducibility": {
+        "float_tolerance": 1e-09,
+        "records_file": "simulation_jobs.csv",
+        "scenario": {
+          "load": "primary",
+          "seed": "first"
+        }
       },
       "fairness": {
         "identity_false_discovery_rate_ratio_max": 1.25
@@ -519,7 +564,73 @@
     "insult": 695,
     "identity_hate": 140
   },
+  "prevalence_shift": {
+    "definition": "volume_overshoot = model-expected positives (sum of calibrated p on the test rows) / actual positives - 1; prevalence ratio = training-file prevalence / test prevalence",
+    "n_train_file_rows": 159571,
+    "n_test_rows": 63978,
+    "toxic": {
+      "prevalence_train_file": 0.09584448302009764,
+      "prevalence_test": 0.09518897120885304,
+      "prevalence_ratio_train_over_test": 1.0068864260525134,
+      "actual_positives_test": 6090,
+      "model_expected_positives_test": 8715.290209979925,
+      "train_prevalence_expected_positives_test": 6131.938334659807,
+      "volume_overshoot_model": 0.431082136285702,
+      "volume_overshoot_train_prevalence": 0.006886426052513439
+    },
+    "severe_toxic": {
+      "prevalence_train_file": 0.009995550569965721,
+      "prevalence_test": 0.0057363468692363,
+      "prevalence_ratio_train_over_test": 1.7424940990879207,
+      "actual_positives_test": 367,
+      "model_expected_positives_test": 702.9968281465219,
+      "train_prevalence_expected_positives_test": 639.4953343652669,
+      "volume_overshoot_model": 0.915522692497335,
+      "volume_overshoot_train_prevalence": 0.7424940990879207
+    },
+    "obscene": {
+      "prevalence_train_file": 0.052948217407925,
+      "prevalence_test": 0.05769170652411767,
+      "prevalence_ratio_train_over_test": 0.9177786652192429,
+      "actual_positives_test": 3691,
+      "model_expected_positives_test": 4359.61767396144,
+      "train_prevalence_expected_positives_test": 3387.5210533242257,
+      "volume_overshoot_model": 0.18114810998684372,
+      "volume_overshoot_train_prevalence": -0.0822213347807571
+    },
+    "threat": {
+      "prevalence_train_file": 0.002995531769557125,
+      "prevalence_test": 0.003298008690487355,
+      "prevalence_ratio_train_over_test": 0.9082849836622073,
+      "actual_positives_test": 211,
+      "model_expected_positives_test": 307.6413360110631,
+      "train_prevalence_expected_positives_test": 191.64813155272574,
+      "volume_overshoot_model": 0.4580158104789722,
+      "volume_overshoot_train_prevalence": -0.09171501633779267
+    },
+    "insult": {
+      "prevalence_train_file": 0.04936360616904074,
+      "prevalence_test": 0.053565288067773296,
+      "prevalence_ratio_train_over_test": 0.9215596135053657,
+      "actual_positives_test": 3427,
+      "model_expected_positives_test": 3778.5881372839403,
+      "train_prevalence_expected_positives_test": 3158.184795482888,
+      "volume_overshoot_model": 0.10259356209044079,
+      "volume_overshoot_train_prevalence": -0.07844038649463436
+    },
+    "identity_hate": {
+      "prevalence_train_file": 0.00880485802558109,
+      "prevalence_test": 0.011128825533777236,
+      "prevalence_ratio_train_over_test": 0.7911758521918918,
+      "actual_positives_test": 712,
+      "model_expected_positives_test": 776.4485659421722,
+      "train_prevalence_expected_positives_test": 563.317206760627,
+      "volume_overshoot_model": 0.09051764879518576,
+      "volume_overshoot_train_prevalence": -0.2088241478081082
+    }
+  },
   "simulation": {
+    "note": null,
     "assumptions": {
       "reviewers": 4,
       "handle_minutes": 2.0,
@@ -539,6 +650,10 @@
       ],
       "priority_order": "priority_review first, then human_review; within each tier, higher max predicted probability times severity weight first; ties use arrival order",
       "handle_time": "deterministic",
+      "review_completion_definition": "simulated reviewer service finished; moderation requires human confirmation; no enforcement outcome is observed",
+      "wait_definition": "start of review minus arrival, over jobs that started (completed or in progress); never-started jobs are counted, not timed",
+      "completion_latency_definition": "completion minus arrival, over jobs completed within the horizon",
+      "p99_min_samples": 100,
       "harm_proxy": "max severity weight over TRUE labels (0 if clean); not real-world harm",
       "high_risk": "harm proxy >= 5.0",
       "loads_per_hour": [
@@ -556,7 +671,8 @@
       "queued_jobs": 6310,
       "queued_high_risk": 916,
       "queued_priority_review": 4625,
-      "queued_human_review": 1685
+      "queued_human_review": 1685,
+      "per_job_records": "simulation_jobs.csv in the run directory; every time metric here is recomputable from it"
     },
     "summary": {
       "fifo@60": {
@@ -571,6 +687,14 @@
           "mean": 467.8,
           "std": 26.49830183238164
         },
+        "n_not_started": {
+          "mean": 0.4,
+          "std": 0.8000000000000002
+        },
+        "n_in_progress": {
+          "mean": 1.6,
+          "std": 1.3564659966250536
+        },
         "high_risk_arrived": {
           "mean": 66.6,
           "std": 13.52922762023021
@@ -580,6 +704,14 @@
           "std": 13.52922762023021
         },
         "high_risk_unhandled": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_not_started": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_in_progress": {
           "mean": 0.0,
           "std": 0.0
         },
@@ -595,13 +727,25 @@
           "mean": 27.66875,
           "std": 3.4772474746557798
         },
+        "completion_ratio": {
+          "mean": 0.9959142142714512,
+          "std": 0.004082943871166383
+        },
         "wait_p50": {
           "mean": 0.0,
           "std": 0.0
         },
         "wait_p90": {
-          "mean": 0.2973983211717983,
-          "std": 0.1573110257581183
+          "mean": 0.3028671220757165,
+          "std": 0.14791052737540858
+        },
+        "wait_p99": {
+          "mean": 1.419295950982092,
+          "std": 0.3738634836049926
+        },
+        "n_wait_samples": {
+          "mean": 469.4,
+          "std": 27.39781013146854
         },
         "high_risk_wait_p50": {
           "mean": 0.0,
@@ -610,6 +754,34 @@
         "high_risk_wait_p90": {
           "mean": 0.2610311468147634,
           "std": 0.09866686500636346
+        },
+        "high_risk_wait_p99": {
+          "mean": 1.3356759578158235,
+          "std": 0.21485386879827603
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 66.6,
+          "std": 13.52922762023021
+        },
+        "completion_latency_p50": {
+          "mean": 2.0,
+          "std": 0.0
+        },
+        "completion_latency_p90": {
+          "mean": 2.2973983211717988,
+          "std": 0.15731102575811837
+        },
+        "completion_latency_p99": {
+          "mean": 3.4205222295946016,
+          "std": 0.37486940307942956
+        },
+        "n_completion_samples": {
+          "mean": 467.8,
+          "std": 26.49830183238164
+        },
+        "unfinished_age_p50": {
+          "mean": 1.1027421610170123,
+          "std": 0.34420918537509
         },
         "backlog_end": {
           "mean": 0.4,
@@ -636,6 +808,14 @@
           "mean": 467.8,
           "std": 26.49830183238164
         },
+        "n_not_started": {
+          "mean": 0.4,
+          "std": 0.8000000000000002
+        },
+        "n_in_progress": {
+          "mean": 1.6,
+          "std": 1.3564659966250536
+        },
         "high_risk_arrived": {
           "mean": 66.6,
           "std": 13.52922762023021
@@ -645,6 +825,14 @@
           "std": 13.52922762023021
         },
         "high_risk_unhandled": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_not_started": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_in_progress": {
           "mean": 0.0,
           "std": 0.0
         },
@@ -660,13 +848,25 @@
           "mean": 27.66875,
           "std": 3.4772474746557798
         },
+        "completion_ratio": {
+          "mean": 0.9959142142714512,
+          "std": 0.004082943871166383
+        },
         "wait_p50": {
           "mean": 0.0,
           "std": 0.0
         },
         "wait_p90": {
-          "mean": 0.26050630456288526,
-          "std": 0.1490678640308142
+          "mean": 0.26715812464527455,
+          "std": 0.14459447281438417
+        },
+        "wait_p99": {
+          "mean": 1.4566115287167356,
+          "std": 0.3017814849215002
+        },
+        "n_wait_samples": {
+          "mean": 469.4,
+          "std": 27.39781013146854
         },
         "high_risk_wait_p50": {
           "mean": 0.0,
@@ -675,6 +875,34 @@
         "high_risk_wait_p90": {
           "mean": 0.1850333972718142,
           "std": 0.09209303758416616
+        },
+        "high_risk_wait_p99": {
+          "mean": 0.9055378918092181,
+          "std": 0.4502382294210129
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 66.6,
+          "std": 13.52922762023021
+        },
+        "completion_latency_p50": {
+          "mean": 2.0,
+          "std": 0.0
+        },
+        "completion_latency_p90": {
+          "mean": 2.2605063045628855,
+          "std": 0.14906786403081435
+        },
+        "completion_latency_p99": {
+          "mean": 3.4572090952123156,
+          "std": 0.3013312012314132
+        },
+        "n_completion_samples": {
+          "mean": 467.8,
+          "std": 26.49830183238164
+        },
+        "unfinished_age_p50": {
+          "mean": 1.1027421610170123,
+          "std": 0.34420918537509
         },
         "backlog_end": {
           "mean": 0.4,
@@ -701,6 +929,14 @@
           "mean": 467.8,
           "std": 26.49830183238164
         },
+        "n_not_started": {
+          "mean": 0.4,
+          "std": 0.8000000000000002
+        },
+        "n_in_progress": {
+          "mean": 1.6,
+          "std": 1.3564659966250536
+        },
         "high_risk_arrived": {
           "mean": 66.6,
           "std": 13.52922762023021
@@ -710,6 +946,14 @@
           "std": 13.52922762023021
         },
         "high_risk_unhandled": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_not_started": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_in_progress": {
           "mean": 0.0,
           "std": 0.0
         },
@@ -725,13 +969,25 @@
           "mean": 27.66875,
           "std": 3.4772474746557798
         },
+        "completion_ratio": {
+          "mean": 0.9959142142714512,
+          "std": 0.004082943871166383
+        },
         "wait_p50": {
           "mean": 0.0,
           "std": 0.0
         },
         "wait_p90": {
-          "mean": 0.2561182607336332,
-          "std": 0.14737485406061768
+          "mean": 0.26393041966716047,
+          "std": 0.1450847511336176
+        },
+        "wait_p99": {
+          "mean": 1.4583782652470894,
+          "std": 0.3052447527232222
+        },
+        "n_wait_samples": {
+          "mean": 469.4,
+          "std": 27.39781013146854
         },
         "high_risk_wait_p50": {
           "mean": 0.0,
@@ -740,6 +996,34 @@
         "high_risk_wait_p90": {
           "mean": 0.18079175817298743,
           "std": 0.08988343133010007
+        },
+        "high_risk_wait_p99": {
+          "mean": 0.9055378918092181,
+          "std": 0.4502382294210129
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 66.6,
+          "std": 13.52922762023021
+        },
+        "completion_latency_p50": {
+          "mean": 2.0,
+          "std": 0.0
+        },
+        "completion_latency_p90": {
+          "mean": 2.2561182607336336,
+          "std": 0.14737485406061773
+        },
+        "completion_latency_p99": {
+          "mean": 3.4588735322893696,
+          "std": 0.3048219427580526
+        },
+        "n_completion_samples": {
+          "mean": 467.8,
+          "std": 26.49830183238164
+        },
+        "unfinished_age_p50": {
+          "mean": 1.1027421610170123,
+          "std": 0.34420918537509
         },
         "backlog_end": {
           "mean": 0.4,
@@ -766,6 +1050,14 @@
           "mean": 467.8,
           "std": 26.49830183238164
         },
+        "n_not_started": {
+          "mean": 0.4,
+          "std": 0.8000000000000002
+        },
+        "n_in_progress": {
+          "mean": 1.6,
+          "std": 1.3564659966250536
+        },
         "high_risk_arrived": {
           "mean": 66.6,
           "std": 13.52922762023021
@@ -775,6 +1067,14 @@
           "std": 13.52922762023021
         },
         "high_risk_unhandled": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_not_started": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_in_progress": {
           "mean": 0.0,
           "std": 0.0
         },
@@ -790,13 +1090,25 @@
           "mean": 27.66875,
           "std": 3.4772474746557798
         },
+        "completion_ratio": {
+          "mean": 0.9959142142714512,
+          "std": 0.004082943871166383
+        },
         "wait_p50": {
           "mean": 0.0,
           "std": 0.0
         },
         "wait_p90": {
-          "mean": 0.2581590351406459,
-          "std": 0.1497027257897541
+          "mean": 0.2655911795127309,
+          "std": 0.14674941880828019
+        },
+        "wait_p99": {
+          "mean": 1.4583782652470894,
+          "std": 0.3052447527232222
+        },
+        "n_wait_samples": {
+          "mean": 469.4,
+          "std": 27.39781013146854
         },
         "high_risk_wait_p50": {
           "mean": 0.0,
@@ -805,6 +1117,34 @@
         "high_risk_wait_p90": {
           "mean": 0.1850333972718142,
           "std": 0.09209303758416616
+        },
+        "high_risk_wait_p99": {
+          "mean": 0.9055378918092181,
+          "std": 0.4502382294210129
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 66.6,
+          "std": 13.52922762023021
+        },
+        "completion_latency_p50": {
+          "mean": 2.0,
+          "std": 0.0
+        },
+        "completion_latency_p90": {
+          "mean": 2.2581590351406455,
+          "std": 0.1497027257897534
+        },
+        "completion_latency_p99": {
+          "mean": 3.4588735322893696,
+          "std": 0.3048219427580526
+        },
+        "n_completion_samples": {
+          "mean": 467.8,
+          "std": 26.49830183238164
+        },
+        "unfinished_age_p50": {
+          "mean": 1.1027421610170123,
+          "std": 0.34420918537509
         },
         "backlog_end": {
           "mean": 0.4,
@@ -831,6 +1171,14 @@
           "mean": 867.4,
           "std": 20.254382241875458
         },
+        "n_not_started": {
+          "mean": 1.2,
+          "std": 1.5999999999999999
+        },
+        "n_in_progress": {
+          "mean": 3.8,
+          "std": 0.39999999999999997
+        },
         "high_risk_arrived": {
           "mean": 123.8,
           "std": 17.577258034175866
@@ -840,6 +1188,14 @@
           "std": 17.670314088889306
         },
         "high_risk_unhandled": {
+          "mean": 0.4,
+          "std": 0.48989794855663565
+        },
+        "high_risk_not_started": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_in_progress": {
           "mean": 0.4,
           "std": 0.48989794855663565
         },
@@ -855,21 +1211,61 @@
           "mean": 50.4125,
           "std": 3.455995695888524
         },
+        "completion_ratio": {
+          "mean": 0.994271372623818,
+          "std": 0.002060062206193563
+        },
         "wait_p50": {
-          "mean": 1.6465033420211455,
-          "std": 0.978802764200094
+          "mean": 1.6389207147892448,
+          "std": 0.9728608303463531
         },
         "wait_p90": {
-          "mean": 5.989271534385042,
-          "std": 2.8671244892364833
+          "mean": 5.975672164523138,
+          "std": 2.8710305362700184
+        },
+        "wait_p99": {
+          "mean": 8.772770425121845,
+          "std": 3.264002671028306
+        },
+        "n_wait_samples": {
+          "mean": 871.2,
+          "std": 20.478281177872326
         },
         "high_risk_wait_p50": {
-          "mean": 1.2909702372313583,
-          "std": 0.4337890081793072
+          "mean": 1.2904017565154493,
+          "std": 0.4341332406828122
         },
         "high_risk_wait_p90": {
-          "mean": 5.60528059094503,
-          "std": 1.9871170448973212
+          "mean": 5.6038938899473845,
+          "std": 1.9884627946570457
+        },
+        "high_risk_wait_p99": {
+          "mean": 8.401170170483198,
+          "std": 3.461217126182022
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 123.8,
+          "std": 17.577258034175866
+        },
+        "completion_latency_p50": {
+          "mean": 3.6465033420211457,
+          "std": 0.9788027642000939
+        },
+        "completion_latency_p90": {
+          "mean": 7.989271534385042,
+          "std": 2.8671244892364833
+        },
+        "completion_latency_p99": {
+          "mean": 10.776882230883988,
+          "std": 3.264786257620957
+        },
+        "n_completion_samples": {
+          "mean": 867.4,
+          "std": 20.254382241875458
+        },
+        "unfinished_age_p50": {
+          "mean": 1.3518858971024827,
+          "std": 0.468387208093191
         },
         "backlog_end": {
           "mean": 1.2,
@@ -896,6 +1292,14 @@
           "mean": 867.4,
           "std": 20.254382241875458
         },
+        "n_not_started": {
+          "mean": 1.2,
+          "std": 1.5999999999999999
+        },
+        "n_in_progress": {
+          "mean": 3.8,
+          "std": 0.39999999999999997
+        },
         "high_risk_arrived": {
           "mean": 123.8,
           "std": 17.577258034175866
@@ -905,6 +1309,14 @@
           "std": 17.442476888332116
         },
         "high_risk_unhandled": {
+          "mean": 0.2,
+          "std": 0.4
+        },
+        "high_risk_not_started": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_in_progress": {
           "mean": 0.2,
           "std": 0.4
         },
@@ -920,21 +1332,61 @@
           "mean": 50.45625,
           "std": 3.416789885989479
         },
+        "completion_ratio": {
+          "mean": 0.994271372623818,
+          "std": 0.002060062206193563
+        },
         "wait_p50": {
-          "mean": 0.4090627495915541,
-          "std": 0.07201397691453314
+          "mean": 0.40710400647505834,
+          "std": 0.07150357692816704
         },
         "wait_p90": {
-          "mean": 3.8923987822499506,
-          "std": 1.0685643975083472
+          "mean": 3.8753565254689333,
+          "std": 1.050771272728807
+        },
+        "wait_p99": {
+          "mean": 39.72359523338995,
+          "std": 26.70930196058932
+        },
+        "n_wait_samples": {
+          "mean": 871.2,
+          "std": 20.478281177872326
         },
         "high_risk_wait_p50": {
-          "mean": 0.23375966995137923,
-          "std": 0.042746453578219414
+          "mean": 0.2329795553120359,
+          "std": 0.04261423745001779
         },
         "high_risk_wait_p90": {
-          "mean": 1.0979146561800748,
-          "std": 0.13204984379666823
+          "mean": 1.0973253631557818,
+          "std": 0.1323486377082023
+        },
+        "high_risk_wait_p99": {
+          "mean": 8.3769892599767,
+          "std": 4.999977143850142
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 123.8,
+          "std": 17.577258034175866
+        },
+        "completion_latency_p50": {
+          "mean": 2.409062749591554,
+          "std": 0.07201397691453315
+        },
+        "completion_latency_p90": {
+          "mean": 5.89239878224995,
+          "std": 1.0685643975083472
+        },
+        "completion_latency_p99": {
+          "mean": 41.78235143363277,
+          "std": 26.738415305477094
+        },
+        "n_completion_samples": {
+          "mean": 867.4,
+          "std": 20.254382241875458
+        },
+        "unfinished_age_p50": {
+          "mean": 1.4723602926751482,
+          "std": 0.601214289819207
         },
         "backlog_end": {
           "mean": 1.2,
@@ -961,6 +1413,14 @@
           "mean": 867.4,
           "std": 20.254382241875458
         },
+        "n_not_started": {
+          "mean": 1.2,
+          "std": 1.5999999999999999
+        },
+        "n_in_progress": {
+          "mean": 3.8,
+          "std": 0.39999999999999997
+        },
         "high_risk_arrived": {
           "mean": 123.8,
           "std": 17.577258034175866
@@ -970,6 +1430,14 @@
           "std": 17.442476888332116
         },
         "high_risk_unhandled": {
+          "mean": 0.2,
+          "std": 0.4
+        },
+        "high_risk_not_started": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_in_progress": {
           "mean": 0.2,
           "std": 0.4
         },
@@ -985,21 +1453,61 @@
           "mean": 50.46875,
           "std": 3.399620842829388
         },
+        "completion_ratio": {
+          "mean": 0.994271372623818,
+          "std": 0.002060062206193563
+        },
         "wait_p50": {
-          "mean": 0.4083776308704728,
-          "std": 0.07033010614839862
+          "mean": 0.4068837470776046,
+          "std": 0.06928310204122705
         },
         "wait_p90": {
-          "mean": 3.9605283837207628,
-          "std": 1.430733025061844
+          "mean": 3.931310088594258,
+          "std": 1.3912810505243565
+        },
+        "wait_p99": {
+          "mean": 39.47705116315633,
+          "std": 26.819029406618494
+        },
+        "n_wait_samples": {
+          "mean": 871.2,
+          "std": 20.478281177872326
         },
         "high_risk_wait_p50": {
-          "mean": 0.20902072185323703,
-          "std": 0.052609614385400384
+          "mean": 0.20880483382172912,
+          "std": 0.05256109214014633
         },
         "high_risk_wait_p90": {
-          "mean": 1.046210571391395,
-          "std": 0.08268663608679462
+          "mean": 1.0459807715446439,
+          "std": 0.08278907310800622
+        },
+        "high_risk_wait_p99": {
+          "mean": 8.19094671371284,
+          "std": 7.702900435897294
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 123.8,
+          "std": 17.577258034175866
+        },
+        "completion_latency_p50": {
+          "mean": 2.408377630870473,
+          "std": 0.07033010614839862
+        },
+        "completion_latency_p90": {
+          "mean": 5.960528383720763,
+          "std": 1.430733025061844
+        },
+        "completion_latency_p99": {
+          "mean": 41.53813608687058,
+          "std": 26.902926817468558
+        },
+        "n_completion_samples": {
+          "mean": 867.4,
+          "std": 20.254382241875458
+        },
+        "unfinished_age_p50": {
+          "mean": 1.4723602926751482,
+          "std": 0.601214289819207
         },
         "backlog_end": {
           "mean": 1.2,
@@ -1026,6 +1534,14 @@
           "mean": 867.4,
           "std": 20.254382241875458
         },
+        "n_not_started": {
+          "mean": 1.2,
+          "std": 1.5999999999999999
+        },
+        "n_in_progress": {
+          "mean": 3.8,
+          "std": 0.39999999999999997
+        },
         "high_risk_arrived": {
           "mean": 123.8,
           "std": 17.577258034175866
@@ -1035,6 +1551,14 @@
           "std": 17.442476888332116
         },
         "high_risk_unhandled": {
+          "mean": 0.2,
+          "std": 0.4
+        },
+        "high_risk_not_started": {
+          "mean": 0.0,
+          "std": 0.0
+        },
+        "high_risk_in_progress": {
           "mean": 0.2,
           "std": 0.4
         },
@@ -1050,21 +1574,61 @@
           "mean": 50.46875,
           "std": 3.399620842829388
         },
+        "completion_ratio": {
+          "mean": 0.994271372623818,
+          "std": 0.002060062206193563
+        },
         "wait_p50": {
-          "mean": 0.4094833723233478,
-          "std": 0.07085690637923493
+          "mean": 0.40752425598562925,
+          "std": 0.0696736599472134
         },
         "wait_p90": {
-          "mean": 3.9646955551413408,
-          "std": 1.4285789462565812
+          "mean": 3.944438775399233,
+          "std": 1.431402748718867
+        },
+        "wait_p99": {
+          "mean": 39.464586394502774,
+          "std": 26.825090002643964
+        },
+        "n_wait_samples": {
+          "mean": 871.2,
+          "std": 20.478281177872326
         },
         "high_risk_wait_p50": {
-          "mean": 0.2101044375732144,
-          "std": 0.05219873764888978
+          "mean": 0.2098885495417065,
+          "std": 0.0521543192442299
         },
         "high_risk_wait_p90": {
-          "mean": 1.0581760698990532,
-          "std": 0.08422527737052814
+          "mean": 1.0579462700523024,
+          "std": 0.08435844668035268
+        },
+        "high_risk_wait_p99": {
+          "mean": 9.534235956732982,
+          "std": 7.169410149117657
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 123.8,
+          "std": 17.577258034175866
+        },
+        "completion_latency_p50": {
+          "mean": 2.409483372323348,
+          "std": 0.07085690637923493
+        },
+        "completion_latency_p90": {
+          "mean": 5.964695555141341,
+          "std": 1.4285789462565817
+        },
+        "completion_latency_p99": {
+          "mean": 41.52210995574457,
+          "std": 26.910698702274537
+        },
+        "n_completion_samples": {
+          "mean": 867.4,
+          "std": 20.254382241875458
+        },
+        "unfinished_age_p50": {
+          "mean": 1.4723602926751482,
+          "std": 0.601214289819207
         },
         "backlog_end": {
           "mean": 1.2,
@@ -1091,6 +1655,14 @@
           "mean": 953.2,
           "std": 3.9191835884530852
         },
+        "n_not_started": {
+          "mean": 464.8,
+          "std": 41.498915648484115
+        },
+        "n_in_progress": {
+          "mean": 4.0,
+          "std": 0.0
+        },
         "high_risk_arrived": {
           "mean": 207.0,
           "std": 10.019980039900279
@@ -1102,6 +1674,14 @@
         "high_risk_unhandled": {
           "mean": 69.4,
           "std": 8.63944442658207
+        },
+        "high_risk_not_started": {
+          "mean": 68.8,
+          "std": 8.034923770640265
+        },
+        "high_risk_in_progress": {
+          "mean": 0.6,
+          "std": 0.7999999999999999
         },
         "harm_arrived": {
           "mean": 2679.2,
@@ -1115,21 +1695,61 @@
           "mean": 56.0875,
           "std": 1.2777238062273082
         },
+        "completion_ratio": {
+          "mean": 0.6709026783635214,
+          "std": 0.018797071090613824
+        },
         "wait_p50": {
-          "mean": 78.75870506496214,
-          "std": 2.4070498005840677
+          "mean": 79.17617573141584,
+          "std": 2.500599098867411
         },
         "wait_p90": {
-          "mean": 139.86341084347154,
-          "std": 7.777914356926516
+          "mean": 140.38217390295523,
+          "std": 7.920355762876184
+        },
+        "wait_p99": {
+          "mean": 154.63036998207275,
+          "std": 7.511653382607061
+        },
+        "n_wait_samples": {
+          "mean": 957.2,
+          "std": 3.9191835884530852
         },
         "high_risk_wait_p50": {
-          "mean": 76.81097372365306,
-          "std": 5.176427682905318
+          "mean": 77.17270548030957,
+          "std": 5.362254139071089
         },
         "high_risk_wait_p90": {
-          "mean": 138.52421655071177,
-          "std": 9.469316162305336
+          "mean": 138.93568650526217,
+          "std": 9.437340086326076
+        },
+        "high_risk_wait_p99": {
+          "mean": 154.07765327394264,
+          "std": 7.667223439000201
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 138.2,
+          "std": 3.4292856398964493
+        },
+        "completion_latency_p50": {
+          "mean": 80.75870506496214,
+          "std": 2.4070498005840677
+        },
+        "completion_latency_p90": {
+          "mean": 141.86341084347154,
+          "std": 7.777914356926516
+        },
+        "completion_latency_p99": {
+          "mean": 155.92826700199763,
+          "std": 7.661522457419192
+        },
+        "n_completion_samples": {
+          "mean": 953.2,
+          "std": 3.9191835884530852
+        },
+        "unfinished_age_p50": {
+          "mean": 79.00371900277469,
+          "std": 4.0760856901089815
         },
         "backlog_end": {
           "mean": 464.8,
@@ -1156,6 +1776,14 @@
           "mean": 953.2,
           "std": 3.9191835884530852
         },
+        "n_not_started": {
+          "mean": 464.8,
+          "std": 41.498915648484115
+        },
+        "n_in_progress": {
+          "mean": 4.0,
+          "std": 0.0
+        },
         "high_risk_arrived": {
           "mean": 207.0,
           "std": 10.019980039900279
@@ -1167,6 +1795,14 @@
         "high_risk_unhandled": {
           "mean": 23.4,
           "std": 4.5431266766402185
+        },
+        "high_risk_not_started": {
+          "mean": 22.4,
+          "std": 4.409081537009721
+        },
+        "high_risk_in_progress": {
+          "mean": 1.0,
+          "std": 0.6324555320336759
         },
         "harm_arrived": {
           "mean": 2679.2,
@@ -1180,21 +1816,61 @@
           "mean": 69.625,
           "std": 1.9687003962004985
         },
+        "completion_ratio": {
+          "mean": 0.6709026783635214,
+          "std": 0.018797071090613824
+        },
         "wait_p50": {
-          "mean": 0.7237341218613242,
-          "std": 0.22351643776001087
+          "mean": 0.7249270054726932,
+          "std": 0.22317489449581748
         },
         "wait_p90": {
-          "mean": 10.198862622898684,
-          "std": 0.7801727931038133
+          "mean": 10.224288917274437,
+          "std": 0.7897055441283215
+        },
+        "wait_p99": {
+          "mean": 107.58422885126265,
+          "std": 25.656073925604307
+        },
+        "n_wait_samples": {
+          "mean": 957.2,
+          "std": 3.9191835884530852
         },
         "high_risk_wait_p50": {
-          "mean": 0.5121995293790619,
-          "std": 0.22122722115419965
+          "mean": 0.5115214412800271,
+          "std": 0.22185626698372826
         },
         "high_risk_wait_p90": {
-          "mean": 2.0983561208791173,
-          "std": 0.49430962856077026
+          "mean": 2.1062648463995157,
+          "std": 0.4990206767531233
+        },
+        "high_risk_wait_p99": {
+          "mean": 26.103322066546554,
+          "std": 8.323887444311714
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 184.6,
+          "std": 6.118823416311343
+        },
+        "completion_latency_p50": {
+          "mean": 2.723734121861324,
+          "std": 0.22351643776001087
+        },
+        "completion_latency_p90": {
+          "mean": 12.198862622898682,
+          "std": 0.7801727931038133
+        },
+        "completion_latency_p99": {
+          "mean": 109.94962584697109,
+          "std": 26.00825489909649
+        },
+        "n_completion_samples": {
+          "mean": 953.2,
+          "std": 3.9191835884530852
+        },
+        "unfinished_age_p50": {
+          "mean": 223.63803016494563,
+          "std": 10.311352451611608
         },
         "backlog_end": {
           "mean": 464.8,
@@ -1221,6 +1897,14 @@
           "mean": 953.2,
           "std": 3.9191835884530852
         },
+        "n_not_started": {
+          "mean": 464.8,
+          "std": 41.498915648484115
+        },
+        "n_in_progress": {
+          "mean": 4.0,
+          "std": 0.0
+        },
         "high_risk_arrived": {
           "mean": 207.0,
           "std": 10.019980039900279
@@ -1232,6 +1916,14 @@
         "high_risk_unhandled": {
           "mean": 18.0,
           "std": 5.0990195135927845
+        },
+        "high_risk_not_started": {
+          "mean": 17.2,
+          "std": 5.455272678794342
+        },
+        "high_risk_in_progress": {
+          "mean": 0.8,
+          "std": 0.7483314773547883
         },
         "harm_arrived": {
           "mean": 2679.2,
@@ -1245,21 +1937,61 @@
           "mean": 71.61875,
           "std": 1.5622999871983612
         },
+        "completion_ratio": {
+          "mean": 0.6709026783635214,
+          "std": 0.018797071090613824
+        },
         "wait_p50": {
-          "mean": 0.7003100476741853,
-          "std": 0.236066362252728
+          "mean": 0.7015753019933644,
+          "std": 0.23572753305054117
         },
         "wait_p90": {
-          "mean": 11.473505649314308,
-          "std": 0.7207558177657712
+          "mean": 11.488141080768107,
+          "std": 0.7263169343458786
+        },
+        "wait_p99": {
+          "mean": 131.2513418153764,
+          "std": 63.50658673020246
+        },
+        "n_wait_samples": {
+          "mean": 957.2,
+          "std": 3.9191835884530852
         },
         "high_risk_wait_p50": {
-          "mean": 0.48092883708305223,
-          "std": 0.23745702644756725
+          "mean": 0.4797157325878693,
+          "std": 0.2381776841438422
         },
         "high_risk_wait_p90": {
-          "mean": 1.8844168388580411,
-          "std": 0.6758154598794253
+          "mean": 1.8810769417311763,
+          "std": 0.6780271088375815
+        },
+        "high_risk_wait_p99": {
+          "mean": 63.50266745237987,
+          "std": 89.58941136739207
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 189.8,
+          "std": 5.528109984434101
+        },
+        "completion_latency_p50": {
+          "mean": 2.7003100476741855,
+          "std": 0.23606636225272798
+        },
+        "completion_latency_p90": {
+          "mean": 13.473505649314308,
+          "std": 0.7207558177657712
+        },
+        "completion_latency_p99": {
+          "mean": 133.590373096542,
+          "std": 63.43447103115767
+        },
+        "n_completion_samples": {
+          "mean": 953.2,
+          "std": 3.9191835884530852
+        },
+        "unfinished_age_p50": {
+          "mean": 217.2045477916112,
+          "std": 6.327565772083154
         },
         "backlog_end": {
           "mean": 464.8,
@@ -1286,6 +2018,14 @@
           "mean": 953.2,
           "std": 3.9191835884530852
         },
+        "n_not_started": {
+          "mean": 464.8,
+          "std": 41.498915648484115
+        },
+        "n_in_progress": {
+          "mean": 4.0,
+          "std": 0.0
+        },
         "high_risk_arrived": {
           "mean": 207.0,
           "std": 10.019980039900279
@@ -1297,6 +2037,14 @@
         "high_risk_unhandled": {
           "mean": 22.8,
           "std": 5.344155686354955
+        },
+        "high_risk_not_started": {
+          "mean": 22.0,
+          "std": 5.656854249492381
+        },
+        "high_risk_in_progress": {
+          "mean": 0.8,
+          "std": 0.7483314773547883
         },
         "harm_arrived": {
           "mean": 2679.2,
@@ -1310,21 +2058,61 @@
           "mean": 70.24375,
           "std": 1.7087093082206815
         },
+        "completion_ratio": {
+          "mean": 0.6709026783635214,
+          "std": 0.018797071090613824
+        },
         "wait_p50": {
-          "mean": 0.7014187576435991,
-          "std": 0.23407770659470467
+          "mean": 0.7015444803952718,
+          "std": 0.23412412117593612
         },
         "wait_p90": {
-          "mean": 10.286057588596176,
-          "std": 0.7623377396160335
+          "mean": 10.371374384711158,
+          "std": 0.8522318859920286
+        },
+        "wait_p99": {
+          "mean": 112.20936662346375,
+          "std": 36.82484455203952
+        },
+        "n_wait_samples": {
+          "mean": 957.2,
+          "std": 3.9191835884530852
         },
         "high_risk_wait_p50": {
-          "mean": 0.471337369991808,
-          "std": 0.23785695851701621
+          "mean": 0.4703465771475436,
+          "std": 0.23844843077278052
         },
         "high_risk_wait_p90": {
-          "mean": 1.6263575246747404,
-          "std": 0.31116496807373534
+          "mean": 1.6255596529913752,
+          "std": 0.3117537034948911
+        },
+        "high_risk_wait_p99": {
+          "mean": 16.511299873584488,
+          "std": 11.496911843194559
+        },
+        "n_high_risk_wait_samples": {
+          "mean": 185.0,
+          "std": 5.403702434442518
+        },
+        "completion_latency_p50": {
+          "mean": 2.701418757643599,
+          "std": 0.23407770659470467
+        },
+        "completion_latency_p90": {
+          "mean": 12.286057588596176,
+          "std": 0.7623377396160335
+        },
+        "completion_latency_p99": {
+          "mean": 114.34478581583342,
+          "std": 36.88015440674079
+        },
+        "n_completion_samples": {
+          "mean": 953.2,
+          "std": 3.9191835884530852
+        },
+        "unfinished_age_p50": {
+          "mean": 223.13456861825634,
+          "std": 9.841298146647917
         },
         "backlog_end": {
           "mean": 464.8,
@@ -1375,9 +2163,9 @@
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -0.03923928603115238,
-          "min_diff": -0.07832922794856434,
-          "max_diff": -0.007081516386773387,
+          "mean_diff": -0.037275942562985526,
+          "min_diff": -0.0717151074511484,
+          "max_diff": -0.007203849136442342,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
@@ -1417,12 +2205,12 @@
           "n_seeds_tied": 5
         },
         "wait_p90": {
-          "mean_diff": -0.0023472694222393038,
-          "min_diff": -0.007081516386773387,
+          "mean_diff": -0.0015669451325436511,
+          "min_diff": -0.007834725662718256,
           "max_diff": 0.0,
           "n_seeds": 5,
-          "n_seeds_first_better": 2,
-          "n_seeds_tied": 3
+          "n_seeds_first_better": 1,
+          "n_seeds_tied": 4
         }
       },
       "priority_vs_severity@60": {
@@ -1459,9 +2247,9 @@
           "n_seeds_tied": 3
         },
         "wait_p90": {
-          "mean_diff": 0.0020407744070127464,
+          "mean_diff": 0.0016607598455704252,
           "min_diff": 0.0,
-          "max_diff": 0.006523759946815144,
+          "max_diff": 0.0041710889321309175,
           "n_seeds": 5,
           "n_seeds_first_better": 0,
           "n_seeds_tied": 3
@@ -1501,9 +2289,9 @@
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -0.04128006043816512,
-          "min_diff": -0.07832922794856434,
-          "max_diff": -0.007081516386773387,
+          "mean_diff": -0.03893670240855595,
+          "min_diff": -0.0717151074511484,
+          "max_diff": -0.011336559432163551,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
@@ -1543,12 +2331,12 @@
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -0.03689201660891307,
-          "min_diff": -0.07832922794856434,
-          "max_diff": 0.0,
+          "mean_diff": -0.035708997430441876,
+          "min_diff": -0.0717151074511484,
+          "max_diff": -0.006715876524538089,
           "n_seeds": 5,
-          "n_seeds_first_better": 4,
-          "n_seeds_tied": 1
+          "n_seeds_first_better": 5,
+          "n_seeds_tied": 0
         }
       },
       "severity_vs_prob@60": {
@@ -1585,8 +2373,8 @@
           "n_seeds_tied": 3
         },
         "wait_p90": {
-          "mean_diff": -0.00438804382925205,
-          "min_diff": -0.011178590671238275,
+          "mean_diff": -0.0032277049781140764,
+          "min_diff": -0.007834725662718256,
           "max_diff": 0.0,
           "n_seeds": 5,
           "n_seeds_first_better": 3,
@@ -1619,17 +2407,17 @@
           "n_seeds_tied": 4
         },
         "high_risk_wait_p90": {
-          "mean_diff": -4.547104521045978,
+          "mean_diff": -4.545947619895083,
           "min_diff": -7.9838106522542915,
-          "max_diff": -2.5311470006069277,
+          "max_diff": -2.5271120200191604,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -2.024575979243701,
-          "min_diff": -4.868388526511553,
-          "max_diff": -0.31954635587952307,
+          "mean_diff": -2.031233389123904,
+          "min_diff": -4.879433786845622,
+          "max_diff": -0.3719499175543568,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
@@ -1661,7 +2449,7 @@
           "n_seeds_tied": 5
         },
         "high_risk_wait_p90": {
-          "mean_diff": -0.03973858628102149,
+          "mean_diff": -0.03937909310347931,
           "min_diff": -0.16681295985891453,
           "max_diff": 0.06183874138045553,
           "n_seeds": 5,
@@ -1669,9 +2457,9 @@
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": 0.07229677289138987,
-          "min_diff": -0.36613760888265023,
-          "max_diff": 0.853971549737687,
+          "mean_diff": 0.06908224993029943,
+          "min_diff": -0.3621049169391828,
+          "max_diff": 0.8952671768336229,
           "n_seeds": 5,
           "n_seeds_first_better": 3,
           "n_seeds_tied": 0
@@ -1711,9 +2499,9 @@
           "n_seeds_tied": 2
         },
         "wait_p90": {
-          "mean_diff": 0.0041671714205773645,
-          "min_diff": -0.14768976599527317,
-          "max_diff": 0.08892562054778574,
+          "mean_diff": 0.013128686804975231,
+          "min_diff": -0.1375514151470565,
+          "max_diff": 0.10945387904211579,
           "n_seeds": 5,
           "n_seeds_first_better": 2,
           "n_seeds_tied": 0
@@ -1745,17 +2533,17 @@
           "n_seeds_tied": 4
         },
         "high_risk_wait_p90": {
-          "mean_diff": -4.559070019553636,
+          "mean_diff": -4.557913118402741,
           "min_diff": -8.0,
-          "max_diff": -2.5311470006069277,
+          "max_diff": -2.5271120200191604,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -2.0287431506642775,
-          "min_diff": -4.882188907325219,
-          "max_diff": -0.30468020600774803,
+          "mean_diff": -2.044362075928879,
+          "min_diff": -4.988887665887738,
+          "max_diff": -0.30690065848937653,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
@@ -1787,17 +2575,17 @@
           "n_seeds_tied": 4
         },
         "high_risk_wait_p90": {
-          "mean_diff": -4.507365934764956,
+          "mean_diff": -4.506568526791604,
           "min_diff": -8.045649393634747,
-          "max_diff": -2.508872212943118,
+          "max_diff": -2.5066346982430616,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -2.0968727521350905,
-          "min_diff": -5.72236007624924,
-          "max_diff": -0.5408730887122992,
+          "mean_diff": -2.100315639054204,
+          "min_diff": -5.774700963679245,
+          "max_diff": -0.5521831276835516,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
@@ -1829,7 +2617,7 @@
           "n_seeds_tied": 5
         },
         "high_risk_wait_p90": {
-          "mean_diff": -0.05170408478867994,
+          "mean_diff": -0.05134459161113776,
           "min_diff": -0.17098288794065508,
           "max_diff": 0.05590081788523249,
           "n_seeds": 5,
@@ -1837,9 +2625,9 @@
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": 0.06812960147081251,
-          "min_diff": -0.2998796955677765,
-          "max_diff": 0.8401711689240212,
+          "mean_diff": 0.0559535631253242,
+          "min_diff": -0.30587350554552195,
+          "max_diff": 0.7858132977915071,
           "n_seeds": 5,
           "n_seeds_first_better": 3,
           "n_seeds_tied": 0
@@ -1871,17 +2659,17 @@
           "n_seeds_tied": 0
         },
         "high_risk_wait_p90": {
-          "mean_diff": -136.89785902603703,
-          "min_diff": -155.35055230835434,
-          "max_diff": -129.3227524793657,
+          "mean_diff": -137.3101268522708,
+          "min_diff": -155.3531526751244,
+          "max_diff": -129.78698999956111,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -129.5773532548754,
-          "min_diff": -145.9145931280812,
-          "max_diff": -123.50215973748786,
+          "mean_diff": -130.01079951824403,
+          "min_diff": -146.73508854221978,
+          "max_diff": -123.29719434969708,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
@@ -1913,17 +2701,17 @@
           "n_seeds_tied": 1
         },
         "high_risk_wait_p90": {
-          "mean_diff": -0.47199859620437684,
+          "mean_diff": -0.48070519340814055,
           "min_diff": -0.7050623232401847,
-          "max_diff": -0.045133646967036256,
+          "max_diff": -0.04599203098006188,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": 0.08719496569749481,
-          "min_diff": -0.8983319486048025,
-          "max_diff": 0.8660307736399169,
+          "mean_diff": 0.14708546743672352,
+          "min_diff": -0.8666507359477986,
+          "max_diff": 1.2671846732978516,
           "n_seeds": 5,
           "n_seeds_first_better": 3,
           "n_seeds_tied": 0
@@ -1955,19 +2743,19 @@
           "n_seeds_tied": 0
         },
         "high_risk_wait_p90": {
-          "mean_diff": -0.25805931418330086,
+          "mean_diff": -0.25551728873980123,
           "min_diff": -1.0481068118585917,
-          "max_diff": 0.016646395476594744,
+          "max_diff": 0.02289132387296333,
           "n_seeds": 5,
           "n_seeds_first_better": 4,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -1.1874480607181321,
-          "min_diff": -1.9774923204105654,
-          "max_diff": 0.01195448267269228,
+          "mean_diff": -1.1167666960569491,
+          "min_diff": -1.833442461526781,
+          "max_diff": -0.001996558290160877,
           "n_seeds": 5,
-          "n_seeds_first_better": 4,
+          "n_seeds_first_better": 5,
           "n_seeds_tied": 0
         }
       },
@@ -1997,17 +2785,17 @@
           "n_seeds_tied": 0
         },
         "high_risk_wait_p90": {
-          "mean_diff": -136.63979971185375,
-          "min_diff": -155.36719870383092,
-          "max_diff": -128.27464566750712,
+          "mean_diff": -137.054609563531,
+          "min_diff": -155.37604399899735,
+          "max_diff": -128.73888318770253,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -128.38990519415725,
-          "min_diff": -144.38296644453038,
-          "max_diff": -122.33261981217643,
+          "mean_diff": -128.89403282218709,
+          "min_diff": -145.1705359463929,
+          "max_diff": -122.48640787339984,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
@@ -2039,17 +2827,17 @@
           "n_seeds_tied": 0
         },
         "high_risk_wait_p90": {
-          "mean_diff": -136.42586042983265,
-          "min_diff": -155.3054186613873,
-          "max_diff": -128.61769015612552,
+          "mean_diff": -136.82942165886263,
+          "min_diff": -155.30716064414432,
+          "max_diff": -129.08192767632093,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": -129.66454822057284,
-          "min_diff": -145.83423278806174,
-          "max_diff": -123.73456991504762,
+          "mean_diff": -130.15788498568077,
+          "min_diff": -146.54848324974904,
+          "max_diff": -123.90733714388152,
           "n_seeds": 5,
           "n_seeds_first_better": 5,
           "n_seeds_tied": 0
@@ -2081,17 +2869,17 @@
           "n_seeds_tied": 0
         },
         "high_risk_wait_p90": {
-          "mean_diff": -0.213939282021076,
-          "min_diff": -0.5182992972529559,
+          "mean_diff": -0.2251879046683393,
+          "min_diff": -0.5720507604948837,
           "max_diff": 0.343044488618407,
           "n_seeds": 5,
           "n_seeds_first_better": 4,
           "n_seeds_tied": 0
         },
         "wait_p90": {
-          "mean_diff": 1.274643026415627,
-          "min_diff": 0.716725894799005,
-          "max_diff": 1.7241124190708188,
+          "mean_diff": 1.2638521634936726,
+          "min_diff": 0.729331976673901,
+          "max_diff": 1.8242605413776758,
           "n_seeds": 5,
           "n_seeds_first_better": 0,
           "n_seeds_tied": 0
@@ -2104,8 +2892,8 @@
       "load_per_hour": 180.0
     },
     "high_risk_wait_p90": {
-      "router": 1.0581760698990532,
-      "fifo": 5.60528059094503,
+      "router": 1.0579462700523024,
+      "fifo": 5.6038938899473845,
       "load_per_hour": 108.0
     },
     "high_risk_handled": {
@@ -2132,6 +2920,890 @@
         "load_per_hour": 180.0
       }
     },
+    "headline": {
+      "metric": "wait",
+      "percentile": 50,
+      "load_per_hour": 108.0,
+      "router_strategy": "priority",
+      "population": "jobs that started, including in-progress reviews; pooled over seeds; populations may differ by strategy; read with completion and unfinished counts",
+      "selected": {
+        "router": 0.39927141864706783,
+        "fifo": 1.4173549491476933,
+        "n_router": 4356,
+        "n_fifo": 4356,
+        "absolute_difference_min": 1.0180835305006255,
+        "reduction": 0.7182982153573005
+      },
+      "supplementary_high_risk": {
+        "note": "reported alongside, never a substitute for the selected metric",
+        "wait_p90": {
+          "router": 1.0453785398163267,
+          "fifo": 5.9319116631549464,
+          "n_router": 619,
+          "n_fifo": 619,
+          "absolute_difference_min": 4.886533123338619,
+          "reduction": 0.8237703797395507,
+          "percentile": 90
+        }
+      }
+    },
+    "time_metrics": {
+      "fifo@60": {
+        "pooled_over_seeds": {
+          "n_arrivals": 2349,
+          "status": {
+            "not_started": 2,
+            "in_progress": 8,
+            "completed": 2339
+          },
+          "high_risk_status": {
+            "not_started": 0,
+            "in_progress": 0,
+            "completed": 333
+          },
+          "completion_ratio": 0.9957428693060877,
+          "wait": {
+            "n": 2347,
+            "p50": 0.0,
+            "p90": 0.34783024911243443,
+            "p99": 1.4696809585511497,
+            "p99_reliable": true,
+            "mean": 0.09510419526541297,
+            "max": 2.7211235993694913
+          },
+          "high_risk_wait": {
+            "n": 333,
+            "p50": 0.0,
+            "p90": 0.3456608493588195,
+            "p99": 1.3162802250057577,
+            "p99_reliable": true,
+            "mean": 0.10458325674336436,
+            "max": 2.7211235993694913
+          },
+          "completion_latency": {
+            "n": 2339,
+            "p50": 2.0,
+            "p90": 2.32556965563164,
+            "p99": 3.4713534645370827,
+            "p99_reliable": true,
+            "mean": 2.0941182837627355,
+            "max": 4.721123599369491
+          },
+          "high_risk_completion_latency": {
+            "n": 333,
+            "p50": 2.0,
+            "p90": 2.3456608493588194,
+            "p99": 3.316280225005758,
+            "p99_reliable": true,
+            "mean": 2.1045832567433647,
+            "max": 4.721123599369491
+          },
+          "unfinished_age_at_horizon": {
+            "n": 10,
+            "p50": 1.2026948818665346,
+            "p90": 2.129641730156578,
+            "p99": 2.290669844457139,
+            "p99_reliable": false,
+            "mean": 1.3159431660228904,
+            "max": 2.3085618571572013
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 0,
+            "p50": null,
+            "p90": null,
+            "p99": null,
+            "p99_reliable": false,
+            "mean": null,
+            "max": null
+          }
+        },
+        "n_seeds": 5
+      },
+      "prob@60": {
+        "pooled_over_seeds": {
+          "n_arrivals": 2349,
+          "status": {
+            "not_started": 2,
+            "in_progress": 8,
+            "completed": 2339
+          },
+          "high_risk_status": {
+            "not_started": 0,
+            "in_progress": 0,
+            "completed": 333
+          },
+          "completion_ratio": 0.9957428693060877,
+          "wait": {
+            "n": 2347,
+            "p50": 0.0,
+            "p90": 0.2641515138139143,
+            "p99": 1.5761849856928785,
+            "p99_reliable": true,
+            "mean": 0.09492957405032418,
+            "max": 5.948259947308685
+          },
+          "high_risk_wait": {
+            "n": 333,
+            "p50": 0.0,
+            "p90": 0.2276188659962486,
+            "p99": 0.8517576798801021,
+            "p99_reliable": true,
+            "mean": 0.06850230054759276,
+            "max": 2.6768365301406902
+          },
+          "completion_latency": {
+            "n": 2339,
+            "p50": 2.0,
+            "p90": 2.2571289555939416,
+            "p99": 3.577521895393367,
+            "p99_reliable": true,
+            "mean": 2.094118283762736,
+            "max": 7.948259947308685
+          },
+          "high_risk_completion_latency": {
+            "n": 333,
+            "p50": 2.0,
+            "p90": 2.2276188659962486,
+            "p99": 2.851757679880102,
+            "p99_reliable": true,
+            "mean": 2.0685023005475927,
+            "max": 4.67683653014069
+          },
+          "unfinished_age_at_horizon": {
+            "n": 10,
+            "p50": 1.2026948818665346,
+            "p90": 2.129641730156578,
+            "p99": 2.290669844457139,
+            "p99_reliable": false,
+            "mean": 1.3159431660228904,
+            "max": 2.3085618571572013
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 0,
+            "p50": null,
+            "p90": null,
+            "p99": null,
+            "p99_reliable": false,
+            "mean": null,
+            "max": null
+          }
+        },
+        "n_seeds": 5
+      },
+      "severity@60": {
+        "pooled_over_seeds": {
+          "n_arrivals": 2349,
+          "status": {
+            "not_started": 2,
+            "in_progress": 8,
+            "completed": 2339
+          },
+          "high_risk_status": {
+            "not_started": 0,
+            "in_progress": 0,
+            "completed": 333
+          },
+          "completion_ratio": 0.9957428693060877,
+          "wait": {
+            "n": 2347,
+            "p50": 0.0,
+            "p90": 0.2641515138139143,
+            "p99": 1.5510993610437418,
+            "p99_reliable": true,
+            "mean": 0.09492957405032418,
+            "max": 5.948259947308685
+          },
+          "high_risk_wait": {
+            "n": 333,
+            "p50": 0.0,
+            "p90": 0.2276188659962486,
+            "p99": 0.8517576798801021,
+            "p99_reliable": true,
+            "mean": 0.06760229366764609,
+            "max": 2.6768365301406902
+          },
+          "completion_latency": {
+            "n": 2339,
+            "p50": 2.0,
+            "p90": 2.258171625689767,
+            "p99": 3.553892662638666,
+            "p99_reliable": true,
+            "mean": 2.094118283762736,
+            "max": 7.948259947308685
+          },
+          "high_risk_completion_latency": {
+            "n": 333,
+            "p50": 2.0,
+            "p90": 2.2276188659962486,
+            "p99": 2.851757679880102,
+            "p99_reliable": true,
+            "mean": 2.067602293667646,
+            "max": 4.67683653014069
+          },
+          "unfinished_age_at_horizon": {
+            "n": 10,
+            "p50": 1.2026948818665346,
+            "p90": 2.129641730156578,
+            "p99": 2.290669844457139,
+            "p99_reliable": false,
+            "mean": 1.3159431660228904,
+            "max": 2.3085618571572013
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 0,
+            "p50": null,
+            "p90": null,
+            "p99": null,
+            "p99_reliable": false,
+            "mean": null,
+            "max": null
+          }
+        },
+        "n_seeds": 5
+      },
+      "priority@60": {
+        "pooled_over_seeds": {
+          "n_arrivals": 2349,
+          "status": {
+            "not_started": 2,
+            "in_progress": 8,
+            "completed": 2339
+          },
+          "high_risk_status": {
+            "not_started": 0,
+            "in_progress": 0,
+            "completed": 333
+          },
+          "completion_ratio": 0.9957428693060877,
+          "wait": {
+            "n": 2347,
+            "p50": 0.0,
+            "p90": 0.2641515138139143,
+            "p99": 1.5510993610437418,
+            "p99_reliable": true,
+            "mean": 0.09492957405032418,
+            "max": 5.948259947308685
+          },
+          "high_risk_wait": {
+            "n": 333,
+            "p50": 0.0,
+            "p90": 0.2276188659962486,
+            "p99": 0.8517576798801021,
+            "p99_reliable": true,
+            "mean": 0.06855363950423611,
+            "max": 2.6768365301406902
+          },
+          "completion_latency": {
+            "n": 2339,
+            "p50": 2.0,
+            "p90": 2.2571289555939416,
+            "p99": 3.553892662638666,
+            "p99_reliable": true,
+            "mean": 2.094118283762736,
+            "max": 7.948259947308685
+          },
+          "high_risk_completion_latency": {
+            "n": 333,
+            "p50": 2.0,
+            "p90": 2.2276188659962486,
+            "p99": 2.851757679880102,
+            "p99_reliable": true,
+            "mean": 2.0685536395042363,
+            "max": 4.67683653014069
+          },
+          "unfinished_age_at_horizon": {
+            "n": 10,
+            "p50": 1.2026948818665346,
+            "p90": 2.129641730156578,
+            "p99": 2.290669844457139,
+            "p99_reliable": false,
+            "mean": 1.3159431660228904,
+            "max": 2.3085618571572013
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 0,
+            "p50": null,
+            "p90": null,
+            "p99": null,
+            "p99_reliable": false,
+            "mean": null,
+            "max": null
+          }
+        },
+        "n_seeds": 5
+      },
+      "fifo@108": {
+        "pooled_over_seeds": {
+          "n_arrivals": 4362,
+          "status": {
+            "not_started": 6,
+            "in_progress": 19,
+            "completed": 4337
+          },
+          "high_risk_status": {
+            "not_started": 0,
+            "in_progress": 2,
+            "completed": 617
+          },
+          "completion_ratio": 0.994268684089867,
+          "wait": {
+            "n": 4356,
+            "p50": 1.4173549491476933,
+            "p90": 6.442540900804133,
+            "p99": 13.525724968102882,
+            "p99_reliable": true,
+            "mean": 2.3735803547492322,
+            "max": 15.83196024181342
+          },
+          "high_risk_wait": {
+            "n": 619,
+            "p50": 1.3809044732815892,
+            "p90": 5.9319116631549464,
+            "p99": 12.70625042048919,
+            "p99_reliable": true,
+            "mean": 2.2131890304946946,
+            "max": 15.83196024181342
+          },
+          "completion_latency": {
+            "n": 4337,
+            "p50": 3.419545378048099,
+            "p90": 8.464705547151432,
+            "p99": 15.528315051464148,
+            "p99_reliable": true,
+            "mean": 4.380993763868377,
+            "max": 17.83196024181342
+          },
+          "high_risk_completion_latency": {
+            "n": 617,
+            "p50": 3.380904473281589,
+            "p90": 7.944707951977636,
+            "p99": 14.721901715937465,
+            "p99_reliable": true,
+            "mean": 4.216680253546636,
+            "max": 17.83196024181342
+          },
+          "unfinished_age_at_horizon": {
+            "n": 25,
+            "p50": 1.2369406609570888,
+            "p90": 3.1454303229097613,
+            "p99": 3.490061138175592,
+            "p99_reliable": false,
+            "mean": 1.4553530266725647,
+            "max": 3.5107849108978826
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 2,
+            "p50": 2.267594529659334,
+            "p90": 3.1930675922425396,
+            "p99": 3.4012990313237608,
+            "p99_reliable": false,
+            "mean": 2.267594529659334,
+            "max": 3.4244358578883407
+          }
+        },
+        "n_seeds": 5
+      },
+      "prob@108": {
+        "pooled_over_seeds": {
+          "n_arrivals": 4362,
+          "status": {
+            "not_started": 6,
+            "in_progress": 19,
+            "completed": 4337
+          },
+          "high_risk_status": {
+            "not_started": 0,
+            "in_progress": 1,
+            "completed": 618
+          },
+          "completion_ratio": 0.994268684089867,
+          "wait": {
+            "n": 4356,
+            "p50": 0.40084589370312074,
+            "p90": 3.800656350798887,
+            "p99": 40.13909512965729,
+            "p99_reliable": true,
+            "mean": 2.3703528525512203,
+            "max": 121.12851535169573
+          },
+          "high_risk_wait": {
+            "n": 619,
+            "p50": 0.24705810055354505,
+            "p90": 1.1261239796713767,
+            "p99": 8.638696035589756,
+            "p99_reliable": true,
+            "mean": 0.6750202112159066,
+            "max": 32.71519902422028
+          },
+          "completion_latency": {
+            "n": 4337,
+            "p50": 2.401480965144003,
+            "p90": 5.824600604495756,
+            "p99": 42.36971762909267,
+            "p99_reliable": true,
+            "mean": 4.379782302321849,
+            "max": 123.12851535169573
+          },
+          "high_risk_completion_latency": {
+            "n": 618,
+            "p50": 2.2472649149870847,
+            "p90": 3.1263214638082673,
+            "p99": 10.642027665985045,
+            "p99_reliable": true,
+            "mean": 2.6761124769298483,
+            "max": 34.71519902422028
+          },
+          "unfinished_age_at_horizon": {
+            "n": 25,
+            "p50": 1.2369406609570888,
+            "p90": 3.5169726877114273,
+            "p99": 5.795255262408901,
+            "p99_reliable": false,
+            "mean": 1.6655173757642183,
+            "max": 6.321862843395934
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 1,
+            "p50": 1.1107532014303274,
+            "p90": 1.1107532014303274,
+            "p99": 1.1107532014303274,
+            "p99_reliable": false,
+            "mean": 1.1107532014303274,
+            "max": 1.1107532014303274
+          }
+        },
+        "n_seeds": 5
+      },
+      "severity@108": {
+        "pooled_over_seeds": {
+          "n_arrivals": 4362,
+          "status": {
+            "not_started": 6,
+            "in_progress": 19,
+            "completed": 4337
+          },
+          "high_risk_status": {
+            "not_started": 0,
+            "in_progress": 1,
+            "completed": 618
+          },
+          "completion_ratio": 0.994268684089867,
+          "wait": {
+            "n": 4356,
+            "p50": 0.39807158152963495,
+            "p90": 3.6801952804540647,
+            "p99": 41.84084747526941,
+            "p99_reliable": true,
+            "mean": 2.3711451200325744,
+            "max": 127.66674066151937
+          },
+          "high_risk_wait": {
+            "n": 619,
+            "p50": 0.21516345704725381,
+            "p90": 1.0233709333429863,
+            "p99": 6.920492195559485,
+            "p99_reliable": true,
+            "mean": 0.5676002564967977,
+            "max": 29.323660760192702
+          },
+          "completion_latency": {
+            "n": 4337,
+            "p50": 2.3995494374302098,
+            "p90": 5.696982792653716,
+            "p99": 43.97792948693936,
+            "p99_reliable": true,
+            "mean": 4.380325347227303,
+            "max": 129.66674066151938
+          },
+          "high_risk_completion_latency": {
+            "n": 618,
+            "p50": 2.2171379881399105,
+            "p90": 3.0248863971396482,
+            "p99": 8.934233051273191,
+            "p99_reliable": true,
+            "mean": 2.568518703513783,
+            "max": 31.323660760192702
+          },
+          "unfinished_age_at_horizon": {
+            "n": 25,
+            "p50": 1.2369406609570888,
+            "p90": 3.5169726877114273,
+            "p99": 4.089027589081083,
+            "p99_reliable": false,
+            "mean": 1.5713099455660084,
+            "max": 4.127664589283313
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 1,
+            "p50": 1.1107532014303274,
+            "p90": 1.1107532014303274,
+            "p99": 1.1107532014303274,
+            "p99_reliable": false,
+            "mean": 1.1107532014303274,
+            "max": 1.1107532014303274
+          }
+        },
+        "n_seeds": 5
+      },
+      "priority@108": {
+        "pooled_over_seeds": {
+          "n_arrivals": 4362,
+          "status": {
+            "not_started": 6,
+            "in_progress": 19,
+            "completed": 4337
+          },
+          "high_risk_status": {
+            "not_started": 0,
+            "in_progress": 1,
+            "completed": 618
+          },
+          "completion_ratio": 0.994268684089867,
+          "wait": {
+            "n": 4356,
+            "p50": 0.39927141864706783,
+            "p90": 3.709511701557089,
+            "p99": 43.27536582822666,
+            "p99_reliable": true,
+            "mean": 2.3713778447867746,
+            "max": 127.66674066151937
+          },
+          "high_risk_wait": {
+            "n": 619,
+            "p50": 0.22034621123157194,
+            "p90": 1.0453785398163267,
+            "p99": 8.239798537624736,
+            "p99_reliable": true,
+            "mean": 0.6744913342925858,
+            "max": 47.41406808964349
+          },
+          "completion_latency": {
+            "n": 4337,
+            "p50": 2.4008338649327925,
+            "p90": 5.72311767194758,
+            "p99": 45.520908699324515,
+            "p99_reliable": true,
+            "mean": 4.380325347227303,
+            "max": 129.66674066151938
+          },
+          "high_risk_completion_latency": {
+            "n": 618,
+            "p50": 2.220808805389609,
+            "p90": 3.0461432726452604,
+            "p99": 10.246782082377566,
+            "p99_reliable": true,
+            "mean": 2.6755827442186253,
+            "max": 49.41406808964349
+          },
+          "unfinished_age_at_horizon": {
+            "n": 25,
+            "p50": 1.2369406609570888,
+            "p90": 3.5169726877114273,
+            "p99": 4.089027589081083,
+            "p99_reliable": false,
+            "mean": 1.5713099455660084,
+            "max": 4.127664589283313
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 1,
+            "p50": 1.1107532014303274,
+            "p90": 1.1107532014303274,
+            "p99": 1.1107532014303274,
+            "p99_reliable": false,
+            "mean": 1.1107532014303274,
+            "max": 1.1107532014303274
+          }
+        },
+        "n_seeds": 5
+      },
+      "fifo@180": {
+        "pooled_over_seeds": {
+          "n_arrivals": 7110,
+          "status": {
+            "not_started": 2324,
+            "in_progress": 20,
+            "completed": 4766
+          },
+          "high_risk_status": {
+            "not_started": 344,
+            "in_progress": 3,
+            "completed": 688
+          },
+          "completion_ratio": 0.6703234880450071,
+          "wait": {
+            "n": 4786,
+            "p50": 78.87252652584435,
+            "p90": 140.27151586072847,
+            "p99": 165.95016891212,
+            "p99_reliable": true,
+            "mean": 77.53299363257301,
+            "max": 169.74183453725038
+          },
+          "high_risk_wait": {
+            "n": 691,
+            "p50": 78.50207115272497,
+            "p90": 137.87795536830333,
+            "p99": 163.3576583381647,
+            "p99_reliable": true,
+            "mean": 76.30056894868724,
+            "max": 168.94508392071594
+          },
+          "completion_latency": {
+            "n": 4766,
+            "p50": 80.39186054627456,
+            "p90": 141.59044675441356,
+            "p99": 167.25062344348652,
+            "p99_reliable": true,
+            "mean": 79.2033089175938,
+            "max": 171.74183453725038
+          },
+          "high_risk_completion_latency": {
+            "n": 688,
+            "p50": 80.1254729107127,
+            "p90": 139.11749485304497,
+            "p99": 165.39029469863095,
+            "p99_reliable": true,
+            "mean": 77.95448660922096,
+            "max": 170.94508392071594
+          },
+          "unfinished_age_at_horizon": {
+            "n": 2344,
+            "p50": 79.36956353967992,
+            "p90": 141.79487625365437,
+            "p99": 163.08940773329135,
+            "p99_reliable": true,
+            "mean": 79.31850882731416,
+            "max": 171.12460717667818
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 347,
+            "p50": 81.09992376109557,
+            "p90": 142.72229095021504,
+            "p99": 161.5911402463421,
+            "p99_reliable": true,
+            "mean": 82.3768111631948,
+            "max": 169.6780291450429
+          }
+        },
+        "n_seeds": 5
+      },
+      "prob@180": {
+        "pooled_over_seeds": {
+          "n_arrivals": 7110,
+          "status": {
+            "not_started": 2324,
+            "in_progress": 20,
+            "completed": 4766
+          },
+          "high_risk_status": {
+            "not_started": 112,
+            "in_progress": 5,
+            "completed": 918
+          },
+          "completion_ratio": 0.6703234880450071,
+          "wait": {
+            "n": 4786,
+            "p50": 0.7275807941646519,
+            "p90": 10.213632307413214,
+            "p99": 102.92047065306598,
+            "p99_reliable": true,
+            "mean": 5.624612149759381,
+            "max": 411.2444315815272
+          },
+          "high_risk_wait": {
+            "n": 923,
+            "p50": 0.4565029773979177,
+            "p90": 2.1634152667160422,
+            "p99": 30.278643396927997,
+            "p99_reliable": true,
+            "mean": 1.881402497096885,
+            "max": 173.3952652983439
+          },
+          "completion_latency": {
+            "n": 4766,
+            "p50": 2.7270858455723754,
+            "p90": 12.197583237646064,
+            "p99": 105.38046450912552,
+            "p99_reliable": true,
+            "mean": 7.6337840589639905,
+            "max": 413.2444315815272
+          },
+          "high_risk_completion_latency": {
+            "n": 918,
+            "p50": 2.4572722397121254,
+            "p90": 4.130241728433162,
+            "p99": 32.291021795824676,
+            "p99_reliable": true,
+            "mean": 3.8744881510029607,
+            "max": 175.3952652983439
+          },
+          "unfinished_age_at_horizon": {
+            "n": 2344,
+            "p50": 224.08166951891064,
+            "p90": 411.9324585281516,
+            "p99": 465.2137257340011,
+            "p99_reliable": true,
+            "mean": 224.8391382966954,
+            "max": 476.57265471311126
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 117,
+            "p50": 236.3977956204894,
+            "p90": 419.4781904909638,
+            "p99": 468.44071318356833,
+            "p99_reliable": true,
+            "mean": 225.31640470831067,
+            "max": 468.93871804852944
+          }
+        },
+        "n_seeds": 5
+      },
+      "severity@180": {
+        "pooled_over_seeds": {
+          "n_arrivals": 7110,
+          "status": {
+            "not_started": 2324,
+            "in_progress": 20,
+            "completed": 4766
+          },
+          "high_risk_status": {
+            "not_started": 86,
+            "in_progress": 4,
+            "completed": 945
+          },
+          "completion_ratio": 0.6703234880450071,
+          "wait": {
+            "n": 4786,
+            "p50": 0.7032516472926318,
+            "p90": 11.541668625212635,
+            "p99": 130.84705572353016,
+            "p99_reliable": true,
+            "mean": 6.8976872085723935,
+            "max": 383.0694138124674
+          },
+          "high_risk_wait": {
+            "n": 949,
+            "p50": 0.41046445935421616,
+            "p90": 1.698557299991302,
+            "p99": 32.29185199587758,
+            "p99_reliable": true,
+            "mean": 2.7213210929483904,
+            "max": 296.0855403741401
+          },
+          "completion_latency": {
+            "n": 4766,
+            "p50": 2.7028358909516044,
+            "p90": 13.541668625212635,
+            "p99": 133.04726119830437,
+            "p99_reliable": true,
+            "mean": 8.903943031854466,
+            "max": 385.0694138124674
+          },
+          "high_risk_completion_latency": {
+            "n": 945,
+            "p50": 2.410679459319624,
+            "p90": 3.700093712726013,
+            "p99": 34.4197850935844,
+            "p99_reliable": true,
+            "mean": 4.730962793255788,
+            "max": 298.0855403741401
+          },
+          "unfinished_age_at_horizon": {
+            "n": 2344,
+            "p50": 217.21547476039262,
+            "p90": 413.58632448404165,
+            "p99": 465.78162521469125,
+            "p99_reliable": true,
+            "mean": 222.25655396871076,
+            "max": 476.39733010551873
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 90,
+            "p50": 225.30012441016768,
+            "p90": 397.5894361375192,
+            "p99": 468.17550651368623,
+            "p99_reliable": false,
+            "mean": 205.77943097781466,
+            "max": 468.93871804852944
+          }
+        },
+        "n_seeds": 5
+      },
+      "priority@180": {
+        "pooled_over_seeds": {
+          "n_arrivals": 7110,
+          "status": {
+            "not_started": 2324,
+            "in_progress": 20,
+            "completed": 4766
+          },
+          "high_risk_status": {
+            "not_started": 110,
+            "in_progress": 4,
+            "completed": 921
+          },
+          "completion_ratio": 0.6703234880450071,
+          "wait": {
+            "n": 4786,
+            "p50": 0.6949063018189605,
+            "p90": 10.239497628278805,
+            "p99": 106.38281686868051,
+            "p99_reliable": true,
+            "mean": 5.711961313615063,
+            "max": 368.30594901711015
+          },
+          "high_risk_wait": {
+            "n": 925,
+            "p50": 0.4007983703049547,
+            "p90": 1.6372226621044774,
+            "p99": 13.679207969398524,
+            "p99_reliable": true,
+            "mean": 1.2190822376638246,
+            "max": 166.6639934599668
+          },
+          "completion_latency": {
+            "n": 4766,
+            "p50": 2.6932676142202894,
+            "p90": 12.143948226282202,
+            "p99": 108.49798472964179,
+            "p99_reliable": true,
+            "mean": 7.719393132991167,
+            "max": 370.30594901711015
+          },
+          "high_risk_completion_latency": {
+            "n": 921,
+            "p50": 2.4008948655999376,
+            "p90": 3.637916108964646,
+            "p99": 15.764523025350368,
+            "p99_reliable": true,
+            "mean": 3.2224508059258796,
+            "max": 168.6639934599668
+          },
+          "unfinished_age_at_horizon": {
+            "n": 2344,
+            "p50": 223.14006243462774,
+            "p90": 413.88285556875405,
+            "p99": 465.24919094921853,
+            "p99_reliable": true,
+            "mean": 224.66507138252584,
+            "max": 476.39733010551873
+          },
+          "high_risk_unfinished_age_at_horizon": {
+            "n": 114,
+            "p50": 244.50096976336113,
+            "p90": 427.82167090670856,
+            "p99": 468.4989077124787,
+            "p99_reliable": true,
+            "mean": 229.73656260481556,
+            "max": 468.93871804852944
+          }
+        },
+        "n_seeds": 5
+      }
+    },
+    "completion_ratio": 0.994271372623818,
+    "backlog_end": 1.2,
+    "high_risk_unfinished": 0.2,
     "queue_depth_p95": 14.219999999999981,
     "reviewer_utilization": 0.9054738607875965,
     "primary": {

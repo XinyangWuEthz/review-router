@@ -27,7 +27,7 @@ ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
 from review_router.ceilings import SCORED_TEST_COUNTS, ceiling_table  # noqa: E402
-from scripts.render_results import fairness_gate_status  # noqa: E402
+from scripts.render_results import fairness_gate_status, gate_status  # noqa: E402
 
 RUNS = json.loads((HERE / "runs.json").read_text())
 R = json.loads((HERE / "results.json").read_text())
@@ -703,33 +703,131 @@ python record/render.py</code></pre>
     page("index.html", "review-router 项目记录", body, None, STEPS[0])
 
 
+def _human_time_section(sim: dict[str, Any]) -> str:
+    """New records time started and completed jobs separately; old runs keep their meaning."""
+    metrics = sim.get("time_metrics") or {}
+    if not metrics:
+        return """<h2>时间指标口径</h2>
+<p>这份历史人工审核运行只保存了按种子汇总的时间指标，等待时间只统计窗口内已完成的任务。
+它没有保存可用于本页的逐任务时间汇总，因此不补算已开始但未完成任务的等待，也不补写新的主指标。</p>"""
+    headline = sim.get("headline") or {}
+    selected = headline.get("selected") or {}
+    metric = headline.get("metric")
+    metric_name = {"wait": "开始审核前的等待", "completion_latency": "完成审核的总耗时"}.get(metric, str(metric))
+    population = "所有已经开始审核的任务，含窗口结束时仍在审核的任务" if metric == "wait" else "窗口内已经完成审核的任务"
+    reduction = selected.get("reduction")
+    relative = (f"相对缩短 {100 * reduction:.2f}%（负值表示更慢）" if reduction is not None
+                else "不报告百分比；FIFO 为零或读数缺失时，比值没有定义")
+    reliable = ""
+    if headline.get("percentile") == 99:
+        reliable = "该主指标的 p99 样本量检查：" + ("达到报告设定的最小样本数。" if selected.get("p99_reliable") else "未达到，不能据此作稳定的尾部比较。")
+    rows = ""
+    for key, block in metrics.items():
+        data = block["pooled_over_seeds"]
+        strategy, load = key.split("@")
+        status, high_risk = data["status"], data["high_risk_status"]
+        wait, completion = data["wait"], data["completion_latency"]
+        def quantiles(values: dict[str, Any]) -> str:
+            return " / ".join(f(values.get(name), 2) for name in ("p50", "p90", "p99"))
+        reliability = "等待：" + ("足够" if wait.get("p99_reliable") else "不足")
+        reliability += "；完成：" + ("足够" if completion.get("p99_reliable") else "不足")
+        rows += f"<tr><td>{escape(load)}</td><td>{escape(strategy)}</td><td class='n'>{data['n_arrivals']}</td><td class='n'>{status['completed']}</td><td class='n'>{status['in_progress']}</td><td class='n'>{status['not_started']}</td><td class='n'>{high_risk['completed']} / {high_risk['in_progress']} / {high_risk['not_started']}</td><td class='n'>{quantiles(wait)}<br>n={wait['n']}</td><td class='n'>{quantiles(completion)}<br>n={completion['n']}</td><td>{reliability}</td></tr>"
+    return f"""<h2>逐任务时间与主指标</h2>
+<p>每次仿真保存 <code>simulation_jobs.csv</code>，记录任务到达、开始和完成时间。
+等待时间等于开始时间减到达时间，统计所有已开始任务，包括仍在审核的任务；完成耗时等于完成时间减到达时间，只统计窗口内已完成任务。
+尚未开始的任务没有观测到完整等待时间，列入状态数量，不按零等待计入分位数。未完成任务也不按零耗时计入完成分位数。</p>
+<p>本次配置选择的主指标为 <b>{escape(metric_name)} p{headline.get('percentile')}</b>，负载为 {f(headline.get('load_per_hour'))} 条/小时。
+人群是{population}，先合并各随机种子的逐任务记录再计算分位数。它与下方“每个种子先算分位数、再取均值”的表不同，不应混用。</p>
+<table><tr><th>主指标</th><th>{escape(str(headline.get('router_strategy', '路由策略')))}，分钟</th><th>FIFO，分钟</th><th>样本数 路由/FIFO</th><th>绝对缩短 FIFO−路由，分钟</th></tr>
+<tr><td>{escape(metric_name)} p{headline.get('percentile')}</td><td class='n'>{f(selected.get('router'))}</td><td class='n'>{f(selected.get('fifo'))}</td><td class='n'>{f(selected.get('n_router'))} / {f(selected.get('n_fifo'))}</td><td class='n'>{f(selected.get('absolute_difference_min'))}</td></tr></table>
+<p>{relative}。{reliable}高危子集的等待用于补充诊断，不替换全体待审任务的主指标。不同策略在有限窗口内启动或完成的任务可能不同，比较时需同时看下面的状态数量。</p>
+<table><tr><th>入队负载/h</th><th>排序</th><th>到达</th><th>完成</th><th>审核中</th><th>尚未开始</th><th>高危 完成/审核中/未开始</th><th>等待 p50/p90/p99，分钟</th><th>完成耗时 p50/p90/p99，分钟</th><th>p99 样本量</th></tr>{rows}</table>
+<p>p99 样本量判据为该时间统计至少 {f((sim.get('assumptions') or {}).get('p99_min_samples'))} 条，达到此门槛仍不代表尾部分位数没有抽样误差。
+完成审核不等于已证实采取正确处罚；这里没有另行模拟人工准确率、申诉或执行流程。</p>"""
+
+
+def _human_gate_categories(run: dict[str, Any]) -> str:
+    gates = run["policy_snapshot"]["gates"]
+    if "classification" not in gates:
+        return ""
+    classification, routing = gates["classification"], gates["routing"]
+    capacity = gates.get("capacity", {})
+    sim = run["simulation"]
+    rows = ""
+
+    def row(category: str, name: str, value: Any, limit: Any, upper: bool = False) -> str:
+        status = {"green": "通过", "**red**": "未通过", "not set": "未设门槛，仅报告", "unavailable": "读数缺失"}[gate_status(value, limit, upper=upper)]
+        requirement = "未设定" if limit is None else ("≤ " if upper else "≥ ") + f(limit)
+        return f"<tr><td>{category}</td><td>{name}</td><td class='n'>{f(value)}</td><td>{requirement}</td><td>{status}</td></tr>"
+
+    for label, spec in classification.get("per_label_average_precision", {}).items():
+        rows += row("分类质量", f"AP {escape(label)}", run["per_label"][label]["average_precision"], spec.get("floor"))
+    for label, spec in classification.get("per_label_precision_at_human_threshold", {}).items():
+        value = run["per_label"][label]["at_human_review"]["precision"]
+        rows += row("分类质量", f"普通审核阈值处精确率 {escape(label)}", value, spec.get("floor"))
+    rows += row("分类质量", "标签层级违例率", run["consistency"].get("hierarchy_violation_rate"), classification.get("hierarchy_violation_rate_max"), True)
+    for label, spec in classification.get("volume_overshoot_max", {}).items():
+        value = (run.get("prevalence_shift") or {}).get(label, {}).get("volume_overshoot_model")
+        rows += row("分类质量", f"预测阳性量相对超出 {escape(label)}", value, spec.get("ceiling"), True)
+    for tier in ("priority_review", HUMAN):
+        rows += row("路由质量", f"{tier} 精确率", run["tiers"][tier]["precision"], routing.get(f"{tier}_precision_floor"))
+    primary = sim.get("primary") or {}
+    key = f"{primary.get('strategy')}@{primary.get('load_per_hour'):g}" if primary.get("load_per_hour") is not None else ""
+    pooled = (sim.get("time_metrics") or {}).get(key, {}).get("pooled_over_seeds", {})
+    for name, value, limit, upper in (
+        ("近容量完成率", sim.get("completion_ratio"), capacity.get("completion_ratio_min"), False),
+        ("近容量结束时未开始数量，种子均值", sim.get("backlog_end"), capacity.get("backlog_end_max"), True),
+        ("近容量等待 p50，合并逐任务记录，分钟", pooled.get("wait", {}).get("p50"), capacity.get("wait_p50_max_min"), True),
+        ("近容量队列深度 p95，种子均值", sim.get("queue_depth_p95"), capacity.get("queue_depth_p95_max"), True),
+        ("近容量审核员利用率", sim.get("reviewer_utilization"), capacity.get("reviewer_utilization_min"), False),
+    ):
+        rows += row("容量", name, value, limit, upper)
+    reproducibility = gates.get("reproducibility") or {}
+    scenario = reproducibility.get("scenario") or {}
+    tolerance = reproducibility.get("float_tolerance")
+    tolerance_text = f"{tolerance:g}" if isinstance(tolerance, (float, int)) else "未设定"
+    return f"""<h2>四类回归检查</h2>
+<p>门槛来自这次运行保存的政策快照。分类质量检查标签表现和预测量；路由质量检查送审队列；容量检查有限人力下的完成与积压；可复现性检查相同输入能否重放。
+身份词差异在后面单独诊断。未设定的门槛不显示为通过。排序相对 FIFO 的四项检查见上表。</p>
+<table><tr><th>类别</th><th>检查</th><th>读数</th><th>要求</th><th>结果</th></tr>{rows}</table>
+<p><b>可复现性：</b>配置要求读取 <code>{escape(str(reproducibility.get('records_file', '未设定')))}</code>，按负载 <code>{escape(str(scenario.get('load', '未设定')))}</code>、种子 <code>{escape(str(scenario.get('seed', '未设定')))}</code> 重放场景，浮点容差为 <code>{tolerance_text}</code>。
+本页只展示保存的配置和指标；重算逐任务时间及重放顺序的检查由回归测试执行，不根据这张静态报告宣称已通过。</p>"""
+
+
 def build_step3() -> None:
     run = HUMAN_RUN
     if run is None:
         return
     workload, sim = run["review_workload"], run["simulation"]
     policy = run["policy_snapshot"]
-    gates = policy["gates"]["routing"]
+    gates = policy["gates"].get("capacity", policy["gates"]["routing"])
+    has_job_times = bool(sim.get("time_metrics"))
+    wait_population = "已开始高危任务（含审核中）" if has_job_times else "已完成高危任务（历史口径）"
     tier_rows = ""
     for tier in ("priority_review", HUMAN, ALLOW):
         stats = run["tiers"][tier]
         tier_rows += f"<tr><td>{tier}</td><td class='n'>{stats['n_predicted_positive']:,}</td><td class='n'>{100 * stats['coverage']:.2f}%</td><td class='n'>{f(stats['precision'])}</td><td>{ci(stats['precision_ci95'])}</td></tr>"
     comparisons = [
         ("超容量：危害代理值 / 审核人时", sim["harm_per_reviewer_hour"], gates["harm_per_reviewer_hour_vs_fifo_min"], False),
-        ("近容量：已完成高危任务的等待 p90", sim["high_risk_wait_p90"], gates["high_risk_wait_p90_vs_fifo_max"], True),
-        ("近容量：高危完成数量", sim["high_risk_handled"]["primary"], gates["high_risk_handled_vs_fifo_min"], False),
-        ("超容量：高危完成数量", sim["high_risk_handled"]["thesis"], gates["high_risk_handled_vs_fifo_min"], False),
+        (f"近容量：{wait_population}的等待 p90", sim["high_risk_wait_p90"], gates["high_risk_wait_p90_vs_fifo_max"], True),
+        ("近容量：高危完成数量", sim["high_risk_handled"]["primary"], gates.get("high_risk_handled_vs_fifo_min"), False),
+        ("超容量：高危完成数量", sim["high_risk_handled"]["thesis"], gates.get("high_risk_handled_vs_fifo_min"), False),
     ]
     comparison_rows = ""
     failed = 0
     for label, values, limit, upper in comparisons:
         ratio = values["router"] / values["fifo"] if values["router"] is not None and values["fifo"] else None
         status = "不可比较"
-        if ratio is not None:
+        if limit is None:
+            status = "未设门槛，仅报告"
+        elif ratio is not None:
             ok = ratio <= limit if upper else ratio >= limit
             status = "通过" if ok else "未通过"
             failed += not ok
-        comparison_rows += f"<tr><td>{label}</td><td class='n'>{f(values['router'])}</td><td class='n'>{f(values['fifo'])}</td><td class='n'>{f(ratio)}</td><td>{'≤' if upper else '≥'} {limit:g}</td><td>{status}</td></tr>"
+        elif upper and values["fifo"] == 0 and values["router"] is not None and values["router"] > 0:
+            status = "未通过，FIFO 等待为零而路由等待为正"
+            failed += 1
+        comparison_rows += f"<tr><td>{label}</td><td class='n'>{f(values['router'])}</td><td class='n'>{f(values['fifo'])}</td><td class='n'>{f(ratio)}</td><td>{'≤' if upper else '≥'} {f(limit)}</td><td>{status}</td></tr>"
     sim_rows = ""
     for stats in sim["summary"].values():
         sim_rows += f"<tr><td>{stats['load_per_hour']:g}</td><td>{stats['strategy']}</td><td class='n'>{f(stats['n_handled'], 1)}</td><td class='n'>{f(stats['high_risk_handled'], 1)}</td><td class='n'>{f(stats['high_risk_unhandled'], 1)}</td><td class='n'>{f(stats['harm_per_reviewer_hour'], 2)}</td><td class='n'>{f(stats['high_risk_wait_p90'], 2)}</td><td class='n'>{f(stats['backlog_end'], 1)}</td></tr>"
@@ -742,6 +840,13 @@ def build_step3() -> None:
         fairness_rows += f"<tr><td>{tier}</td><td class='n'>{f(stats['false_discovery_rate_ratio'])}</td><td>{ci(stats['false_discovery_rate_ratio_ci95'])}</td><td>{status}</td><td class='n'>{f(fpr['false_positive_rate_ratio'])}</td><td>{ci(fpr['false_positive_rate_ratio_ci95'])}</td></tr>"
     comparison_key = f"priority_vs_severity@{sim['thesis']['load_per_hour']:g}"
     severity_comparison = sim["paired"][comparison_key]
+    time_section = _human_time_section(sim)
+    gate_sections = _human_gate_categories(run)
+    time_scope = (
+        "等待统计所有已开始任务，含窗口结束时仍在审核的任务；未开始任务另外计数。"
+        if has_job_times else
+        "这份历史运行的等待只统计已完成任务。"
+    )
     body = f"""
 <span class="tag">第 3 步</span><span class="tag">政策 v2</span>
 <h1>改为优先人工审核</h1>
@@ -756,13 +861,15 @@ def build_step3() -> None:
 <table><tr><th>层级</th><th>评论数</th><th>占全部评论</th><th>测试精确率</th><th>95% 区间</th></tr>{tier_rows}</table>
 <p>总人工需求为 {workload["n_requires_human_review"]:,} / {workload["n_total"]:,} 条，占 {100 * workload["review_fraction"]:.2f}%；合并人工队列精确率为 {f(workload["precision"])}，95% 区间 {ci(workload["precision_ci95"])}。任一真实标签为阳性就计为有审核价值。</p>
 <p>运行声明的自动处置数为 {run["decision_contract"]["automatic_actions"]}，所有待审评论均要求人工确认。这里评估的是路由建议，未模拟人工复核的正确率或实际处罚结果。</p>
+{time_section}
 <h2>新验收标准与结果</h2>
-<p>本轮以 FIFO 为参照：超容量下处理的危害代理值不降低；近容量下高危等待 p90 不增加；两个负载下的高危完成数量都不减少。等待只统计已完成任务，因此必须同时检查完成数量。下面的要求在看新结果前设定，是实测比值要求，不是统计非劣性证明。</p>
+<p>本轮以 FIFO 为参照：超容量下处理的危害代理值不降低；近容量下高危等待 p90 不增加；两个负载下的高危完成数量都不减少。{time_scope}因此同时检查完成数量，避免只看较早启动的任务。下面的要求在看新结果前设定，是实测比值要求，不是统计非劣性证明。</p>
 <table><tr><th>指标</th><th>优先排序</th><th>FIFO</th><th>比值</th><th>比值要求</th><th>结果</th></tr>{comparison_rows}</table>
-<p>上述四项排序检查中有 {failed} 项未通过。没有再要求测试精确率达到 99%，但新的排序策略仍需接受这些容量与完成量检查。</p>
+<p>上述四项排序检查中有 {failed} 项未通过；未设门槛或不可比较的项目另列，不计为通过。没有再要求测试精确率达到 99%，但新的排序策略仍需接受这些容量与完成量检查。</p>
 <p>与严重度排序的配对比较也需要保留。超容量时，优先排序的高危完成数量平均差值为 {severity_comparison['high_risk_handled']['mean_diff']:+.1f} 条，危害代理值/人时平均差值为 {severity_comparison['harm_per_reviewer_hour']['mean_diff']:+.3f}，方向均为优先排序减去严重度排序。优于 FIFO 并不说明它优于所有对照。</p>
+{gate_sections}
 <h2>四种排序的仿真结果</h2>
-<p>容量为 {sim["assumptions"]["capacity_per_hour"]:g} 条/小时，{sim["assumptions"]["reviewers"]} 名审核员，每条 {sim["assumptions"]["handle_minutes"]:g} 分钟。表格为 {len(sim["assumptions"]["seeds"])} 个种子的均值 ± 标准差；等待单位为分钟。高危剩余包括仍在服务中的任务，积压只计尚未开始的任务。</p>
+<p>容量为 {sim["assumptions"]["capacity_per_hour"]:g} 条/小时，{sim["assumptions"]["reviewers"]} 名审核员，每条 {sim["assumptions"]["handle_minutes"]:g} 分钟。表格为 {len(sim["assumptions"]["seeds"])} 个种子的均值 ± 标准差；等待单位为分钟。{time_scope}高危剩余包括仍在服务中的任务，积压只计尚未开始的任务。</p>
 <div class="box">60 / 108 / 180 条每小时是进入人工队列后的到达率。新策略改变了候选池及入队比例，不能把这里的排序收益与旧自动处置策略的收益比直接当作端到端提升。</div>
 <table><tr><th>入队负载/h</th><th>排序</th><th>完成</th><th>高危完成</th><th>高危剩余</th><th>危害代理值/人时</th><th>高危等待 p90</th><th>结束积压</th></tr>{sim_rows}</table>
 <h2>身份词子组诊断</h2>

@@ -101,42 +101,83 @@ retired_rules:
       the concentration is measured and gated on every run.
     replaced_by: subgroup_thresholds.auto_action[identity_term_present] and gates.fairness
 
-# Acceptance now concerns human-review throughput and waiting time at equal
-# capacity. Routing targets below are declared before the v2 baseline run;
-# they are not inherited measurements from the automatic-action experiment.
+# Regression gates are grouped by classification, routing, capacity and
+# reproducibility. Fairness is a separate disparity diagnostic. Null limits
+# skip rather than claim a passing result. Real-evaluation CI requires a fresh
+# run from the tested clean commit, current policy/config and pinned corpus.
 gates:
   measured_on: "2026-09-22"
   eval_slice: >
-    Jigsaw scored test rows (63,978), run 20260922T112845423138Z-baseline, made at
-    commit 3429f1fe41701d31de68ac936530d6aebfee1132 (manifest git_dirty: false).
-    This historical run supplies only the unchanged classifier AP reference.
-    V2 human-review routing was measured separately in
-    20260922T130141204182Z-human-review-baseline on a working tree with
-    uncommitted changes. Its routing criteria were declared before the run.
-  # floor = measured - 0.02, rounded to 3 decimals
-  per_label_average_precision:
-    toxic: {floor: 0.732, measured: 0.7522}
-    obscene: {floor: 0.753, measured: 0.7734}
-    insult: {floor: 0.676, measured: 0.6961}
-    identity_hate: {floor: 0.460, measured: 0.4800}
-    severe_toxic: {floor: 0.291, measured: 0.3113}
-    threat: {floor: 0.437, measured: 0.4580}
+    Classification references use the unchanged classifier heads: clean run
+    20260922T112845423138Z-baseline at commit
+    3429f1fe41701d31de68ac936530d6aebfee1132 supplies AP; feature-branch run
+    20260922T131021772191Z-baseline on a dirty worktree supplies the human
+    operating-point precision and volume diagnostics. V2 human-review routing
+    was measured separately in 20260922T130141204182Z-human-review-baseline
+    on a dirty worktree. The v2 no-worse-FIFO criteria were declared before
+    that run. The absolute capacity limits below are adopted before the new
+    merged v2 run and are not measurements or fitted tolerances from that run.
+
+  # 1. Classification quality: per label, never a pooled score.
+  classification:
+    # floor = measured - 0.02, rounded to 3 decimals
+    per_label_average_precision:
+      toxic: {floor: 0.732, measured: 0.7522}
+      obscene: {floor: 0.753, measured: 0.7734}
+      insult: {floor: 0.676, measured: 0.6961}
+      identity_hate: {floor: 0.460, measured: 0.4800}
+      severe_toxic: {floor: 0.291, measured: 0.3113}
+      threat: {floor: 0.438, measured: 0.4580}
+    # Precision on the scored test rows at the frozen human_review threshold
+    # (the operating point); floor = measured - 0.02, rounded to 3 decimals.
+    # Labels with no threshold on the selection split have no operating point.
+    per_label_precision_at_human_threshold:
+      toxic: {floor: 0.643, measured: 0.6631}
+      obscene: {floor: 0.753, measured: 0.7731}
+      insult: {floor: 0.858, measured: 0.8788}
+      severe_toxic: {floor: null, measured: null}
+      threat: {floor: null, measured: null}
+      identity_hate: {floor: null, measured: null}
+    # The observed training labels have severe_toxic as a subset of toxic.
+    hierarchy_violation_rate_max: 0.005
+    # Volume the model expects on the test rows versus the actual count,
+    # (sum of calibrated p) / actual - 1. Reported for every label; a ceiling
+    # is set only for severe_toxic, whose training-file prevalence is 1.74x
+    # the test prevalence. This diagnoses expected-count calibration, not
+    # the cause of the difference. Measured 0.916; ceiling rounded up to 0.1.
+    volume_overshoot_max:
+      severe_toxic: {ceiling: 1.0, measured: 0.916}
+
+  # 2. Human-review routing: all flagged cases require reviewer capacity.
+  # Selection targets above are not test-set acceptance floors.
   routing:
-    # Precision is reported with uncertainty for both human-confirmed tiers.
     priority_review_precision_floor: null
     human_review_precision_floor: null
-    # At overload, handle at least as much harm as FIFO. At both near-capacity
-    # and overload rates, complete at least as many high-risk reviews as FIFO.
+
+  # 3. Capacity: comparisons use identical arrivals and reviewer capacity.
+  capacity:
+    # V2 criteria, retained unchanged. Harm uses overload; high-risk
+    # completion uses both loads; high-risk wait uses the primary load.
     harm_per_reviewer_hour_vs_fifo_min: 1.0
     high_risk_handled_vs_fifo_min: 1.0
-    # Near capacity, high-risk waiting time must not exceed FIFO.
     high_risk_wait_p90_vs_fifo_max: 1.0
-    # No measured v2 queue-depth regression ceiling yet.
-    queue_depth_p95_max: null
-    # A-priori utilization floor for the near-capacity scenario.
+    # Primary-load criteria transferred from the incoming experiment before
+    # the merged v2 run. Their old automatic-action queue measurements do not
+    # establish v2 performance; the new combined review pool must meet them.
+    completion_ratio_min: 0.97
+    backlog_end_max: 10
+    # Pooled wait p50 in minutes, regardless of the configured headline metric.
+    wait_p50_max_min: 1.0
+    queue_depth_p95_max: 39
     reviewer_utilization_min: 0.60
-  consistency:
-    hierarchy_violation_rate_max: 0.005
+
+  # 4. Determinism: reproduce all saved time summaries and replay one scenario
+  # for the router and FIFO, with an absolute tolerance and no relative slack.
+  reproducibility:
+    float_tolerance: 1.0e-9
+    records_file: simulation_jobs.csv
+    scenario: {load: primary, seed: first}
+
   fairness:
     # Diagnostic ratio of false discovery rates, FP / predicted positives,
     # with an identity term versus without one. It is not conventional FPR.

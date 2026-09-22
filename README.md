@@ -86,6 +86,7 @@ One run writes `reports/<run_id>/` with:
 | `splits.csv` | every training id and its split (`train` 60% / `calib` 20% / `thresh` 20%) |
 | `thresholds.json` | per-label thresholds for each tier, `null` where the precision floor is unreachable |
 | `predictions.csv` | one row per scored test comment: labels, calibrated probabilities, model tier, matched rules, final tier and human-review requirement |
+| `simulation_jobs.csv` | every simulated arrival, with strategy, seed, times, status, risk and routing reason |
 | `model.pkl` | fitted TF-IDF vocabulary, classifiers and calibrators |
 | `report.json` | decision contract, total review workload, per-label and tier quality with Wilson intervals, subgroup diagnostics, rule effects, four-strategy simulation |
 | `report.md` | the same, as tables |
@@ -107,8 +108,9 @@ Combining labels, separating review bands and applying rules can change the
 final tiers' precision. For both bands, review is useful when any annotated
 label is positive. The report shows final-tier quality
 on both the threshold-selection split and the held-out test set; these targets
-are not guarantees. Simulation wait quantiles include completed jobs only, so
-read them alongside the unhandled high-risk count and the remaining backlog.
+are not guarantees. Simulation wait quantiles include every job that started,
+including reviews still in progress. Read them alongside completed and
+unfinished high-risk counts and the remaining backlog.
 
 Arrival rates are measured after admission to the combined human queue. They
 are conditional ranking experiments, not a fixed incoming-comment traffic
@@ -120,7 +122,11 @@ least 1.0 versus FIFO at overload, high-risk wait p90 no higher than FIFO near
 capacity, and high-risk completed counts no lower than FIFO at both loads.
 The completion checks prevent shorter waits from hiding unfinished work.
 These are empirical comparisons, not statistical noninferiority guarantees.
-Precision and coverage are diagnostic; there is no 99% test-precision gate.
+Per-tier precision and coverage are diagnostic; there is no 99% test-precision gate.
+At the primary load of 108 reviews/hour, the added capacity checks require
+at least 97% completion, mean end backlog at most 10, pooled wait p50 at most
+1 minute, mean queue-depth p95 at most 39, and utilization at least 60%.
+These limits were adopted before the merged baseline rerun.
 
 Regression gates read the report. The README results block uses the report and
 the policy snapshot saved with that run:
@@ -146,18 +152,73 @@ python scripts/make_synthetic_corpus.py --out data/synthetic
 python scripts/run_pipeline.py --config configs/smoke.yaml
 ```
 
+## Per-job simulation records and the headline time metric
+
+Every simulated arrival leaves a row in `simulation_jobs.csv` in the run
+directory: comment id, arrival, start and completion time, ordering strategy,
+load, seed, trigger reason (the rule ids or model labels that put it in the
+queue), whether it is high-risk, and its status at the horizon: `not_started`,
+`in_progress` or `completed`. Two times are derived from it:
+
+| metric | definition | population |
+|---|---|---|
+| wait | start of review minus arrival | every job that started, finished or not |
+| completion latency | completion minus arrival | every job completed within the horizon |
+
+Both are reported at p50, p90 and p99, with the sample size; a p99 on fewer
+than 100 samples is printed but flagged unreliable. Jobs that never started are
+counted by status, with their high-risk share and their age at the horizon;
+they are never given a wait of zero. Completion means the simulated review
+finished. Any moderation action still requires human confirmation; the
+simulation does not observe enforcement outcomes.
+
+The protocol selects one headline: `configs/baseline.yaml` names the metric
+and percentile (wait p50), read for the router and FIFO at the primary load,
+pooled over seeds. They use identical arrivals and the same metric definition,
+but their started and completed subsets may differ. Reduction is 1 minus the
+router value over the FIFO value; when the FIFO value is zero only the absolute
+difference is reported. The high-risk p90 comparison is reported alongside and
+is never a substitute. Every number in the report's time tables is recomputed
+from the records file by the gates.
+
+## Two-layer CI
+
+- **Code checks** (`ci.yml`, pushes to `main` and pull requests): lint, types, unit
+  tests, the synthetic pipeline test. The regression gates skip here because no
+  report is passed in.
+- **Real evaluation** (`real-eval.yml`, pushes to `main`, weekly, on demand):
+  fetches the three Jigsaw files, verifies them against `configs/jigsaw.sha256`,
+  runs the pipeline with the code under test, archives the run directory as a
+  workflow artifact, then points the gates at the report it just produced with
+  `REVIEW_ROUTER_EVAL_REQUIRE_CLEAN=1`. It never re-checks an old report, and
+  a second job tampers with a synthetic run in four ways (missing report,
+  policy mismatch, metric below floor, foreign commit) and fails unless every
+  one is blocked.
+
+The gates sit in four categories in `policy.yaml`: classification (per-label
+AP and precision at the operating point, hierarchy consistency, predicted
+volume overshoot), routing (tier precision with a minimum sample size),
+capacity (read at the stated primary or overload scenario), and reproducibility (a scenario is
+replayed from `predictions.csv` and compared with the saved records under a
+stated float tolerance). Determinism is a check, not a precision floor, and a
+queue-depth ceiling that holds at the primary load says nothing about other
+loads. Both review bands require human confirmation. Their test precision
+remains diagnostic; the historical 99% automatic-action gate does not apply
+to this workflow. High-risk completions must also remain at least as high as
+FIFO at the primary and overload scenarios.
+
 <!-- results:start -->
-## Review-routing results (Jigsaw scored test rows), run `20260922T130141204182Z-human-review-baseline`
+## Review-routing results (Jigsaw scored test rows), run `20260922T141853710066Z-human-review-baseline`
 
-Generated from this run's `report.json` and `manifest.json`. The run used commit `a7ee1ab214b0` with uncommitted changes (manifest `git_dirty: true`), seed 20260922, scikit-learn 1.9.1. The input files' SHA-256 hashes are recorded in the manifest.
+Generated from this run's `report.json` and `manifest.json`. The run used commit `563a0bf38226` with uncommitted changes (manifest `git_dirty: true`), seed 20260922, scikit-learn 1.9.1. The input files' SHA-256 hashes are recorded in the manifest.
 
-Development split: 95,743 / 31,914 / 31,914 rows for train / calibration / threshold selection; 63,978 scored test rows evaluated separately. Precision targets come from the run snapshot `reports/20260922T130141204182Z-human-review-baseline/policy.yaml`.
+Development split: 95,743 / 31,914 / 31,914 rows for train / calibration / threshold selection; 63,978 scored test rows evaluated separately. Precision targets come from the run snapshot `reports/20260922T141853710066Z-human-review-baseline/policy.yaml`.
 
 **Decision contract and evaluation criteria.** Every moderation action requires human confirmation. The model routes comments to priority_review, human_review or allow; priority_review schedules a human review earlier and does not authorize an automatic moderation action. Automatic actions must remain zero.
 
 The run's per-label selection targets are 0.95 for priority_review and 0.90 for human_review. These are empirical targets on the selection split, not guarantees of test precision. Per-tier test precision remains diagnostic when its gate is not set.
 
-Comparison gates come from `reports/20260922T130141204182Z-human-review-baseline/policy.yaml`. At equal reviewer capacity, the router/FIFO harm-per-reviewer-hour ratio at 180.000/h must be ≥ 1.000; the high-risk wait p90 ratio at 108.000/h must be ≤ 1.000. The high-risk completed-count ratio must be ≥ 1.000 at both named loads. These comparisons use ratios of seed means. They are descriptive checks that the measured result is no worse than FIFO, not statistical non-inferiority tests. Historical automatic-enforcement results use a different contract.
+Comparison gates come from `reports/20260922T141853710066Z-human-review-baseline/policy.yaml`. At equal reviewer capacity, the router/FIFO harm-per-reviewer-hour ratio at 180.000/h must be ≥ 1.000; the high-risk wait p90 ratio at 108.000/h must be ≤ 1.000. The high-risk completed-count ratio must be ≥ 1.000 at both named loads. These comparisons use ratios of seed means. They are descriptive checks that the measured result is no worse than FIFO, not statistical non-inferiority tests. Historical automatic-enforcement results use a different contract.
 
 **Per label.** Thresholds were selected for precision targets 0.90 (human) and 0.95 (priority). Selection and test AP are both shown. An AP difference describes a measured performance gap; it does not by itself identify the cause.
 
@@ -219,24 +280,35 @@ The five terms with the most positive decisions are shown below; comments can ma
 | woman | 21 | 47 | 0.447 |
 | women | 14 | 39 | 0.359 |
 
+**Prevalence and predicted volume.** Expected positives are the sum of calibrated probabilities on test rows. Overshoot is expected divided by actual positives, minus one. This measures aggregate probability calibration; it does not by itself establish why the distributions differ.
+
+| label | train-file prevalence | test prevalence | actual positives | model-expected positives | volume overshoot |
+|---|---:|---:|---:|---:|---:|
+| toxic | 0.0958 | 0.0952 | 6090 | 8715.3 | 0.431 |
+| severe_toxic | 0.0100 | 0.0057 | 367 | 703.0 | 0.916 |
+| obscene | 0.0529 | 0.0577 | 3691 | 4359.6 | 0.181 |
+| threat | 0.0030 | 0.0033 | 211 | 307.6 | 0.458 |
+| insult | 0.0494 | 0.0536 | 3427 | 3778.6 | 0.103 |
+| identity_hate | 0.0088 | 0.0111 | 712 | 776.4 | 0.091 |
+
 **Queue simulation.** 4 reviewers, 2 min per item, 8 h, capacity 120/h. The sampled pool has 6310 queued comments and 916 high-risk comments; high-risk means harm proxy >= 5.0. The run uses 5 seeds with identical arrivals and handle times for every ordering within each seed.
 
-Arrival rates are post-admission review jobs per hour, sampled from both priority_review and human_review. They are not incoming platform-comment rates. Every admitted item uses reviewer capacity. Priority ordering: priority_review first, then human_review; within each tier, higher max predicted probability times severity weight first; ties use arrival order. Arrival assumption: Post-admission Poisson review arrivals; jobs sampled with replacement from the combined priority_review and human_review pool. Handle times: deterministic. Harm proxy: max severity weight over TRUE labels (0 if clean); not real-world harm. Waits are minutes until review starts, measured over completed items. High-risk left includes jobs still in service; backlog counts jobs not yet started. The table reports seed means and standard deviations. Completion counts at a finite horizon do not establish queue stability.
+Arrival rates are post-admission review jobs per hour, sampled from both priority_review and human_review. They are not incoming platform-comment rates. Every admitted item uses reviewer capacity. Priority ordering: priority_review first, then human_review; within each tier, higher max predicted probability times severity weight first; ties use arrival order. Arrival assumption: Post-admission Poisson review arrivals; jobs sampled with replacement from the combined priority_review and human_review pool. Handle times: deterministic. Harm proxy: max severity weight over TRUE labels (0 if clean); not real-world harm. Waits are minutes until review starts, measured over all jobs that started, including reviews still in progress at the horizon. High-risk left includes jobs still in service; backlog counts jobs not yet started. The table reports seed means and standard deviations. Completion counts at a finite horizon do not establish queue stability.
 
 | load/h | ordering | handled | high-risk handled | high-risk left | harm / reviewer-h | high-risk wait p50 | high-risk wait p90 | wait p90, all items | backlog at end |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 60 | fifo | 468 ± 26 | 66.6 ± 13.5 | 0.0 ± 0.0 | 27.7 ± 3.5 | 0.0 ± 0.0 | 0.3 ± 0.1 | 0.3 ± 0.2 | 0 ± 1 |
+| 60 | fifo | 468 ± 26 | 66.6 ± 13.5 | 0.0 ± 0.0 | 27.7 ± 3.5 | 0.0 ± 0.0 | 0.3 ± 0.1 | 0.3 ± 0.1 | 0 ± 1 |
 | 60 | prob | 468 ± 26 | 66.6 ± 13.5 | 0.0 ± 0.0 | 27.7 ± 3.5 | 0.0 ± 0.0 | 0.2 ± 0.1 | 0.3 ± 0.1 | 0 ± 1 |
 | 60 | severity | 468 ± 26 | 66.6 ± 13.5 | 0.0 ± 0.0 | 27.7 ± 3.5 | 0.0 ± 0.0 | 0.2 ± 0.1 | 0.3 ± 0.1 | 0 ± 1 |
 | 60 | priority | 468 ± 26 | 66.6 ± 13.5 | 0.0 ± 0.0 | 27.7 ± 3.5 | 0.0 ± 0.0 | 0.2 ± 0.1 | 0.3 ± 0.1 | 0 ± 1 |
 | 108 | fifo | 867 ± 20 | 123.4 ± 17.7 | 0.4 ± 0.5 | 50.4 ± 3.5 | 1.3 ± 0.4 | 5.6 ± 2.0 | 6.0 ± 2.9 | 1 ± 2 |
 | 108 | prob | 867 ± 20 | 123.6 ± 17.4 | 0.2 ± 0.4 | 50.5 ± 3.4 | 0.2 ± 0.0 | 1.1 ± 0.1 | 3.9 ± 1.1 | 1 ± 2 |
-| 108 | severity | 867 ± 20 | 123.6 ± 17.4 | 0.2 ± 0.4 | 50.5 ± 3.4 | 0.2 ± 0.1 | 1.0 ± 0.1 | 4.0 ± 1.4 | 1 ± 2 |
-| 108 | priority | 867 ± 20 | 123.6 ± 17.4 | 0.2 ± 0.4 | 50.5 ± 3.4 | 0.2 ± 0.1 | 1.1 ± 0.1 | 4.0 ± 1.4 | 1 ± 2 |
-| 180 | fifo | 953 ± 4 | 137.6 ± 3.0 | 69.4 ± 8.6 | 56.1 ± 1.3 | 76.8 ± 5.2 | 138.5 ± 9.5 | 139.9 ± 7.8 | 465 ± 41 |
+| 108 | severity | 867 ± 20 | 123.6 ± 17.4 | 0.2 ± 0.4 | 50.5 ± 3.4 | 0.2 ± 0.1 | 1.0 ± 0.1 | 3.9 ± 1.4 | 1 ± 2 |
+| 108 | priority | 867 ± 20 | 123.6 ± 17.4 | 0.2 ± 0.4 | 50.5 ± 3.4 | 0.2 ± 0.1 | 1.1 ± 0.1 | 3.9 ± 1.4 | 1 ± 2 |
+| 180 | fifo | 953 ± 4 | 137.6 ± 3.0 | 69.4 ± 8.6 | 56.1 ± 1.3 | 77.2 ± 5.4 | 138.9 ± 9.4 | 140.4 ± 7.9 | 465 ± 41 |
 | 180 | prob | 953 ± 4 | 183.6 ± 6.1 | 23.4 ± 4.5 | 69.6 ± 2.0 | 0.5 ± 0.2 | 2.1 ± 0.5 | 10.2 ± 0.8 | 465 ± 41 |
 | 180 | severity | 953 ± 4 | 189.0 ± 5.7 | 18.0 ± 5.1 | 71.6 ± 1.6 | 0.5 ± 0.2 | 1.9 ± 0.7 | 11.5 ± 0.7 | 465 ± 41 |
-| 180 | priority | 953 ± 4 | 184.2 ± 5.6 | 22.8 ± 5.3 | 70.2 ± 1.7 | 0.5 ± 0.2 | 1.6 ± 0.3 | 10.3 ± 0.8 | 465 ± 41 |
+| 180 | priority | 953 ± 4 | 184.2 ± 5.6 | 22.8 ± 5.3 | 70.2 ± 1.7 | 0.5 ± 0.2 | 1.6 ± 0.3 | 10.4 ± 0.9 | 465 ± 41 |
 
 Paired comparisons use shared arrivals within each seed. Differences are first ordering minus second. Each cell gives the mean difference and the number of seeds in which the first ordering was better on that metric.
 
@@ -254,16 +326,37 @@ Paired comparisons use shared arrivals within each seed. Differences are first o
 | severity_vs_fifo@108 | 0.06; better 2/5 | 0.20; better 1/5 | -4.56; better 5/5 |
 | prob_vs_fifo@108 | 0.04; better 2/5 | 0.20; better 1/5 | -4.51; better 5/5 |
 | severity_vs_prob@108 | 0.01; better 1/5 | 0.00; better 0/5 | -0.05; better 3/5 |
-| priority_vs_fifo@180 | 14.16; better 5/5 | 46.60; better 5/5 | -136.90; better 5/5 |
-| priority_vs_prob@180 | 0.62; better 5/5 | 0.60; better 3/5 | -0.47; better 5/5 |
+| priority_vs_fifo@180 | 14.16; better 5/5 | 46.60; better 5/5 | -137.31; better 5/5 |
+| priority_vs_prob@180 | 0.62; better 5/5 | 0.60; better 3/5 | -0.48; better 5/5 |
 | priority_vs_severity@180 | -1.38; better 0/5 | -4.80; better 0/5 | -0.26; better 4/5 |
-| severity_vs_fifo@180 | 15.53; better 5/5 | 51.40; better 5/5 | -136.64; better 5/5 |
-| prob_vs_fifo@180 | 13.54; better 5/5 | 46.00; better 5/5 | -136.43; better 5/5 |
-| severity_vs_prob@180 | 1.99; better 5/5 | 5.40; better 5/5 | -0.21; better 4/5 |
+| severity_vs_fifo@180 | 15.53; better 5/5 | 51.40; better 5/5 | -137.05; better 5/5 |
+| prob_vs_fifo@180 | 13.54; better 5/5 | 46.00; better 5/5 | -136.83; better 5/5 |
+| severity_vs_prob@180 | 1.99; better 5/5 | 5.40; better 5/5 | -0.23; better 4/5 |
 
 Harm and high-risk status use the same policy weights as severity ordering. These comparisons are conditional on that weight vector and the stated arrival model.
 
-Gates read from `reports/20260922T130141204182Z-human-review-baseline/policy.yaml`:
+**Headline time metric.** wait p50 at 108/h, pooled over seeds: priority 0.399 vs FIFO 1.417 min (n=4356 / 4356). Reduction: 71.8%.
+
+Waiting time uses all started reviews. Completion latency uses reviews completed within the horizon. Never-started jobs have no observed wait; their counts and age at the horizon remain in the records. Completion means simulated review service finished; actual moderation outcomes are not observed. The two strategies use the same arrivals, but their started and completed subsets may differ.
+
+| load/h | ordering | completed / in progress / not started | high-risk completed / in progress / not started | wait p50 / p90 / p99 (n) | completion latency p50 / p90 / p99 (n) | p99 reliable, wait / completion |
+|---:|---|---|---|---|---|---|
+| 60 | fifo | 2339 / 8 / 2 | 333 / 0 / 0 | 0.000 / 0.348 / 1.470 (2347) | 2.000 / 2.326 / 3.471 (2339) | yes / yes |
+| 60 | prob | 2339 / 8 / 2 | 333 / 0 / 0 | 0.000 / 0.264 / 1.576 (2347) | 2.000 / 2.257 / 3.578 (2339) | yes / yes |
+| 60 | severity | 2339 / 8 / 2 | 333 / 0 / 0 | 0.000 / 0.264 / 1.551 (2347) | 2.000 / 2.258 / 3.554 (2339) | yes / yes |
+| 60 | priority | 2339 / 8 / 2 | 333 / 0 / 0 | 0.000 / 0.264 / 1.551 (2347) | 2.000 / 2.257 / 3.554 (2339) | yes / yes |
+| 108 | fifo | 4337 / 19 / 6 | 617 / 2 / 0 | 1.417 / 6.443 / 13.526 (4356) | 3.420 / 8.465 / 15.528 (4337) | yes / yes |
+| 108 | prob | 4337 / 19 / 6 | 618 / 1 / 0 | 0.401 / 3.801 / 40.139 (4356) | 2.401 / 5.825 / 42.370 (4337) | yes / yes |
+| 108 | severity | 4337 / 19 / 6 | 618 / 1 / 0 | 0.398 / 3.680 / 41.841 (4356) | 2.400 / 5.697 / 43.978 (4337) | yes / yes |
+| 108 | priority | 4337 / 19 / 6 | 618 / 1 / 0 | 0.399 / 3.710 / 43.275 (4356) | 2.401 / 5.723 / 45.521 (4337) | yes / yes |
+| 180 | fifo | 4766 / 20 / 2324 | 688 / 3 / 344 | 78.873 / 140.272 / 165.950 (4786) | 80.392 / 141.590 / 167.251 (4766) | yes / yes |
+| 180 | prob | 4766 / 20 / 2324 | 918 / 5 / 112 | 0.728 / 10.214 / 102.920 (4786) | 2.727 / 12.198 / 105.380 (4766) | yes / yes |
+| 180 | severity | 4766 / 20 / 2324 | 945 / 4 / 86 | 0.703 / 11.542 / 130.847 (4786) | 2.703 / 13.542 / 133.047 (4766) | yes / yes |
+| 180 | priority | 4766 / 20 / 2324 | 921 / 4 / 110 | 0.695 / 10.239 / 106.383 (4786) | 2.693 / 12.144 / 108.498 (4766) | yes / yes |
+
+All times are minutes. A p99 with fewer than 100 observations is flagged unreliable. Counts pool seeds, whereas the preceding simulation table reports seed means.
+
+Gates read from `reports/20260922T141853710066Z-human-review-baseline/policy.yaml`:
 
 For identity FDR ratios, green requires the entire 95% interval to be at or below the ceiling. An interval entirely above it is red; a crossing interval is inconclusive. Subgroups below the minimum count are skipped, and missing estimates are unavailable. Neither state is a passing fairness result.
 
@@ -271,18 +364,30 @@ For identity FDR ratios, green requires the entire 95% interval to be at or belo
 |---|---:|---|---|
 | human confirmation before every moderation action | mode=human_confirmation; automatic actions=0 | human_confirmation; required=true; actions=0 | green |
 | per-label AP (6 configured labels) | see label table | snapshot/override floors | green |
+| toxic precision at human threshold | 0.663 | ≥ 0.643; n ≥ 30 | green |
+| obscene precision at human threshold | 0.773 | ≥ 0.753; n ≥ 30 | green |
+| insult precision at human threshold | 0.879 | ≥ 0.858; n ≥ 30 | green |
+| severe_toxic precision at human threshold | n/a | ≥ n/a; n ≥ 30 | not set |
+| threat precision at human threshold | n/a | ≥ n/a; n ≥ 30 | not set |
+| identity_hate precision at human threshold | n/a | ≥ n/a; n ≥ 30 | not set |
+| severe_toxic predicted volume overshoot | 0.916 | ≤ 1.000 | green |
 | priority_review precision | 0.763 | diagnostic; no test floor | not set |
 | human_review precision | 0.419 | diagnostic; no test floor | not set |
 | harm_per_reviewer_hour, priority / FIFO at 180.000/h | 1.252 | ≥ 1.000 | green |
 | high_risk_wait_p90, priority / FIFO at 108.000/h | 0.189 | ≤ 1.000 | green |
 | high-risk completed, priority / FIFO at 108.000/h (primary) | 1.002 | ≥ 1.000 | green |
 | high-risk completed, priority / FIFO at 180.000/h (thesis) | 1.339 | ≥ 1.000 | green |
-| queue_depth_p95 at 108.000/h | 14.220 | ≤ n/a | not set |
+| completion_ratio at 108.000/h | 0.994 | ≥ 0.970 | green |
+| backlog_end at 108.000/h | 1.200 | ≤ 10 | green |
+| wait_p50 at 108.000/h | 0.399 | ≤ 1.000 | green |
+| queue_depth_p95 at 108.000/h | 14.220 | ≤ 39 | green |
 | reviewer_utilization at 108.000/h | 0.905 | ≥ 0.600 | green |
 | hierarchy violation rate | 0.0000 | ≤ 0.005 | green |
 | identity FDR ratio, pooled, final tier | 1.023 [0.92 to 1.14] | ≤ 1.250 | green |
 | identity FDR ratio, priority_review, final tier | 0.882 [0.74 to 1.05] | ≤ 1.250 | green |
 | identity FDR ratio, human_review, final tier | 0.995 [0.89 to 1.11] | ≤ 1.250 | green |
+
+Reproducibility checks use `simulation_jobs.csv` with absolute tolerance 1e-09. The gate suite recomputes record-derived metrics and replays the configured scenario. Policy/config hashes and, when required, a clean matching commit are checked separately. This table displays measured criteria; rendering it does not execute or certify those checks.
 <!-- results:end -->
 
 ## Status
@@ -294,10 +399,13 @@ Built:
 - [x] Corpus loader, scored-row filter, frozen seeded split (`data.py`)
 - [x] TF-IDF + six logistic heads with Platt calibration (`model.py`)
 - [x] Threshold selection from precision floors; model tiers; rule priority (`thresholds.py`)
-- [x] Review-queue simulator with replayed arrivals and three orderings (`simulate.py`)
+- [x] Review-queue simulator with replayed arrivals and four orderings (`simulate.py`)
 - [x] Per-label and per-tier metrics with Wilson intervals (`metrics.py`)
 - [x] One-command pipeline with manifest, predictions and report (`pipeline.py`, `scripts/run_pipeline.py`)
-- [x] Regression-gate harness (`tests/test_gate.py`) with floors set from the measured round-1 run
+- [x] Regression gates in four categories, with provenance checks and controlled failures
+- [x] Per-job simulation records, a declared headline time metric, and scenario replay
+- [x] Per-label prevalence shift and predicted volume overshoot
+- [x] Real-evaluation CI with pinned corpus hashes and archived runs
 - [x] Identity-mention FDR and FPR reported per review band; R103 retired, with subgroup threshold selection for the priority band
 - [x] Human confirmation required for both review bands, with all admitted comments counted against reviewer capacity
 

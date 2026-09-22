@@ -200,6 +200,10 @@ def _simulation_lines(sim: dict[str, Any], high_tier: str = AUTO) -> list[str]:
     )
     if high_tier == PRIORITY and a.get("priority_order"):
         review_pool += f"Priority ordering: {a['priority_order']}. "
+    wait_population = (
+        "all jobs that started, including reviews still in progress at the horizon"
+        if "time_metrics" in sim else "completed items"
+    )
     lines = [
         f"**Queue simulation.** {a['reviewers']} reviewers, {a['handle_minutes']:g} min per item, {a['horizon_hours']:g} h, "
         f"capacity {a['capacity_per_hour']:g}/h. The sampled pool has {a['queued_jobs']} queued comments "
@@ -207,7 +211,7 @@ def _simulation_lines(sim: dict[str, Any], high_tier: str = AUTO) -> list[str]:
         f"The run uses {len(a['seeds'])} seeds with identical arrivals and handle times for every ordering within each seed.",
         "",
         review_pool + f"Arrival assumption: {a.get('arrivals', 'unavailable')}. Handle times: {a.get('handle_time', 'unavailable')}. "
-        f"Harm proxy: {a.get('harm_proxy', 'unavailable')}. Waits are minutes until review starts, measured over completed items. "
+        f"Harm proxy: {a.get('harm_proxy', 'unavailable')}. Waits are minutes until review starts, measured over {wait_population}. "
         "High-risk left includes jobs still in service; backlog counts jobs not yet started. "
         "The table reports seed means and standard deviations. Completion counts at a finite horizon do not establish queue stability.",
         "",
@@ -237,6 +241,42 @@ def _simulation_lines(sim: dict[str, Any], high_tier: str = AUTO) -> list[str]:
             lines.append(f"| {name} | " + " | ".join(cells) + " |")
         lines += ["", "Harm and high-risk status use the same policy weights as severity ordering. "
                   "These comparisons are conditional on that weight vector and the stated arrival model."]
+    if "time_metrics" in sim:
+        lines += _time_lines(sim)
+    return lines
+
+
+def _time_lines(sim: dict[str, Any]) -> list[str]:
+    head = sim["headline"]
+    selected = head["selected"]
+    reduction = (
+        f"Reduction: {100 * selected['reduction']:.1f}%."
+        if finite(selected.get("reduction")) else
+        f"Absolute reduction: {fmt(selected.get('absolute_difference_min'))} min; percentage unavailable."
+    )
+    lines = [
+        "", f"**Headline time metric.** {head['metric']} p{head['percentile']} at {head['load_per_hour']:g}/h, "
+        f"pooled over seeds: {head['router_strategy']} {fmt(selected['router'])} vs FIFO {fmt(selected['fifo'])} min "
+        f"(n={selected['n_router']} / {selected['n_fifo']}). {reduction}", "",
+        "Waiting time uses all started reviews. Completion latency uses reviews completed within the horizon. "
+        "Never-started jobs have no observed wait; their counts and age at the horizon remain in the records. "
+        "Completion means simulated review service finished; actual moderation outcomes are not observed. "
+        "The two strategies use the same arrivals, but their started and completed subsets may differ.", "",
+        "| load/h | ordering | completed / in progress / not started | high-risk completed / in progress / not started | wait p50 / p90 / p99 (n) | completion latency p50 / p90 / p99 (n) | p99 reliable, wait / completion |",
+        "|---:|---|---|---|---|---|---|",
+    ]
+    for key, block in sim["time_metrics"].items():
+        strategy, load = key.split("@")
+        tm = block["pooled_over_seeds"]
+        status, hr = tm["status"], tm["high_risk_status"]
+        wait, latency = tm["wait"], tm["completion_latency"]
+        cells = [load, strategy]
+        cells += [" / ".join(str(s[k]) for k in ("completed", "in_progress", "not_started")) for s in (status, hr)]
+        cells += [" / ".join(fmt(s[k]) for k in ("p50", "p90", "p99")) + f" ({s['n']})" for s in (wait, latency)]
+        cells.append(" / ".join("yes" if s["p99_reliable"] else "no" for s in (wait, latency)))
+        lines.append("| " + " | ".join(cells) + " |")
+    lines += ["", "All times are minutes. A p99 with fewer than 100 observations is flagged unreliable. "
+              "Counts pool seeds, whereas the preceding simulation table reports seed means."]
     return lines
 
 
@@ -245,6 +285,8 @@ def _gate_lines(
 ) -> list[str]:
     sim = report.get("simulation", {})
     routing, fairness = gates.get("routing", {}), gates.get("fairness", {})
+    capacity = gates.get("capacity", routing)
+    classification = gates.get("classification", gates)
     minimum = gates.get("min_predicted_positives_for_precision", 30)
     rows = []
     if high_tier == PRIORITY:
@@ -258,23 +300,38 @@ def _gate_lines(
         rows.append(("human confirmation before every moderation action",
                      f"mode={fmt(contract.get('mode'))}; automatic actions={fmt(contract.get('automatic_actions'))}",
                      "human_confirmation; required=true; actions=0", status))
-    specs = {label: spec for label, spec in gates.get("per_label_average_precision", {}).items()
+    specs = {label: spec for label, spec in classification.get("per_label_average_precision", {}).items()
              if spec.get("floor") is not None}
     statuses = [gate_status(report.get("per_label", {}).get(label, {}).get("average_precision"), spec["floor"])
                 for label, spec in specs.items()]
     ap_status = ("not set" if not statuses else "**red**" if "**red**" in statuses
                  else "unavailable" if "unavailable" in statuses else "green")
     rows.append((f"per-label AP ({len(specs)} configured labels)", "see label table", "snapshot/override floors", ap_status))
+    for label, spec in classification.get("per_label_precision_at_human_threshold", {}).items():
+        stats = report.get("per_label", {}).get(label, {}).get("at_human_review", {})
+        floor, value = spec.get("floor"), stats.get("precision")
+        status = gate_status(value, floor)
+        if floor is not None:
+            count = stats.get("n_predicted_positive")
+            if not finite(count):
+                status = "unavailable"
+            elif count < minimum or stats.get("threshold") is None:
+                status = "**red**"
+        rows.append((f"{label} precision at human threshold", fmt(value), f"≥ {fmt(floor)}; n ≥ {minimum}", status))
+    for label, spec in classification.get("volume_overshoot_max", {}).items():
+        value = report.get("prevalence_shift", {}).get(label, {}).get("volume_overshoot_model")
+        limit = spec.get("ceiling")
+        rows.append((f"{label} predicted volume overshoot", fmt(value), f"≤ {fmt(limit)}", gate_status(value, limit, upper=True)))
     for tier in (high_tier, HUMAN):
         stats = report.get("tiers", {}).get(tier, {})
         value, floor = stats.get("precision"), routing.get(f"{tier}_precision_floor")
         status = gate_status(value, floor)
-        if tier == high_tier and floor is not None:
+        if floor is not None:
             count = stats.get("n_predicted_positive")
             if not finite(count):
                 status = "unavailable"
             elif count < minimum:
-                status = f"skipped (n < {minimum})"
+                status = "**red**" if tier == HUMAN else f"skipped (n < {minimum})"
         requirement = "diagnostic; no test floor" if floor is None and high_tier == PRIORITY else f"≥ {fmt(floor)}"
         rows.append((f"{tier} precision", fmt(value), requirement, status))
     primary = sim.get("primary", {})
@@ -285,7 +342,7 @@ def _gate_lines(
     ):
         values = sim.get(metric, {})
         value = ratio(values.get("router"), values.get("fifo"))
-        limit = routing.get(config_name)
+        limit = capacity.get(config_name)
         name = f"{metric}, {scenario.get('strategy', 'router')} / FIFO at {fmt(scenario.get('load_per_hour'))}/h"
         measured = fmt(value)
         status = gate_status(value, limit, upper=upper)
@@ -299,22 +356,36 @@ def _gate_lines(
         for scenario in ("primary", "thesis"):
             values = sim.get("high_risk_handled", {}).get(scenario, {})
             value = ratio(values.get("router"), values.get("fifo"))
-            limit = routing.get("high_risk_handled_vs_fifo_min")
+            limit = capacity.get("high_risk_handled_vs_fifo_min")
             name = f"high-risk completed, priority / FIFO at {fmt(values.get('load_per_hour'))}/h ({scenario})"
             rows.append((name, fmt(value), f"≥ {fmt(limit)}", gate_status(value, limit)))
+    for metric, config_name, upper in (
+        ("completion_ratio", "completion_ratio_min", False),
+        ("backlog_end", "backlog_end_max", True),
+        ("wait_p50", "wait_p50_max_min", True),
+    ):
+        if config_name not in capacity:
+            continue
+        value = sim.get(metric)
+        if metric == "wait_p50":
+            key = f"{primary.get('strategy')}@{primary.get('load_per_hour', 0):g}"
+            value = sim.get("time_metrics", {}).get(key, {}).get("pooled_over_seeds", {}).get("wait", {}).get("p50")
+        limit = capacity[config_name]
+        rows.append((f"{metric} at {fmt(primary.get('load_per_hour'))}/h", fmt(value),
+                     f"{'≤' if upper else '≥'} {fmt(limit)}", gate_status(value, limit, upper=upper)))
     for metric, config_name, upper in (
         ("queue_depth_p95", "queue_depth_p95_max", True),
         ("reviewer_utilization", "reviewer_utilization_min", False),
     ):
-        value, limit = sim.get(metric), routing.get(config_name)
+        value, limit = sim.get(metric), capacity.get(config_name)
         status = gate_status(value, limit, upper=upper)
         if (high_tier == AUTO and metric == "reviewer_utilization"
-                and routing.get("queue_depth_p95_max") is None):
+                and capacity.get("queue_depth_p95_max") is None):
             status = "skipped (queue-depth gate not set)"
         rows.append((f"{metric} at {fmt(primary.get('load_per_hour'))}/h", fmt(value),
                      f"{'≤' if upper else '≥'} {fmt(limit)}", status))
     value = report.get("consistency", {}).get("hierarchy_violation_rate")
-    limit = gates.get("consistency", {}).get("hierarchy_violation_rate_max")
+    limit = classification.get("hierarchy_violation_rate_max", gates.get("consistency", {}).get("hierarchy_violation_rate_max"))
     rows.append(("hierarchy violation rate", fmt(value, 4), f"≤ {fmt(limit)}", gate_status(value, limit, upper=True)))
     identity = report.get("identity_false_positives", {}).get("test", {})
     ceiling = fairness.get("identity_false_discovery_rate_ratio_max")
@@ -337,13 +408,19 @@ def _gate_lines(
              "Neither state is a passing fairness result.", "",
              "| gate | measured | requirement | status |", "|---|---:|---|---|"]
     lines.extend(f"| {name} | {measured} | {requirement} | {status} |" for name, measured, requirement, status in rows)
+    if "reproducibility" in gates:
+        spec = gates["reproducibility"]
+        lines += ["", f"Reproducibility checks use `{spec['records_file']}` with absolute tolerance {spec['float_tolerance']:g}. "
+                  "The gate suite recomputes record-derived metrics and replays the configured scenario. "
+                  "Policy/config hashes and, when required, a clean matching commit are checked separately. "
+                  "This table displays measured criteria; rendering it does not execute or certify those checks."]
     return lines
 
 
 def _criteria_lines(
     report: dict[str, Any], gates: dict[str, Any], floors: dict[str, float], source: Path
 ) -> list[str]:
-    routing = gates.get("routing", {})
+    routing = gates.get("capacity", gates.get("routing", {}))
     sim = report.get("simulation", {})
     primary, thesis = sim.get("primary", {}), sim.get("thesis", {})
     return [
@@ -376,6 +453,24 @@ def _workload_lines(report: dict[str, Any]) -> list[str]:
         f"{ci(workload.get('precision_ci95'), 3)}. Recorded automatic actions: {fmt(contract.get('automatic_actions'))}.",
         "",
     ]
+
+
+def _prevalence_lines(report: dict[str, Any]) -> list[str]:
+    shift = report.get("prevalence_shift")
+    if not shift:
+        return []
+    lines = [
+        "", "**Prevalence and predicted volume.** Expected positives are the sum of calibrated probabilities on test rows. "
+        "Overshoot is expected divided by actual positives, minus one. This measures aggregate probability calibration; "
+        "it does not by itself establish why the distributions differ.", "",
+        "| label | train-file prevalence | test prevalence | actual positives | model-expected positives | volume overshoot |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for label in report.get("per_label", {}):
+        s = shift[label]
+        lines.append(f"| {label} | {fmt(s['prevalence_train_file'], 4)} | {fmt(s['prevalence_test'], 4)} "
+                     f"| {s['actual_positives_test']} | {fmt(s['model_expected_positives_test'], 1)} | {fmt(s['volume_overshoot_model'])} |")
+    return lines
 
 
 def render(run_dir: Path, policy_path: Path | None = None) -> str:
@@ -452,6 +547,7 @@ def render(run_dir: Path, policy_path: Path | None = None) -> str:
     lines += ["", tier_note + "or applying rules. Test precision is measured separately. The gates below retain the declared limits; "
               "changes to models, calibration or threshold selection need a fresh evaluation.", ""]
     lines += _identity_lines(report, floors, high_tier)
+    lines += _prevalence_lines(report)
     lines += [""] + _simulation_lines(report.get("simulation", {}), high_tier)
     lines += [""] + _gate_lines(report, gates, gate_source, high_tier)
     return "\n".join(lines)
