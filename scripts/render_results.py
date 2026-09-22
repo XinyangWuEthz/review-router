@@ -224,9 +224,11 @@ def _simulation_lines(sim: dict[str, Any]) -> list[str]:
 def _gate_lines(report: dict[str, Any], gates: dict[str, Any], source: Path) -> list[str]:
     sim = report.get("simulation", {})
     routing, fairness = gates.get("routing", {}), gates.get("fairness", {})
+    capacity = gates.get("capacity", routing)
+    classification = gates.get("classification", gates)
     minimum = gates.get("min_predicted_positives_for_precision", 30)
     rows = []
-    specs = {label: spec for label, spec in gates.get("per_label_average_precision", {}).items()
+    specs = {label: spec for label, spec in classification.get("per_label_average_precision", {}).items()
              if spec.get("floor") is not None}
     statuses = [gate_status(report.get("per_label", {}).get(label, {}).get("average_precision"), spec["floor"])
                 for label, spec in specs.items()]
@@ -252,21 +254,21 @@ def _gate_lines(report: dict[str, Any], gates: dict[str, Any], source: Path) -> 
     ):
         values = sim.get(metric, {})
         value = ratio(values.get("router"), values.get("fifo"))
-        limit = routing.get(config_name)
+        limit = capacity.get(config_name)
         name = f"{metric}, {scenario.get('strategy', 'router')} / FIFO at {fmt(scenario.get('load_per_hour'))}/h"
         rows.append((name, fmt(value), f"{'≤' if upper else '≥'} {fmt(limit)}", gate_status(value, limit, upper=upper)))
     for metric, config_name, upper in (
         ("queue_depth_p95", "queue_depth_p95_max", True),
         ("reviewer_utilization", "reviewer_utilization_min", False),
     ):
-        value, limit = sim.get(metric), routing.get(config_name)
+        value, limit = sim.get(metric), capacity.get(config_name)
         status = gate_status(value, limit, upper=upper)
-        if metric == "reviewer_utilization" and routing.get("queue_depth_p95_max") is None:
+        if metric == "reviewer_utilization" and capacity.get("queue_depth_p95_max") is None:
             status = "skipped (queue-depth gate not set)"
         rows.append((f"{metric} at {fmt(primary.get('load_per_hour'))}/h", fmt(value),
                      f"{'≤' if upper else '≥'} {fmt(limit)}", status))
     value = report.get("consistency", {}).get("hierarchy_violation_rate")
-    limit = gates.get("consistency", {}).get("hierarchy_violation_rate_max")
+    limit = classification.get("hierarchy_violation_rate_max", gates.get("consistency", {}).get("hierarchy_violation_rate_max"))
     rows.append(("hierarchy violation rate", fmt(value, 4), f"≤ {fmt(limit)}", gate_status(value, limit, upper=True)))
     identity = report.get("identity_false_positives", {}).get("test", {})
     ceiling = fairness.get("identity_false_discovery_rate_ratio_max")

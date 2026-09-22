@@ -111,54 +111,95 @@ retired_rules:
 # value that was actually measured, and the measured value plus its date is
 # recorded so a red CI shows both the floor and what the number used to be.
 #
-# Floors were set from the run named in eval_slice. The rule that produced
-# each floor is written next to it; the a-priori floors say so. Nothing here
-# is tuned to make a run pass. tests/test_gate.py skips any gate whose floor
-# is null rather than passing it vacuously.
+# Regression gates, in four categories. Floors were set from the run named in
+# eval_slice; the rule that produced each floor is written next to it, and the
+# a-priori floors say so. Nothing here is tuned to make a run pass.
+# tests/test_gate.py skips any gate whose floor is null rather than passing it
+# vacuously, and FAILS when the report is missing, was made with a different
+# policy or config, or (when REVIEW_ROUTER_EVAL_REQUIRE_CLEAN=1) from a dirty
+# or different commit. The real-evaluation workflow produces the report with
+# the current code on every run; it never re-checks an old report.
 gates:
   measured_on: "2026-09-22"
   eval_slice: >
-    Jigsaw scored test rows (63,978), run 20260922T112845423138Z-baseline, made at
-    commit 3429f1fe41701d31de68ac936530d6aebfee1132 (manifest git_dirty: false).
-    Predictions, thresholds and splits match the floor-setting run
-    20260922T110655042496Z-baseline byte for byte.
-  # floor = measured - 0.02, rounded to 3 decimals
-  per_label_average_precision:
-    toxic: {floor: 0.732, measured: 0.7522}
-    obscene: {floor: 0.753, measured: 0.7734}
-    insult: {floor: 0.676, measured: 0.6961}
-    identity_hate: {floor: 0.460, measured: 0.4800}
-    severe_toxic: {floor: 0.291, measured: 0.3113}
-    threat: {floor: 0.437, measured: 0.4580}
+    Jigsaw scored test rows (63,978), run 20260922T131021772191Z-baseline, made on
+    the feature branch worktree on top of commit a7ee1ab214b0 (manifest
+    git_dirty: true); the real-evaluation workflow refreshes it from a clean checkout.
+
+  # 1. Classification quality: per label, never a pooled score.
+  classification:
+    # floor = measured - 0.02, rounded to 3 decimals
+    per_label_average_precision:
+      toxic: {floor: 0.732, measured: 0.7522}
+      obscene: {floor: 0.753, measured: 0.7734}
+      insult: {floor: 0.676, measured: 0.6961}
+      identity_hate: {floor: 0.460, measured: 0.4800}
+      severe_toxic: {floor: 0.291, measured: 0.3113}
+      threat: {floor: 0.438, measured: 0.4580}
+    # Precision on the scored test rows at the frozen human_review threshold
+    # (the operating point); floor = measured - 0.02, rounded to 3 decimals.
+    # Labels with no threshold on the selection split have no operating point.
+    per_label_precision_at_human_threshold:
+      toxic: {floor: 0.643, measured: 0.6631}
+      obscene: {floor: 0.753, measured: 0.7731}
+      insult: {floor: 0.858, measured: 0.8788}
+      severe_toxic: {floor: null, measured: null}
+      threat: {floor: null, measured: null}
+      identity_hate: {floor: null, measured: null}
+    # severe_toxic is an exact subset of toxic; predictions must respect that.
+    hierarchy_violation_rate_max: 0.005
+    # Volume the model expects on the test rows versus the actual count,
+    # (sum of calibrated p) / actual - 1. Reported for every label; a ceiling
+    # is set only for severe_toxic, whose training-file prevalence is 1.74x
+    # the test prevalence. ROC-AUC (0.982) does not see this; the overshoot
+    # does. measured 0.916; ceiling = measured rounded up to the next 0.1.
+    volume_overshoot_max:
+      severe_toxic: {ceiling: 1.0, measured: 0.916}
+
+  # 2. Routing quality: the precision of each decision tier, with sample size.
   routing:
     # A-priori policy floor from the cost asymmetry, never relaxed to make a
     # run pass. Coverage may legitimately fall to zero on the rare labels.
-    # The round-1 model measures 0.904 on the scored test rows, so this
-    # gate is red and stays red until a model clears it.
+    # The round-1 model measures 0.904 on the scored test rows, so this gate is
+    # red and stays red until a model clears it.
     auto_action_precision_floor: 0.99
     # measured 0.551; floor = measured - 0.025, rounded down to 2 decimals
     human_review_precision_floor: 0.52
+
+  # 3. Capacity: read at ONE stated load each. A queue-depth ceiling that holds
+  # at the primary load says nothing about clearing at other loads.
+  capacity:
     # thesis load 180/h; measured 1.255 (ratio of seed means), per-seed min 1.230; floor = per-seed min - 0.10, rounded down to 2 decimals
     harm_per_reviewer_hour_vs_fifo_min: 1.12
-    # primary load 108/h; measured 0.174 (ratio of seed means), per-seed max 0.336; ceiling = 1.5 x per-seed max, rounded up to 0.05
+    # primary load 108/h; measured 0.175 (ratio of seed means), per-seed max 0.336; ceiling = 1.5 x per-seed max, rounded up to 0.05
     high_risk_wait_p90_vs_fifo_max: 0.55
+    # primary load 108/h, router; measured 0.994; floor = measured - 0.015, rounded down to 2 decimals
+    completion_ratio_min: 0.97
+    # primary load 108/h, router; measured 1.2 jobs never started (seed mean); ceiling = a-priori 10
+    backlog_end_max: 10
+    # primary load 108/h, router, pooled over seeds; measured 0.41 min; ceiling = 2 x measured, rounded up to 0.5
+    wait_p50_max_min: 1.0
     # primary load 108/h; measured mean 14.2, per-seed max 26; ceiling = 1.5 x per-seed max, rounded up
     queue_depth_p95_max: 39
     # a-priori floor; measured 0.905
     reviewer_utilization_min: 0.60
-  consistency:
-    hierarchy_violation_rate_max: 0.005
+
+  # 4. Reproducibility: same config and seed give the same job order and
+  # results. This is a determinism check, not a precision floor.
+  reproducibility:
+    float_tolerance: 1.0e-9
+    records_file: simulation_jobs.csv
+    # one (load, seed) scenario is replayed from predictions.csv for the router
+    # and for fifo; every time metric in the report is recomputed from the file
+    scenario: {load: primary, seed: first}
+
   fairness:
-    # Diagnostic ratio of false discovery rates, FP / predicted positives,
-    # with an identity term versus without one. It is not conventional FPR.
-    # A 95% interval wholly above the ceiling flags a disparity; one crossing
-    # the ceiling is inconclusive and skips. An interval wholly below the
-    # ceiling clears this diagnostic only, not a general claim of fairness.
-    # Evaluate pooled positive final tiers and auto_action model candidates
-    # after subgroup thresholds, before rules. Actual-negative FPR is also
-    # reported under clean_negative_false_positives, without this gate.
-    # Read from report.identity_false_positives.test.
-    # A-priori ceiling; measured pooled 1.02 [0.92, 1.14], auto_action 0.58 [0.34, 1.01]
-    # (population tier 1.10 [0.78, 1.54]).
+    # Enforcement must not concentrate on identity mentions. Ratio of the
+    # false discovery rate (FP / predicted positives) with an identity term to
+    # the rate without one, on the scored test rows, gated on the lower bound
+    # of its 95% interval: pooled over auto_action and human_review on the
+    # final tier, and on auto_action alone on the model tier (after the
+    # subgroup thresholds, before rules: what the router enforces).
+    # A-priori ceiling; measured pooled 1.02 [0.92, 1.14], auto_action 0.58 [0.34, 1.01].
     identity_false_discovery_rate_ratio_max: 1.25
   min_predicted_positives_for_precision: 30

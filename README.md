@@ -124,12 +124,63 @@ python scripts/make_synthetic_corpus.py --out data/synthetic
 python scripts/run_pipeline.py --config configs/smoke.yaml
 ```
 
+## Per-job simulation records and the headline time metric
+
+Every simulated arrival leaves a row in `simulation_jobs.csv` in the run
+directory: comment id, arrival, start and completion time, ordering strategy,
+load, seed, trigger reason (the rule ids or model labels that put it in the
+queue), whether it is high-risk, and its status at the horizon: `not_started`,
+`in_progress` or `completed`. Two times are derived from it:
+
+| metric | definition | population |
+|---|---|---|
+| wait | start of review minus arrival | every job that started, finished or not |
+| completion latency | completion minus arrival | every job completed within the horizon |
+
+Both are reported at p50, p90 and p99, with the sample size; a p99 on fewer
+than 100 samples is printed but flagged unreliable. Jobs that never started are
+counted by status, with their high-risk share and their age at the horizon;
+they are never given a wait of zero. Treating a completed review as a completed
+action is a stated simulation assumption.
+
+The protocol selects one headline: `configs/baseline.yaml` names the metric
+and percentile (wait p50), read for the router and for FIFO on the same
+population at the primary load, pooled over seeds. Reduction is 1 minus the
+router value over the FIFO value; when the FIFO value is zero only the absolute
+difference is reported. The high-risk p90 comparison is reported alongside and
+is never a substitute. Every number in the report's time tables is recomputed
+from the records file by the gates.
+
+## Two-layer CI
+
+- **Code checks** (`ci.yml`, every push and pull request): lint, types, unit
+  tests, the synthetic pipeline test. The regression gates skip here because no
+  report is passed in.
+- **Real evaluation** (`real-eval.yml`, pushes to `main`, weekly, on demand):
+  fetches the three Jigsaw files, verifies them against `configs/jigsaw.sha256`,
+  runs the pipeline with the code under test, archives the run directory as a
+  workflow artifact, then points the gates at the report it just produced with
+  `REVIEW_ROUTER_EVAL_REQUIRE_CLEAN=1`. It never re-checks an old report, and
+  a second job tampers with a synthetic run in four ways (missing report,
+  policy mismatch, metric below floor, foreign commit) and fails unless every
+  one is blocked.
+
+The gates sit in four categories in `policy.yaml`: classification (per-label
+AP and precision at the operating point, hierarchy consistency, predicted
+volume overshoot), routing (tier precision with a minimum sample size),
+capacity (read at one stated load each), and reproducibility (a scenario is
+replayed from `predictions.csv` and compared with the saved records under a
+stated float tolerance). Determinism is a check, not a precision floor, and a
+queue-depth ceiling that holds at the primary load says nothing about other
+loads. The auto-action gate is red on the round-1 model and stays red; that is
+the gate doing its job, not a reason to lower the floor.
+
 <!-- results:start -->
-## Round-1 results (Jigsaw scored test rows), run `20260922T112845423138Z-baseline`
+## Round-1 results (Jigsaw scored test rows), run `20260922T131503586656Z-baseline`
 
-Generated from this run's `report.json` and `manifest.json`. The run used commit `3429f1fe4170`, seed 20260922, scikit-learn 1.9.1. The input files' SHA-256 hashes are recorded in the manifest.
+Generated from this run's `report.json` and `manifest.json`. The run used commit `a7ee1ab214b0` with uncommitted changes (manifest `git_dirty: true`), seed 20260922, scikit-learn 1.9.1. The input files' SHA-256 hashes are recorded in the manifest.
 
-Development split: 95,743 / 31,914 / 31,914 rows for train / calibration / threshold selection; 63,978 scored test rows evaluated separately. Precision targets come from the run snapshot `reports/20260922T112845423138Z-baseline/policy.yaml`.
+Development split: 95,743 / 31,914 / 31,914 rows for train / calibration / threshold selection; 63,978 scored test rows evaluated separately. Precision targets come from the run snapshot `/Users/xinyangwu/projects/review-router-sim/reports/20260922T131503586656Z-baseline/policy.yaml`.
 
 **Per label.** Thresholds were selected for precision targets 0.90 (human) and 0.99 (auto). Selection and test AP are both shown. An AP difference describes a measured performance gap; it does not by itself identify the cause.
 
@@ -194,13 +245,13 @@ Arrival assumption: Poisson; jobs sampled with replacement from the human_review
 
 | load/h | ordering | handled | high-risk handled | high-risk left | harm / reviewer-h | high-risk wait p50 | high-risk wait p90 | wait p90, all items | backlog at end |
 |---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| 60 | fifo | 468 ± 26 | 42.6 ± 5.9 | 0.0 ± 0.0 | 21.1 ± 1.3 | 0.0 ± 0.0 | 0.4 ± 0.2 | 0.3 ± 0.2 | 0 ± 1 |
+| 60 | fifo | 468 ± 26 | 42.6 ± 5.9 | 0.0 ± 0.0 | 21.1 ± 1.3 | 0.0 ± 0.0 | 0.4 ± 0.2 | 0.3 ± 0.1 | 0 ± 1 |
 | 60 | prob | 468 ± 26 | 42.6 ± 5.9 | 0.0 ± 0.0 | 21.1 ± 1.3 | 0.0 ± 0.0 | 0.3 ± 0.2 | 0.3 ± 0.1 | 0 ± 1 |
 | 60 | severity | 468 ± 26 | 42.6 ± 5.9 | 0.0 ± 0.0 | 21.1 ± 1.3 | 0.0 ± 0.0 | 0.3 ± 0.2 | 0.3 ± 0.1 | 0 ± 1 |
 | 108 | fifo | 867 ± 20 | 88.2 ± 4.6 | 0.8 ± 0.7 | 39.7 ± 1.3 | 1.5 ± 0.9 | 6.2 ± 2.8 | 6.0 ± 2.9 | 1 ± 2 |
 | 108 | prob | 867 ± 20 | 88.2 ± 4.6 | 0.8 ± 0.7 | 39.7 ± 1.3 | 0.3 ± 0.1 | 1.4 ± 0.2 | 4.2 ± 1.2 | 1 ± 2 |
-| 108 | severity | 867 ± 20 | 88.0 ± 4.7 | 1.0 ± 1.1 | 39.6 ± 1.3 | 0.3 ± 0.1 | 1.1 ± 0.3 | 4.4 ± 1.6 | 1 ± 2 |
-| 180 | fifo | 953 ± 4 | 100.0 ± 3.8 | 47.6 ± 6.4 | 44.6 ± 0.9 | 81.8 ± 5.4 | 143.3 ± 9.3 | 139.9 ± 7.8 | 465 ± 41 |
+| 108 | severity | 867 ± 20 | 88.0 ± 4.7 | 1.0 ± 1.1 | 39.6 ± 1.3 | 0.3 ± 0.1 | 1.1 ± 0.3 | 4.3 ± 1.6 | 1 ± 2 |
+| 180 | fifo | 953 ± 4 | 100.0 ± 3.8 | 47.6 ± 6.4 | 44.6 ± 0.9 | 82.0 ± 5.4 | 143.7 ± 9.0 | 140.4 ± 7.9 | 465 ± 41 |
 | 180 | prob | 953 ± 4 | 124.6 ± 3.1 | 23.0 ± 5.9 | 53.1 ± 1.0 | 0.5 ± 0.2 | 3.1 ± 1.4 | 11.0 ± 2.5 | 465 ± 41 |
 | 180 | severity | 953 ± 4 | 133.8 ± 5.3 | 13.8 ± 2.3 | 56.0 ± 1.3 | 0.5 ± 0.2 | 2.2 ± 1.1 | 11.5 ± 1.4 | 465 ± 41 |
 
@@ -211,16 +262,16 @@ Paired comparisons use shared arrivals within each seed. Differences are first o
 | severity_vs_fifo@60 | 0.00; better 0/5 | 0.00; better 0/5 | -0.07; better 3/5 |
 | prob_vs_fifo@60 | 0.00; better 0/5 | 0.00; better 0/5 | -0.06; better 4/5 |
 | severity_vs_prob@60 | 0.00; better 0/5 | 0.00; better 0/5 | -0.00; better 1/5 |
-| severity_vs_fifo@108 | -0.04; better 0/5 | -0.20; better 0/5 | -5.11; better 5/5 |
-| prob_vs_fifo@108 | 0.01; better 1/5 | 0.00; better 0/5 | -4.80; better 5/5 |
+| severity_vs_fifo@108 | -0.04; better 0/5 | -0.20; better 0/5 | -5.09; better 5/5 |
+| prob_vs_fifo@108 | 0.01; better 1/5 | 0.00; better 0/5 | -4.79; better 5/5 |
 | severity_vs_prob@108 | -0.04; better 0/5 | -0.20; better 0/5 | -0.30; better 5/5 |
-| severity_vs_fifo@180 | 11.40; better 5/5 | 33.80; better 5/5 | -141.12; better 5/5 |
-| prob_vs_fifo@180 | 8.46; better 5/5 | 24.60; better 5/5 | -140.18; better 5/5 |
+| severity_vs_fifo@180 | 11.40; better 5/5 | 33.80; better 5/5 | -141.52; better 5/5 |
+| prob_vs_fifo@180 | 8.46; better 5/5 | 24.60; better 5/5 | -140.58; better 5/5 |
 | severity_vs_prob@180 | 2.94; better 5/5 | 9.20; better 5/5 | -0.94; better 3/5 |
 
 Harm and high-risk status use the same policy weights as severity ordering. These comparisons are conditional on that weight vector and the stated arrival model.
 
-Gates read from `reports/20260922T112845423138Z-baseline/policy.yaml`:
+Gates read from `/Users/xinyangwu/projects/review-router-sim/reports/20260922T131503586656Z-baseline/policy.yaml`:
 
 For identity FDR ratios, green requires the entire 95% interval to be at or below the ceiling. An interval entirely above it is red; a crossing interval is inconclusive. Subgroups below the minimum count are skipped, and missing estimates are unavailable. Neither state is a passing fairness result.
 
@@ -230,7 +281,7 @@ For identity FDR ratios, green requires the entire 95% interval to be at or belo
 | auto_action precision | 0.904 | ≥ 0.990 | **red** |
 | human_review precision | 0.551 | ≥ 0.520 | green |
 | harm_per_reviewer_hour, severity / FIFO at 180.000/h | 1.255 | ≥ 1.120 | green |
-| high_risk_wait_p90, severity / FIFO at 108.000/h | 0.174 | ≤ 0.550 | green |
+| high_risk_wait_p90, severity / FIFO at 108.000/h | 0.175 | ≤ 0.550 | green |
 | queue_depth_p95 at 108.000/h | 14.220 | ≤ 39 | green |
 | reviewer_utilization at 108.000/h | 0.905 | ≥ 0.600 | green |
 | hierarchy violation rate | 0.0000 | ≤ 0.005 | green |
@@ -250,7 +301,10 @@ Built:
 - [x] Review-queue simulator with replayed arrivals and three orderings (`simulate.py`)
 - [x] Per-label and per-tier metrics with Wilson intervals (`metrics.py`)
 - [x] One-command pipeline with manifest, predictions and report (`pipeline.py`, `scripts/run_pipeline.py`)
-- [x] Regression-gate harness (`tests/test_gate.py`) with floors set from the measured round-1 run
+- [x] Regression-gate harness (`tests/test_gate.py`) in four categories with floors set from the measured round-1 run, provenance checks and negative tests
+- [x] Per-job simulation records (`simulation_jobs.csv`), record-derived time metrics, a declared headline metric, and a determinism gate that replays a scenario
+- [x] Prevalence-shift section: training-file versus test prevalence and the model's predicted volume overshoot per label
+- [x] Real-evaluation workflow with pinned data hashes, archived runs and a controlled-failure job
 - [x] Identity-mention false-positive concentration measured per tier and per term on every run, and gated; rule R103 retired and replaced by a subgroup threshold (auto-action must clear its floor on the identity-term slice too)
 
 Not done yet:

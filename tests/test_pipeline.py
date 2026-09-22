@@ -314,3 +314,74 @@ def test_render_results_replaces_readme_block(synthetic_corpus: Path, tmp_path: 
     assert "\nold\n" not in text
     assert "SYNTHETIC corpus" in text
     assert "| gate | measured | requirement | status |" in text
+
+
+def test_per_job_records_reproduce_every_time_metric(
+    synthetic_corpus: Path, tmp_path: Path
+) -> None:
+    from review_router.simulate import JobRecords, time_metrics
+
+    run_dir = run(_config(tmp_path, synthetic_corpus))
+    report = json.loads((run_dir / "report.json").read_text())
+    rows = pd.read_csv(run_dir / "simulation_jobs.csv", dtype={"comment_id": str})
+    expected_cols = {
+        "comment_id",
+        "arrival_min",
+        "start_min",
+        "completion_min",
+        "strategy",
+        "trigger_reason",
+        "high_risk",
+        "status",
+        "wait_min",
+        "completion_latency_min",
+        "seed",
+        "load_per_hour",
+    }
+    assert expected_cols <= set(rows.columns)
+    assert set(rows["status"]) <= {"not_started", "in_progress", "completed"}
+    sim = report["simulation"]
+    horizon = sim["assumptions"]["horizon_hours"] * 60
+    assert "review_completion_means_action_completion" in sim["assumptions"]
+    for key, block in sim["time_metrics"].items():
+        strategy, load = key.split("@")
+        subset = rows[(rows["strategy"] == strategy) & (rows["load_per_hour"] == float(load))]
+        rec = JobRecords.from_rows(subset.to_dict(orient="records"), horizon)
+        tm = time_metrics(rec)
+        pooled = block["pooled_over_seeds"]
+        assert tm["status"] == pooled["status"]
+        assert tm["wait"]["p50"] == pytest.approx(pooled["wait"]["p50"], abs=1e-9)
+        assert tm["completion_latency"]["p90"] == pytest.approx(
+            pooled["completion_latency"]["p90"], abs=1e-9
+        )
+    head = sim["headline"]
+    assert head["metric"] == "wait" and head["percentile"] == 50
+    sel = head["selected"]
+    if sel["fifo"]:
+        assert sel["reduction"] == pytest.approx(1 - sel["router"] / sel["fifo"])
+    else:
+        assert sel["reduction"] is None and "absolute" in sel["note"]
+
+
+def test_prevalence_shift_is_hand_computable() -> None:
+    from review_router.pipeline import _prevalence_shift
+
+    counts = {
+        "train": {"rows": 60, **{label: 6 for label in LABELS}},
+        "calib": {"rows": 20, **{label: 2 for label in LABELS}},
+        "thresh": {"rows": 20, **{label: 2 for label in LABELS}},
+    }
+    y = np.zeros((10, len(LABELS)), dtype=int)
+    y[:2, 0] = 1  # toxic: 2 of 10 on "test"
+    proba = np.full((10, len(LABELS)), 0.3)  # model expects 3 positives per label
+    out = _prevalence_shift(counts, y, proba)
+    toxic = out["toxic"]
+    assert toxic["prevalence_train_file"] == pytest.approx(0.10)
+    assert toxic["prevalence_test"] == pytest.approx(0.20)
+    assert toxic["prevalence_ratio_train_over_test"] == pytest.approx(0.5)
+    assert toxic["model_expected_positives_test"] == pytest.approx(3.0)
+    assert toxic["volume_overshoot_model"] == pytest.approx(0.5)  # 3 expected / 2 actual - 1
+    assert toxic["volume_overshoot_train_prevalence"] == pytest.approx(
+        -0.5
+    )  # 1 expected / 2 actual - 1
+    assert out["severe_toxic"]["volume_overshoot_model"] is None  # no positives on test
