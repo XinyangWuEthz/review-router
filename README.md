@@ -125,10 +125,117 @@ python scripts/run_pipeline.py --config configs/smoke.yaml
 ```
 
 <!-- results:start -->
-## Round-1 results
+## Round-1 results (Jigsaw scored test rows), run `20260922T112845423138Z-baseline`
 
-The results block will be generated from a baseline run made after this
-implementation is committed, using `scripts/render_results.py`.
+Generated from this run's `report.json` and `manifest.json`. The run used commit `3429f1fe4170`, seed 20260922, scikit-learn 1.9.1. The input files' SHA-256 hashes are recorded in the manifest.
+
+Development split: 95,743 / 31,914 / 31,914 rows for train / calibration / threshold selection; 63,978 scored test rows evaluated separately. Precision targets come from the run snapshot `reports/20260922T112845423138Z-baseline/policy.yaml`.
+
+**Per label.** Thresholds were selected for precision targets 0.90 (human) and 0.99 (auto). Selection and test AP are both shown. An AP difference describes a measured performance gap; it does not by itself identify the cause.
+
+| label | positives | AP selection | AP test | ROC-AUC test | human thr | P@human | R@human | auto thr | P@auto | R@auto |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| toxic | 6090 | 0.859 | 0.752 | 0.957 | 0.6576 | 0.663 | 0.680 | 0.9893 | 0.898 | 0.349 |
+| severe_toxic | 367 | 0.492 | 0.311 | 0.982 | n/a | n/a | n/a | n/a | n/a | n/a |
+| obscene | 3691 | 0.874 | 0.773 | 0.972 | 0.6573 | 0.773 | 0.616 | 0.9984 | 0.952 | 0.266 |
+| threat | 211 | 0.459 | 0.458 | 0.992 | n/a | n/a | n/a | n/a | n/a | n/a |
+| insult | 3427 | 0.774 | 0.696 | 0.965 | 0.9176 | 0.879 | 0.290 | 0.9998 | 0.985 | 0.038 |
+| identity_hate | 712 | 0.415 | 0.480 | 0.974 | n/a | n/a | n/a | n/a | n/a | n/a |
+
+**Routing tiers.** Matching policy rules moved 145 auto-actions and 18 allows to human review. These counts aggregate all matching rules.
+
+| tier | n | coverage | precision (test) | 95% CI | precision (selection split) | target |
+|---|---:|---:|---:|---|---:|---:|
+| auto_action | 2125 | 0.033 | 0.904 | 0.891 to 0.916 | 0.9917 | 0.990 |
+| human_review | 4185 | 0.065 | 0.551 | 0.536 to 0.566 | 0.8901 | 0.900 |
+| allow | 57668 | 0.901 | n/a | n/a | n/a | n/a |
+
+Per-label precision targets need not hold after pooling labels, removing auto-actions from the human queue, or applying rules. Test precision is measured separately. The gates below retain the declared limits; changes to models, calibration or threshold selection need a fresh evaluation.
+
+**Identity mentions.** The run recorded 63 whole-word terms in its `report.json`. This word-list diagnostic is a proxy, not an identity annotation.
+
+False discovery rate (FDR) divides wrong positive decisions by all positive decisions in each slice. For auto-action, a decision is wrong when none of its triggering labels is true; for human review, it is wrong when no label is true. Ratios compare comments with an identity term to those without one.
+
+| decision basis | tier | FDR with term (wrong / decisions) | FDR without term | ratio | ratio 95% CI |
+|---|---|---:|---:|---:|---|
+| population thresholds | auto_action | 0.109 (35/322) | 0.099 (202/2045) | 1.10 | 0.78 to 1.54 |
+| after subgroup threshold, before rules | auto_action | 0.058 (13/225) | 0.099 (202/2045) | 0.58 | 0.34 to 1.01 |
+| final routing | predicted_positive | 0.337 (273/810) | 0.329 (1811/5500) | 1.02 | 0.92 to 1.14 |
+| final routing | auto_action | 0.059 (12/205) | 0.100 (192/1920) | 0.59 | 0.33 to 1.03 |
+| final routing | human_review | 0.431 (261/605) | 0.452 (1619/3580) | 0.95 | 0.86 to 1.05 |
+
+Conventional false-positive rate (FPR) uses all actually negative comments in the slice as its denominator, including allowed comments. Here 'negative' means no positive label. It measures the fraction of clean comments sent to each tier; it does not count wrong-trigger auto-actions on comments that have another positive label.
+
+| final tier | FPR with term (clean routed / clean total) | FPR without term | ratio | ratio 95% CI |
+|---|---:|---:|---:|---|
+| predicted_positive | 0.066 (272/4144) | 0.034 (1805/53591) | 1.95 | 1.72 to 2.20 |
+| auto_action | 0.003 (11/4144) | 0.003 (186/53591) | 0.76 | 0.42 to 1.40 |
+| human_review | 0.063 (261/4144) | 0.030 (1619/53591) | 2.08 | 1.84 to 2.37 |
+
+The subgroup threshold uses the run's auto-action precision target of 0.99 on identity-term comments in the threshold-selection split, at or above each population threshold. A label without a qualifying slice threshold cannot trigger auto-action on that slice. These are empirical selection targets, not statistical guarantees on test data.
+
+Slice thresholds: toxic: 0.9974; severe_toxic: no qualifying slice threshold; obscene: no qualifying slice threshold; threat: no qualifying slice threshold; insult: no qualifying slice threshold; identity_hate: no qualifying slice threshold. They removed 31 of 921 population auto-actions on selection data and 97 of 2367 on test data. Of the removed test decisions, 77 had a positive label.
+
+False omission rate uses allowed comments as its denominator. It is 0.058 with a term (240/4112 allowed comments have a positive label) and 0.033 without (1770/53556). The overall positive-label base rates are 0.158 and 0.093, respectively.
+
+The five terms with the most positive decisions are shown below; comments can match multiple terms.
+
+| term | wrong decisions | positive decisions | FDR |
+|---|---:|---:|---:|
+| gay | 89 | 360 | 0.247 |
+| black | 35 | 79 | 0.443 |
+| white | 27 | 70 | 0.386 |
+| woman | 21 | 47 | 0.447 |
+| women | 14 | 39 | 0.359 |
+
+**Queue simulation.** 4 reviewers, 2 min per item, 8 h, capacity 120/h. The sampled pool has 4185 queued comments and 429 high-risk comments; high-risk means harm proxy >= 5.0. The run uses 5 seeds with identical arrivals and handle times for every ordering within each seed.
+
+Arrival assumption: Poisson; jobs sampled with replacement from the human_review set. Handle times: deterministic. Harm proxy: max severity weight over TRUE labels (0 if clean); not real-world harm. Waits are minutes until review starts, measured over completed items. High-risk left includes jobs still in service; backlog counts jobs not yet started. The table reports seed means and standard deviations. Completion counts at a finite horizon do not establish queue stability.
+
+| load/h | ordering | handled | high-risk handled | high-risk left | harm / reviewer-h | high-risk wait p50 | high-risk wait p90 | wait p90, all items | backlog at end |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 60 | fifo | 468 ± 26 | 42.6 ± 5.9 | 0.0 ± 0.0 | 21.1 ± 1.3 | 0.0 ± 0.0 | 0.4 ± 0.2 | 0.3 ± 0.2 | 0 ± 1 |
+| 60 | prob | 468 ± 26 | 42.6 ± 5.9 | 0.0 ± 0.0 | 21.1 ± 1.3 | 0.0 ± 0.0 | 0.3 ± 0.2 | 0.3 ± 0.1 | 0 ± 1 |
+| 60 | severity | 468 ± 26 | 42.6 ± 5.9 | 0.0 ± 0.0 | 21.1 ± 1.3 | 0.0 ± 0.0 | 0.3 ± 0.2 | 0.3 ± 0.1 | 0 ± 1 |
+| 108 | fifo | 867 ± 20 | 88.2 ± 4.6 | 0.8 ± 0.7 | 39.7 ± 1.3 | 1.5 ± 0.9 | 6.2 ± 2.8 | 6.0 ± 2.9 | 1 ± 2 |
+| 108 | prob | 867 ± 20 | 88.2 ± 4.6 | 0.8 ± 0.7 | 39.7 ± 1.3 | 0.3 ± 0.1 | 1.4 ± 0.2 | 4.2 ± 1.2 | 1 ± 2 |
+| 108 | severity | 867 ± 20 | 88.0 ± 4.7 | 1.0 ± 1.1 | 39.6 ± 1.3 | 0.3 ± 0.1 | 1.1 ± 0.3 | 4.4 ± 1.6 | 1 ± 2 |
+| 180 | fifo | 953 ± 4 | 100.0 ± 3.8 | 47.6 ± 6.4 | 44.6 ± 0.9 | 81.8 ± 5.4 | 143.3 ± 9.3 | 139.9 ± 7.8 | 465 ± 41 |
+| 180 | prob | 953 ± 4 | 124.6 ± 3.1 | 23.0 ± 5.9 | 53.1 ± 1.0 | 0.5 ± 0.2 | 3.1 ± 1.4 | 11.0 ± 2.5 | 465 ± 41 |
+| 180 | severity | 953 ± 4 | 133.8 ± 5.3 | 13.8 ± 2.3 | 56.0 ± 1.3 | 0.5 ± 0.2 | 2.2 ± 1.1 | 11.5 ± 1.4 | 465 ± 41 |
+
+Paired comparisons use shared arrivals within each seed. Differences are first ordering minus second. Each cell gives the mean difference and the number of seeds in which the first ordering was better on that metric.
+
+| comparison | harm / reviewer-h difference | high-risk handled difference | high-risk wait p90 difference |
+|---|---:|---:|---:|
+| severity_vs_fifo@60 | 0.00; better 0/5 | 0.00; better 0/5 | -0.07; better 3/5 |
+| prob_vs_fifo@60 | 0.00; better 0/5 | 0.00; better 0/5 | -0.06; better 4/5 |
+| severity_vs_prob@60 | 0.00; better 0/5 | 0.00; better 0/5 | -0.00; better 1/5 |
+| severity_vs_fifo@108 | -0.04; better 0/5 | -0.20; better 0/5 | -5.11; better 5/5 |
+| prob_vs_fifo@108 | 0.01; better 1/5 | 0.00; better 0/5 | -4.80; better 5/5 |
+| severity_vs_prob@108 | -0.04; better 0/5 | -0.20; better 0/5 | -0.30; better 5/5 |
+| severity_vs_fifo@180 | 11.40; better 5/5 | 33.80; better 5/5 | -141.12; better 5/5 |
+| prob_vs_fifo@180 | 8.46; better 5/5 | 24.60; better 5/5 | -140.18; better 5/5 |
+| severity_vs_prob@180 | 2.94; better 5/5 | 9.20; better 5/5 | -0.94; better 3/5 |
+
+Harm and high-risk status use the same policy weights as severity ordering. These comparisons are conditional on that weight vector and the stated arrival model.
+
+Gates read from `reports/20260922T112845423138Z-baseline/policy.yaml`:
+
+For identity FDR ratios, green requires the entire 95% interval to be at or below the ceiling. An interval entirely above it is red; a crossing interval is inconclusive. Subgroups below the minimum count are skipped, and missing estimates are unavailable. Neither state is a passing fairness result.
+
+| gate | measured | requirement | status |
+|---|---:|---|---|
+| per-label AP (6 configured labels) | see label table | snapshot/override floors | green |
+| auto_action precision | 0.904 | ≥ 0.990 | **red** |
+| human_review precision | 0.551 | ≥ 0.520 | green |
+| harm_per_reviewer_hour, severity / FIFO at 180.000/h | 1.255 | ≥ 1.120 | green |
+| high_risk_wait_p90, severity / FIFO at 108.000/h | 0.174 | ≤ 0.550 | green |
+| queue_depth_p95 at 108.000/h | 14.220 | ≤ 39 | green |
+| reviewer_utilization at 108.000/h | 0.905 | ≥ 0.600 | green |
+| hierarchy violation rate | 0.0000 | ≤ 0.005 | green |
+| identity FDR ratio, pooled, final tier | 1.024 [0.92 to 1.14] | ≤ 1.250 | green |
+| identity FDR ratio, auto_action, after subgroup threshold before rules | 0.585 [0.34 to 1.01] | ≤ 1.250 | green |
 <!-- results:end -->
 
 ## Status

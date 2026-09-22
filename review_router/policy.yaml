@@ -118,9 +118,10 @@ retired_rules:
 gates:
   measured_on: "2026-09-22"
   eval_slice: >
-    Jigsaw scored test rows (63,978), run 20260922T110655042496Z-baseline, made on the
-    working tree on top of commit e750939f82c7 (manifest git_dirty: true);
-    re-run after committing to refresh.
+    Jigsaw scored test rows (63,978), run 20260922T112845423138Z-baseline, made at
+    commit 3429f1fe41701d31de68ac936530d6aebfee1132 (manifest git_dirty: false).
+    Predictions, thresholds and splits match the floor-setting run
+    20260922T110655042496Z-baseline byte for byte.
   # floor = measured - 0.02, rounded to 3 decimals
   per_label_average_precision:
     toxic: {floor: 0.732, measured: 0.7522}
