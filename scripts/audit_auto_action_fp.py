@@ -191,6 +191,14 @@ def auto_trigger(
 
 
 def false_positives(run: Path) -> tuple[pd.DataFrame, int]:
+    report_path = run / "report.json"
+    if report_path.is_file():
+        report = json.loads(report_path.read_text())
+        if report.get("evaluate_test") is False:
+            raise SystemExit(
+                f"{run} is a development run (evaluate_test: false): test rows not scored, "
+                "so there are no predictions to audit"
+            )
     pred = pd.read_csv(run / "predictions.csv", dtype={"id": str})
     thresholds = json.loads((run / "thresholds.json").read_text())
     if "auto_action" not in thresholds:

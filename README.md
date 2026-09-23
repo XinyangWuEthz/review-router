@@ -52,22 +52,34 @@ These are identities over the label counts, not model results.
   live in [`review_router/policy.yaml`](review_router/policy.yaml); every rule
   carries a prose rationale for *why its tier is what it is*. The loader rejects
   unknown actions and operators, and that rejection is tested.
+- **Segment agreement selects the priority band.** The `priority_review`
+  threshold for a label is the lowest declared score edge such that every
+  segment at or above it meets the 0.95 target on its own with at least 30
+  rows on the selection split, following the bin-and-measure-agreement method
+  of Thomas et al. (arXiv 2406.12800). The cumulative rule let a strong top
+  segment carry weaker ones below it (toxic selected 0.847 while the
+  [0.95, 0.98) bin alone reached 0.937); the segment rule reports the
+  agreement and coverage of every segment instead. The `human_review` band
+  and the identity-term slice keep the cumulative rule.
 - **Rules and models coexist.** Models supply scores. Threat and label
   inconsistency rules promote comments into priority review.
   Where a slice needs extra care, the floor is required on that slice
   (`subgroup_thresholds`) rather than typed in as a probability constant.
 - **All review work consumes capacity.** Both review bands enter the simulator.
-  Priority ordering serves the priority band first, then uses predicted
-  severity within each band. FIFO, probability and severity orderings provide
-  comparisons on the same admitted comments and arrivals. Confidence and harm
-  are different signals; priority ordering may lose to severity ordering.
+  The queue is served in the configured primary ordering, predicted severity
+  (highest max predicted probability times severity weight first). The
+  band-first ordering, priority band first and then severity within each band,
+  is kept as a compared alternative, as are FIFO and probability ordering, all
+  on the same admitted comments and arrivals. The paired per-seed comparison
+  of the primary ordering against every alternative is gated at the overload
+  load.
 
 ## Reproducing the human-review experiment
 
-The current experiment asks: **with the same reviewer capacity, does priority
-review handle at least as much high-risk work as first-in-first-out, and reach
-it sooner?** Every
-assumption of the protocol is a line in `configs/baseline.yaml` or
+The current experiment asks: **with the same reviewer capacity, does the router
+(the review queue served in predicted-severity order) handle at least as much
+high-risk work as first-in-first-out, and reach it sooner?** Every assumption
+of the protocol is a line in `configs/baseline.yaml` or
 `review_router/policy.yaml`, and the pipeline module docstring walks the stages.
 
 ```bash
@@ -76,6 +88,18 @@ pip install -e ".[ml,dev]"
 # (Kaggle: jigsaw-toxic-comment-classification-challenge; the corpus is not redistributed here.)
 python scripts/run_pipeline.py --config configs/baseline.yaml
 ```
+
+For development iterations, run the same protocol without the scored test rows:
+
+```bash
+python scripts/run_pipeline.py --config configs/dev.yaml
+```
+
+Development runs stop before the test rows are scored: they write the
+thresholds, the model and the development sections of the report, but no
+predictions, simulation or test section, and they are not a gate input. Use
+them to compare orderings and threshold rules on the selection split; read the
+high-risk-by-band and ranking tables there first.
 
 One run writes `reports/<run_id>/` with:
 
@@ -121,12 +145,21 @@ The initial benchmark requirements are a harm-per-reviewer-hour ratio of at
 least 1.0 versus FIFO at overload, high-risk wait p90 no higher than FIFO near
 capacity, and high-risk completed counts no lower than FIFO at both loads.
 The completion checks prevent shorter waits from hiding unfinished work.
+At the overload load the primary ordering's mean per-seed difference against
+each alternative ordering (FIFO, probability, priority band) must be no worse
+than -1.0 high-risk completions and -0.5 harm per reviewer-hour; wait quantiles
+are reported and do not decide.
 These are empirical comparisons, not statistical noninferiority guarantees.
 Per-tier precision and coverage are diagnostic; there is no 99% test-precision gate.
 At the primary load of 108 reviews/hour, the added capacity checks require
 at least 97% completion, mean end backlog at most 10, pooled wait p50 at most
 1 minute, mean queue-depth p95 at most 39, and utilization at least 60%.
 These limits were adopted before the merged baseline rerun.
+
+Agreement-by-confidence tables (label agreement and coverage per score
+segment, pooled and per label, with identity and out-of-vocabulary strata) are
+computed on the calibration and threshold-selection splits before the test rows
+are scored, and are development diagnostics, not results.
 
 Regression gates read the report. The README results block uses the report and
 the policy snapshot saved with that run:
@@ -191,9 +224,9 @@ from the records file by the gates.
   runs the pipeline with the code under test, archives the run directory as a
   workflow artifact, then points the gates at the report it just produced with
   `REVIEW_ROUTER_EVAL_REQUIRE_CLEAN=1`. It never re-checks an old report, and
-  a second job tampers with a synthetic run in four ways (missing report,
-  policy mismatch, metric below floor, foreign commit) and fails unless every
-  one is blocked.
+  a second job tampers with a synthetic run in five ways (missing report,
+  policy mismatch, metric below floor, primary ordering losing to an
+  alternative, foreign commit) and fails unless every one is blocked.
 
 The gates sit in four categories in `policy.yaml`: classification (per-label
 AP and precision at the operating point, hierarchy consistency, predicted

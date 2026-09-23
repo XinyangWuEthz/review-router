@@ -5,12 +5,17 @@ from pathlib import Path
 import pytest
 import yaml
 
-from review_router.policy import DEFAULT_POLICY_PATH, load_policy
+from review_router.policy import (
+    DEFAULT_HIGH_RISK_EDGES,
+    DEFAULT_POLICY_PATH,
+    AgreementSegments,
+    load_policy,
+)
 
 
 def test_shipped_policy_parses() -> None:
     policy = load_policy()
-    assert policy.version == 2
+    assert policy.version == 3
     assert policy.decision_mode == "human_confirmation"
     assert policy.rules, "shipped policy declares no rules"
 
@@ -191,3 +196,89 @@ def test_human_confirmation_rejects_automatic_action_tier(tmp_path: Path) -> Non
 def test_human_confirmation_cannot_fall_through_to_an_automatic_action() -> None:
     with pytest.raises(ValueError, match="forbids fallback tier 'auto_action'"):
         load_policy().route({}, default="auto_action")
+
+
+def _shipped_raw() -> dict[str, object]:
+    raw: dict[str, object] = yaml.safe_load(DEFAULT_POLICY_PATH.read_text(encoding="utf-8"))
+    return raw
+
+
+def _write(tmp_path: Path, raw: dict[str, object]) -> Path:
+    path = tmp_path / "policy.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    return path
+
+
+def test_shipped_policy_declares_the_segment_rule_for_priority_review() -> None:
+    policy = load_policy()
+    assert policy.version == 3
+    assert policy.tier_selection_rules == {
+        "priority_review": "segment_agreement",
+        "human_review": "cumulative_precision",
+    }
+    segments = policy.agreement_segments
+    assert segments is not None
+    assert segments.edges == (0.5, 0.8, 0.9, 0.95, 0.98, 0.99, 0.995, 1.0)
+    assert segments.high_risk_edges == (0.1, 0.2, 0.3, 0.5, 0.8, 0.9, 1.0)
+    assert segments.min_rows == 30 and segments.use_wilson_lower_bound is False
+    assert segments.edges_for(10.0, 5.0) == segments.high_risk_edges
+    assert segments.edges_for(1.0, 5.0) == segments.edges
+
+
+def test_selection_defaults_when_keys_are_absent(tmp_path: Path) -> None:
+    raw = _shipped_raw()
+    raw.pop("tier_selection_rules")
+    raw.pop("agreement_segments")
+    policy = load_policy(_write(tmp_path, raw))
+    assert policy.tier_selection_rules == {
+        "human_review": "cumulative_precision",
+        "priority_review": "cumulative_precision",
+    }
+    assert policy.agreement_segments == AgreementSegments(
+        edges=(0.5, 0.8, 0.9, 0.95, 0.98, 0.99, 0.995, 1.0),
+        high_risk_edges=DEFAULT_HIGH_RISK_EDGES,
+        min_rows=30,
+        use_wilson_lower_bound=False,
+    )
+
+
+def test_unknown_selection_rule_is_rejected(tmp_path: Path) -> None:
+    raw = _shipped_raw()
+    raw["tier_selection_rules"] = {"priority_review": "vibes"}
+    with pytest.raises(ValueError, match="unknown rule 'vibes'"):
+        load_policy(_write(tmp_path, raw))
+
+
+def test_selection_rule_needs_a_floored_tier(tmp_path: Path) -> None:
+    raw = _shipped_raw()
+    raw["tier_selection_rules"] = {"allow": "cumulative_precision"}
+    with pytest.raises(ValueError, match="not a tier with a precision floor"):
+        load_policy(_write(tmp_path, raw))
+
+
+@pytest.mark.parametrize(
+    ("edges", "message"),
+    [
+        ([0.5, 0.5, 1.0], "strictly increasing"),
+        ([0.9, 0.8, 1.0], "strictly increasing"),
+        ([0.5, 0.9], "must end at 1.0"),
+        ([1.0], "at least two edges"),
+        ([-0.1, 1.0], "within"),
+    ],
+)
+def test_bad_segment_edges_are_rejected(tmp_path: Path, edges: list[float], message: str) -> None:
+    raw = _shipped_raw()
+    raw["agreement_segments"] = {"edges": edges, "min_rows": 30}
+    with pytest.raises(ValueError, match=message):
+        load_policy(_write(tmp_path, raw))
+    raw["agreement_segments"] = {"edges": [0.5, 1.0], "high_risk_edges": edges, "min_rows": 30}
+    with pytest.raises(ValueError, match=message):
+        load_policy(_write(tmp_path, raw))
+
+
+@pytest.mark.parametrize("min_rows", [0, -3, 2.5, "30"])
+def test_bad_min_rows_is_rejected(tmp_path: Path, min_rows: object) -> None:
+    raw = _shipped_raw()
+    raw["agreement_segments"] = {"edges": [0.5, 1.0], "min_rows": min_rows}
+    with pytest.raises(ValueError, match="min_rows"):
+        load_policy(_write(tmp_path, raw))

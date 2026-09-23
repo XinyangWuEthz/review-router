@@ -66,6 +66,11 @@ EQUAL_INPUT_STRATEGIES = ("priority", "fifo")
 
 def load(run: Path) -> dict[str, Any]:
     report = json.loads((run / "report.json").read_text())
+    if report.get("evaluate_test") is False:
+        raise SystemExit(
+            f"{run} is a development run (evaluate_test: false): test rows not scored, "
+            "so there are no predictions or test tiers to compare"
+        )
     manifest = json.loads((run / "manifest.json").read_text())
     config = manifest.get("config") or {}
     return {

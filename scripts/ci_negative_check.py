@@ -35,17 +35,30 @@ def check_gate(
     env = dict(os.environ)
     for key in ("REVIEW_ROUTER_EVAL_REQUIRE_CLEAN", "REVIEW_ROUTER_EVAL_REQUIRE_REAL"):
         env.pop(key, None)
-    env.update({
-        "REVIEW_ROUTER_EVAL_REPORT": str(report),
-        "REVIEW_ROUTER_EVAL_CONFIG": str(config),
-        **(extra_env or {}),
-    })
+    env.update(
+        {
+            "REVIEW_ROUTER_EVAL_REPORT": str(report),
+            "REVIEW_ROUTER_EVAL_CONFIG": str(config),
+            **(extra_env or {}),
+        }
+    )
     with tempfile.TemporaryDirectory(prefix="gate-result-") as temporary:
         junit = Path(temporary) / "result.xml"
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", f"tests/test_gate.py::{test}",
-             "-p", "no:cacheprovider", f"--junitxml={junit}"],
-            cwd=ROOT, env=env, capture_output=True, text=True,
+            [
+                sys.executable,
+                "-m",
+                "pytest",
+                "-q",
+                f"tests/test_gate.py::{test}",
+                "-p",
+                "no:cacheprovider",
+                f"--junitxml={junit}",
+            ],
+            cwd=ROOT,
+            env=env,
+            capture_output=True,
+            text=True,
         )
         cases = ET.parse(junit).getroot().findall(".//testcase") if junit.is_file() else []
     correct = (
@@ -76,7 +89,9 @@ def main() -> int:
         corpus = work / "corpus"
         subprocess.run(
             [sys.executable, "scripts/make_synthetic_corpus.py", "--out", str(corpus)],
-            cwd=ROOT, check=True, capture_output=True,
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
         )
         config = work / "smoke.yaml"
         settings = yaml.safe_load((ROOT / "configs" / "smoke.yaml").read_text())
@@ -85,13 +100,19 @@ def main() -> int:
         config.write_text(yaml.safe_dump(settings))
         completed = subprocess.run(
             [sys.executable, "scripts/run_pipeline.py", "--config", str(config)],
-            cwd=ROOT, check=True, capture_output=True, text=True,
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
         )
         run_dir = Path(completed.stdout.splitlines()[0])
         outcomes: dict[str, bool] = {}
 
         def exercise(
-            name: str, test: str, control: Path, mutation: Path,
+            name: str,
+            test: str,
+            control: Path,
+            mutation: Path,
             extra_env: dict[str, str] | None = None,
         ) -> None:
             control_ok = check_gate(
@@ -103,8 +124,10 @@ def main() -> int:
             outcomes[name] = control_ok and mutation_ok
 
         exercise(
-            "missing report", "test_all_flagged_comments_require_human_capacity",
-            run_dir / "report.json", run_dir / "does-not-exist.json",
+            "missing report",
+            "test_all_flagged_comments_require_human_capacity",
+            run_dir / "report.json",
+            run_dir / "does-not-exist.json",
         )
         tampered = work / "policy-mismatch"
         shutil.copytree(run_dir, tampered)
@@ -112,8 +135,10 @@ def main() -> int:
         manifest["policy_sha256"] = "0" * 64
         _write(tampered / "manifest.json", manifest)
         exercise(
-            "policy mismatch", "test_report_was_made_with_the_current_policy_and_config",
-            run_dir / "report.json", tampered / "report.json",
+            "policy mismatch",
+            "test_report_was_made_with_the_current_policy_and_config",
+            run_dir / "report.json",
+            tampered / "report.json",
         )
 
         # This control isolates the completion floor from the other capacity
@@ -132,8 +157,41 @@ def main() -> int:
         report["simulation"]["completion_ratio"] = 0.0
         _write(below / "report.json", report)
         exercise(
-            "metric below floor", "test_queue_clears_at_the_primary_load",
-            capacity / "report.json", below / "report.json",
+            "metric below floor",
+            "test_queue_clears_at_the_primary_load",
+            capacity / "report.json",
+            below / "report.json",
+        )
+
+        # The ordering gate reads the paired per-seed differences at the thesis
+        # load. The control stipulates a tie for every declared alternative;
+        # only one primary-vs-alternative entry is then mutated.
+        ordering = work / "ordering-control"
+        shutil.copytree(run_dir, ordering)
+        report = _read(ordering / "report.json")
+        sim = report["simulation"]
+        declared = yaml.safe_load((run_dir / "policy.yaml").read_text())["gates"]["capacity"][
+            "ordering_vs_alternatives"
+        ]
+        primary_strategy = sim["primary"]["strategy"]
+        keys = [
+            f"{primary_strategy}_vs_{alt}@{sim['thesis']['load_per_hour']:g}"
+            for alt in declared["alternatives"]
+            if alt != primary_strategy
+        ]
+        for key in keys:
+            for field in ("high_risk_handled", "harm_per_reviewer_hour"):
+                sim["paired"][key][field]["mean_diff"] = 0.0
+        _write(ordering / "report.json", report)
+        dominated = work / "ordering-mutation"
+        shutil.copytree(ordering, dominated)
+        report["simulation"]["paired"][keys[0]]["high_risk_handled"]["mean_diff"] = -100.0
+        _write(dominated / "report.json", report)
+        exercise(
+            "ordering loses to an alternative",
+            "test_primary_ordering_is_no_worse_than_alternatives",
+            ordering / "report.json",
+            dominated / "report.json",
         )
 
         # A stipulated clean manifest allows this check to run while a
@@ -151,8 +209,10 @@ def main() -> int:
         manifest["git_commit"] = "0" * 40
         _write(foreign / "manifest.json", manifest)
         exercise(
-            "foreign commit", "test_report_comes_from_a_clean_checkout_when_required",
-            current / "report.json", foreign / "report.json",
+            "foreign commit",
+            "test_report_comes_from_a_clean_checkout_when_required",
+            current / "report.json",
+            foreign / "report.json",
             {"REVIEW_ROUTER_EVAL_REQUIRE_CLEAN": "1"},
         )
         for name, caught in outcomes.items():

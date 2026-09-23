@@ -1,5 +1,9 @@
-# Round-2 variant: character n-grams only. Differs from baseline.yaml only in the model.analyzer block.
-label: char-ngram
+# Development iterations on the human-confirmed review protocol. This run never
+# scores the scored test rows (evaluate_test: false): it stops after threshold
+# selection and the development diagnostics on the selection split. Not a gate
+# input. Everything else is identical to baseline.yaml.
+label: dev-human-review
+evaluate_test: false
 data_dir: data/jigsaw          # train.csv, test.csv, test_labels.csv (official Jigsaw 2018)
 output_dir: reports
 seed: 20260922
@@ -14,10 +18,6 @@ model:
   ngram_max: 2
   min_df: 3
   C: 4.0
-  analyzer: char_wb
-  char_ngram_min: 2
-  char_ngram_max: 5
-  char_max_features: 300000
 
 policy: review_router/policy.yaml   # review targets, severity weights, rules
 

@@ -4,12 +4,15 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import yaml
 
+from review_router.metrics import wilson_interval
 from review_router.policy import DEFAULT_POLICY_PATH, Policy, load_policy
 from review_router.thresholds import (
     TierThresholds,
     apply_rules,
     choose_threshold,
+    choose_threshold_by_segment,
     model_tier,
     select_thresholds,
 )
@@ -75,8 +78,16 @@ def test_apply_rules_reports_matching_ids_and_action() -> None:
 
 
 def _policy_with_subgroup(tmp_path: Path) -> Policy:
+    """The shipped policy with both tiers on the cumulative rule.
+
+    The subgroup mechanics are independent of the population rule; the
+    cumulative rule lets these fixtures set a population threshold without
+    filling every declared segment with 30 rows.
+    """
+    raw = yaml.safe_load(DEFAULT_POLICY_PATH.read_text(encoding="utf-8"))
+    raw.pop("tier_selection_rules")
     path = tmp_path / "policy.yaml"
-    path.write_text(DEFAULT_POLICY_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
     return load_policy(path)
 
 
@@ -171,18 +182,46 @@ def test_routing_requires_subgroup_signal_even_when_all_thresholds_are_disabled(
         model_tier(np.zeros((2, len(LABELS))), thresholds)
 
 
-def test_priority_selection_uses_95_percent_target_without_automatic_actions() -> None:
+def test_priority_selection_uses_95_percent_target_without_automatic_actions(
+    tmp_path: Path,
+) -> None:
     y = np.zeros((100, len(LABELS)), dtype=int)
     y[:95, 0] = 1
     proba = np.zeros_like(y, dtype=float)
     proba[:95, 0] = 0.9
     proba[95:, 0] = 0.8
     signals = {"identity_term_present": np.zeros(100)}
-    thresholds = select_thresholds(y, proba, LABELS, load_policy(), signals)
+    thresholds = select_thresholds(y, proba, LABELS, _policy_with_subgroup(tmp_path), signals)
     assert thresholds.thresholds["priority_review"]["toxic"] == 0.8
     assert "auto_action" not in thresholds.thresholds
     tiers, _ = model_tier(proba, thresholds, signals)
     assert set(tiers) == {"priority_review"}
+    # The shipped segment rule needs every declared segment above the edge to
+    # hold 30 rows; here the segments above 0.9 are empty, so toxic gets none.
+    shipped = select_thresholds(y, proba, LABELS, load_policy(), signals)
+    assert shipped.thresholds["priority_review"]["toxic"] is None
+    assert shipped.thresholds["human_review"] == thresholds.thresholds["human_review"]
+
+
+def test_shipped_segment_rule_stops_below_a_segment_that_misses_the_target() -> None:
+    # 40 rows in each declared segment from 0.8 up; only [0.8, 0.9) has 5
+    # negatives (35/40 = 0.875 < 0.95). Cumulative precision at 0.8 is
+    # 235/240 = 0.979, so the cumulative rule would take 0.8; the shipped
+    # segment rule takes 0.9.
+    edges = (0.8, 0.9, 0.95, 0.98, 0.99, 0.995, 1.0)
+    scores, labels = [], []
+    for i in range(len(edges) - 1):
+        scores += list(np.linspace(edges[i], edges[i + 1], 40, endpoint=(i == len(edges) - 2)))
+        labels += [0] * (5 if i == 0 else 0) + [1] * (35 if i == 0 else 40)
+    n = len(scores)
+    y = np.zeros((n, len(LABELS)), dtype=int)
+    y[:, 0] = labels
+    proba = np.zeros((n, len(LABELS)))
+    proba[:, 0] = scores
+    signals = {"identity_term_present": np.zeros(n)}
+    thresholds = select_thresholds(y, proba, LABELS, load_policy(), signals)
+    assert thresholds.thresholds["priority_review"]["toxic"] == 0.9
+    assert choose_threshold(y[:, 0], proba[:, 0], 0.95, 30) == 0.8
 
 
 def test_legacy_threshold_map_can_be_replayed_without_renaming_its_tier() -> None:
@@ -192,3 +231,117 @@ def test_legacy_threshold_map_can_be_replayed_without_renaming_its_tier() -> Non
     )
     tiers, _ = model_tier(np.array([[0.995], [0.95], [0.1]]), thresholds)
     assert tiers.tolist() == ["auto_action", "human_review", "allow"]
+
+
+# ---------------------------------------------------------------- segment-agreement rule
+
+EDGES = (0.5, 0.8, 0.9, 1.0)
+
+
+def _segments(*blocks: tuple[float, int, int]) -> tuple[np.ndarray, np.ndarray]:
+    """(score, n_rows, n_positive) per block, positives first so y is hand-countable."""
+    scores, labels = [], []
+    for score, n, positives in blocks:
+        scores += [score] * n
+        labels += [1] * positives + [0] * (n - positives)
+    return np.array(labels), np.array(scores)
+
+
+def test_segment_rule_ignores_cumulative_carry_from_the_top_segment() -> None:
+    # [0.5,0.8): 10 rows, 8 positive (0.80); [0.8,0.9): 10 rows, 7 positive (0.70);
+    # [0.9,1.0]: 40 rows, all positive. Cumulative precision at 0.5 is 55/60 = 0.917,
+    # so the cumulative rule accepts the lowest score 0.6 (cumulative precision 0.917 at
+    # floor 0.9); the segment rule does not.
+    y, p = _segments((0.6, 10, 8), (0.85, 10, 7), (0.95, 40, 40))
+    assert choose_threshold(y, p, floor=0.9, min_predicted_positives=5) == 0.6
+    assert choose_threshold_by_segment(y, p, 0.9, min_rows=5, edges=EDGES) == 0.9
+
+
+def test_segment_rule_returns_none_when_the_top_segment_is_too_small() -> None:
+    y, p = _segments((0.6, 30, 30), (0.85, 30, 30), (0.95, 4, 4))
+    assert choose_threshold_by_segment(y, p, 0.9, min_rows=5, edges=EDGES) is None
+
+
+def test_segment_rule_places_a_score_of_exactly_one_in_the_top_segment() -> None:
+    y, p = _segments((0.95, 4, 4), (1.0, 1, 1))
+    # Five rows in [0.9, 1.0] including the 1.0; with min_rows 5 the segment fills.
+    assert choose_threshold_by_segment(y, p, 0.9, min_rows=5, edges=EDGES) == 0.9
+    assert choose_threshold_by_segment(y, p, 0.9, min_rows=6, edges=EDGES) is None
+
+
+def test_wilson_variant_is_stricter_than_the_point_estimate() -> None:
+    # 19 of 20 positive: point estimate 0.95 passes the 0.95 floor, the Wilson
+    # 95% lower bound (about 0.76) does not.
+    y, p = _segments((0.95, 20, 19))
+    assert wilson_interval(19, 20)[0] < 0.95
+    assert choose_threshold_by_segment(y, p, 0.95, 10, EDGES) == 0.9
+    assert choose_threshold_by_segment(y, p, 0.95, 10, EDGES, use_wilson_lower_bound=True) is None
+
+
+def test_segment_rule_returns_the_lowest_edge_when_every_segment_qualifies() -> None:
+    y, p = _segments((0.6, 10, 10), (0.85, 10, 10), (0.95, 10, 9))
+    assert choose_threshold_by_segment(y, p, 0.9, min_rows=5, edges=EDGES) == 0.5
+
+
+def test_policy_without_selection_rules_reproduces_the_cumulative_thresholds(
+    tmp_path: Path,
+) -> None:
+    raw = yaml.safe_load(DEFAULT_POLICY_PATH.read_text(encoding="utf-8"))
+    raw.pop("tier_selection_rules")
+    raw.pop("agreement_segments")
+    path = tmp_path / "policy.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    policy = load_policy(path)
+    assert policy.tier_selection_rules == {
+        "human_review": "cumulative_precision",
+        "priority_review": "cumulative_precision",
+    }
+    rng = np.random.default_rng(7)
+    n = 3000
+    y = (rng.random((n, 6)) < 0.2).astype(int)
+    p = np.clip(0.6 * y + rng.normal(0.2, 0.2, (n, 6)), 0, 1)
+    signals = {"identity_term_present": (rng.random(n) < 0.1).astype(float)}
+    thresholds = select_thresholds(y, p, LABELS, policy, signals)
+    min_pos = int(policy.gates["min_predicted_positives_for_precision"])
+    for tier, floor in policy.tier_precision_floors.items():
+        for j, label in enumerate(LABELS):
+            assert thresholds.thresholds[tier][label] == choose_threshold(
+                y[:, j], p[:, j], floor, min_pos
+            )
+    # The shipped policy differs on the priority tier only.
+    shipped = select_thresholds(y, p, LABELS, load_policy(), signals)
+    assert shipped.thresholds["human_review"] == thresholds.thresholds["human_review"]
+
+
+def test_shipped_policy_uses_high_risk_edges_for_heavy_labels_only() -> None:
+    policy = load_policy()
+    rng = np.random.default_rng(1)
+    n = 2000
+    y = np.zeros((n, 6), dtype=int)
+    p = np.zeros((n, 6))
+    # threat (weight 10): all rows scoring in [0.3, 0.5) are positive, none above.
+    y[:200, 3] = 1
+    p[:200, 3] = rng.uniform(0.3, 0.5, 200)
+    p[200:, 3] = rng.uniform(0.0, 0.1, n - 200)
+    # toxic (weight 1): same shape, but its edges start at 0.5, so nothing qualifies.
+    y[:200, 0] = 1
+    p[:200, 0] = rng.uniform(0.3, 0.5, 200)
+    p[200:, 0] = rng.uniform(0.0, 0.1, n - 200)
+    thresholds = select_thresholds(
+        y, p, LABELS, policy, {"identity_term_present": np.zeros(n)}, high_risk_min_weight=5.0
+    )
+    assert thresholds.thresholds["priority_review"]["threat"] is None  # [0.5, 0.8) etc. empty
+    # Fill every higher-risk segment above 0.3 so the rule can land on 0.3.
+    p[:200, 3] = np.concatenate(
+        [
+            rng.uniform(0.3, 0.5, 50),
+            rng.uniform(0.5, 0.8, 50),
+            rng.uniform(0.8, 0.9, 50),
+            rng.uniform(0.9, 1.0, 50),
+        ]
+    )
+    thresholds = select_thresholds(
+        y, p, LABELS, policy, {"identity_term_present": np.zeros(n)}, high_risk_min_weight=5.0
+    )
+    assert thresholds.thresholds["priority_review"]["threat"] == 0.3
+    assert thresholds.thresholds["priority_review"]["toxic"] is None

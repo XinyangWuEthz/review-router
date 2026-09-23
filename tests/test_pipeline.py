@@ -18,6 +18,8 @@ from review_router.pipeline import (
     _identity_concentration,
     _route,
     _run_simulation,
+    _segment_check,
+    _selection_notes,
     evaluate_scores,
     load_config,
     queue_inputs,
@@ -55,13 +57,48 @@ simulation:
 
 
 def test_shipped_configs_parse() -> None:
-    for name in ("baseline", "smoke"):
+    for name in ("baseline", "smoke", "dev"):
         cfg = load_config(ROOT / "configs" / f"{name}.yaml")
+        assert cfg.evaluate_test is (name != "dev")
         assert cfg.policy_path.is_file()
         assert cfg.sim.capacity_per_hour == 120
         assert cfg.model.analyzer == "word"
-        assert cfg.primary_strategy == "priority"
+        assert cfg.primary_strategy == "severity"
         assert load_policy(cfg.policy_path).decision_mode == "human_confirmation"
+
+
+def test_paired_keys_put_the_primary_ordering_first() -> None:
+    from review_router.pipeline import _ORDER_DESCRIPTIONS, _paired
+    from review_router.simulate import STRATEGIES
+
+    rows = [
+        {"load_per_hour": 180.0, "seed": seed, "strategy": strategy, "high_risk_handled": rank}
+        for seed in (1, 2)
+        for rank, strategy in enumerate(STRATEGIES)
+    ]
+    legacy = {
+        "priority_vs_fifo",
+        "priority_vs_prob",
+        "priority_vs_severity",
+        "prob_vs_fifo",
+        "severity_vs_fifo",
+        "severity_vs_prob",
+    }
+    assert set(_paired(rows, "priority")) == {f"{key}@180" for key in legacy}
+    by_severity = _paired(rows, "severity")
+    assert list(by_severity) == [
+        "severity_vs_fifo@180",
+        "severity_vs_prob@180",
+        "severity_vs_priority@180",
+        "prob_vs_fifo@180",
+        "priority_vs_fifo@180",
+        "priority_vs_prob@180",
+    ]
+    # Differences are first minus second: severity has rank 2, priority rank 3.
+    assert by_severity["severity_vs_priority@180"]["high_risk_handled"]["mean_diff"] == -1.0
+    assert set(_ORDER_DESCRIPTIONS) == set(STRATEGIES)
+    with pytest.raises(ValueError, match="unknown primary strategy"):
+        _paired(rows, "random")
 
 
 def test_unknown_primary_strategy_is_rejected(tmp_path: Path) -> None:
@@ -179,13 +216,16 @@ def test_simulation_queues_priority_items_when_no_regular_items_exist(tmp_path: 
     y = np.zeros((2, len(LABELS)), dtype=int)
     y[0, LABELS.index("threat")] = 1
     sim, records = _run_simulation(
-        proba, y,
+        proba,
+        y,
         {
             "final_tier": np.array(["priority_review", "priority_review"]),
             "triggers": np.zeros_like(proba, dtype=bool),
             "rule_ids": ["", ""],
         },
-        np.array(["a", "b"]), load_policy(), config
+        np.array(["a", "b"]),
+        load_policy(),
+        config,
     )
     assert sim["assumptions"]["queued_jobs"] == 2
     assert sim["assumptions"]["queued_priority_review"] == 2
@@ -254,6 +294,49 @@ def test_headline_with_no_samples_does_not_claim_fifo_zero(
     assert result["selected"]["note"] == "No comparable samples: a percentage is unavailable"
 
 
+def _assert_agreement_sections(report: dict[str, Any]) -> None:
+    """The step-3 reporting blocks: agreement by confidence and the selection diagnostics."""
+    agreement = report["agreement_by_confidence"]
+    assert {"calibration", "threshold_selection", "test", "optimism_gap"} <= set(agreement)
+    assert agreement["calibration"] is not None and agreement["optimism_gap"] is not None
+    thresh = agreement["threshold_selection"]
+    assert set(thresh["per_label"]) == set(LABELS)
+    pooled = thresh["pooled_review"]
+    assert pooled[0]["lo"] is None and pooled[-1]["hi"] == 1.0
+    assert sum(row["n"] for row in pooled) == thresh["n_rows"]
+    assert abs(sum(row["coverage"] for row in pooled) - 1.0) < 1e-9
+    assert "priority_band" in thresh and "n_rules_promoted" in thresh["priority_band"]
+    assert set(thresh["strata"]) == {"identity_term_present", "oov_tercile"}
+    assert len(agreement["strata_definition"]["oov_tercile"]["cut_points"]) == 2
+    selection = report["threshold_selection"]
+    assert selection["selection_rules"] == {
+        "priority_review": "segment_agreement",
+        "human_review": "cumulative_precision",
+    }
+    assert set(selection["segment_check"]) == set(LABELS)
+    for check in selection["segment_check"].values():
+        assert check["rule"] == "segment_agreement"
+        assert (check["threshold"] is None) == (check["all_meet_floor"] is None)
+        if check["threshold"] is not None:
+            assert check["all_meet_floor"] is True
+    alt = selection["alternatives"]["cumulative_precision"]
+    assert set(alt["thresholds"]) >= {"priority_review", "human_review"}
+    assert set(alt["tiers"]) == {"priority_review", "human_review", "allow"}
+    assert set(alt["high_risk_by_band"]) == {"priority_review", "human_review", "allow"}
+    assert set(selection["identity_share"]) == {"priority_review", "human_review"}
+    for band in selection["identity_share"].values():
+        assert set(band) == {"n", "n_with_identity_term", "share"}
+    assert isinstance(selection["selection_notes"], list)
+    priority = {k: v["threshold"] for k, v in selection["segment_check"].items()}
+    if all(t is None for t in priority.values()):
+        assert selection["selection_notes"] == [
+            "no label qualifies for priority_review under the segment rule; the priority band "
+            "contains rule promotions only"
+        ]
+    else:
+        assert selection["selection_notes"] == []
+
+
 def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: Path) -> None:
     cfg_path = _config(tmp_path, synthetic_corpus)
     run_dir = run(cfg_path)
@@ -303,6 +386,7 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
         "identity_hate",
     }
     assert set(report["tiers"]) == {"priority_review", "human_review", "allow"}
+    _assert_agreement_sections(report)
     sim = report["simulation"]
     workload = report["review_workload"]
     admitted = sum(
@@ -311,6 +395,40 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
     assert workload["n_requires_human_review"] == admitted == sim["assumptions"]["queued_jobs"]
     assert workload["n_priority_review"] + workload["n_human_review"] == admitted
     assert workload["review_fraction"] == pytest.approx(admitted / workload["n_total"])
+    assert report["evaluate_test"] is True and manifest["evaluate_test"] is True
+    selection = report["threshold_selection"]
+    assert {"rules", "allow_false_negatives", "ranking", "cross_fitted"} <= set(selection)
+    assert set(selection["allow_false_negatives"]) == set(LABELS)
+    assert set(selection["rules"]["matched_per_rule"]) == {r.id for r in load_policy().rules}
+    cross = selection["cross_fitted"]
+    assert set(cross["tiers"]) == {"priority_review", "human_review", "allow"}
+    assert sum(cross["fold_sizes"]) == selection["review_workload"]["n_total"]
+    assert len(cross["thresholds_per_fold"]) == cross["k"] == 5
+    for section in (workload, selection["review_workload"], cross["review_workload"]):
+        bands = section["high_risk_by_band"]
+        assert set(bands) == {"priority_review", "human_review", "allow"}
+        assert sum(b["n"] for b in bands.values()) == section["n_total"]
+        assert sum(b["n_high_risk"] for b in bands.values()) == section["n_high_risk_total"]
+    queued_high_risk = sim["assumptions"]["queued_high_risk"]
+    bands = workload["high_risk_by_band"]
+    assert bands["priority_review"]["n_high_risk"] + bands["human_review"]["n_high_risk"] == (
+        queued_high_risk
+    )
+    keys = {"fifo", "prob", "severity", "priority", "oracle_true_harm"}
+    for pool in (report["ranking"], selection["ranking"]):
+        assert set(pool) == {"n_pool", "n_high_risk", "fractions", "by_key", "note"}
+        assert set(pool["by_key"]) == keys
+    assert report["ranking"]["n_pool"] == admitted
+    assert report["ranking"]["n_high_risk"] == queued_high_risk
+    for pool in (report["ranking"], selection["ranking"]):
+        if pool["n_high_risk"] > 0:
+            oracle = pool["by_key"]["oracle_true_harm"]["at_fraction"]
+            assert oracle[-1]["fraction"] == 1.0
+            assert oracle[-1]["high_risk_share_at_k"] == 1.0
+    markdown = (run_dir / "report.md").read_text()
+    assert "## High-risk composition by band" in markdown
+    assert "## Ranking diagnostics" in markdown
+    assert "cross-fitted" in markdown
     assert sim["primary"]["strategy"] == "priority"
     assert set(sim["harm_per_reviewer_hour"]) == {"router", "fifo", "load_per_hour"}
     assert sim["harm_per_reviewer_hour"]["load_per_hour"] == 90  # thesis defaults to max load
@@ -369,6 +487,87 @@ def test_end_to_end_run_writes_every_artefact(synthetic_corpus: Path, tmp_path: 
     counts = predictions["final_tier"].value_counts().to_dict()
     for tier, stats in report["tiers"].items():
         assert stats["n_predicted_positive"] == counts.get(tier, 0)
+
+
+def test_development_run_never_scores_the_test_rows(
+    synthetic_corpus: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from review_router.model import TfidfLogitModel
+
+    cfg_path = _config(tmp_path, synthetic_corpus)
+    full_run = run(cfg_path)
+    cfg_path.write_text(cfg_path.read_text() + "evaluate_test: false\n")
+    assert load_config(cfg_path).evaluate_test is False
+    scored_batches: list[int] = []
+    original = TfidfLogitModel.predict_proba
+
+    def spy(self: TfidfLogitModel, texts: Any) -> np.ndarray:
+        texts = list(texts)
+        scored_batches.append(len(texts))
+        return original(self, texts)
+
+    monkeypatch.setattr(TfidfLogitModel, "predict_proba", spy)
+    run_dir = run(cfg_path)
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    assert manifest["evaluate_test"] is False
+    # Only the calibration split (for its agreement table) and the threshold-selection
+    # split are scored; the 1200 test rows never are.
+    counts = manifest["split_label_counts"]
+    assert scored_batches == [counts["calib"]["rows"], counts["thresh"]["rows"]]
+    for name in ("manifest.json", "splits.csv", "thresholds.json", "model.pkl", "report.json"):
+        assert (run_dir / name).is_file(), name
+    assert (run_dir / "report.md").is_file()
+    for name in ("predictions.csv", "simulation_jobs.csv"):
+        assert not (run_dir / name).exists(), name
+    # The selection stage is the full run's selection stage.
+    assert (run_dir / "thresholds.json").read_bytes() == (full_run / "thresholds.json").read_bytes()
+    report = json.loads((run_dir / "report.json").read_text())
+    assert report["evaluate_test"] is False
+    assert report["eval_slice"] == "development splits only; test rows not scored"
+    assert report["decision_contract"]["automatic_actions"] == 0
+    test_only = {"tiers", "simulation", "per_label", "review_workload", "rules", "ranking"}
+    assert not test_only & set(report)
+    selection = report["threshold_selection"]
+    assert {"rules", "allow_false_negatives", "ranking", "cross_fitted"} <= set(selection)
+    full_report = json.loads((full_run / "report.json").read_text())
+    assert selection == full_report["threshold_selection"]
+    agreement = report["agreement_by_confidence"]
+    assert "test" not in agreement
+    assert "test" in full_report["agreement_by_confidence"]
+    assert (
+        agreement["threshold_selection"]
+        == full_report["agreement_by_confidence"]["threshold_selection"]
+    )
+    markdown = (run_dir / "report.md").read_text()
+    assert "test rows not scored" in markdown
+    assert "## High-risk composition by band" in markdown
+    assert "## Queue simulation" not in markdown
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts" / "render_results.py"),
+            str(run_dir),
+            "--readme",
+            str(tmp_path / "README.md"),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+    )
+    assert proc.returncode != 0
+    assert "Traceback" not in proc.stderr
+    assert len(proc.stderr.strip().splitlines()) == 1
+    assert "test rows not scored" in proc.stderr
+
+
+def test_external_scores_refuse_a_development_config(
+    external_case: tuple[Path, Corpus, np.ndarray, np.ndarray, dict[str, Any]],
+) -> None:
+    path, corpus, p_thresh, p_test, source = external_case
+    path.write_text(path.read_text() + "evaluate_test: false\n")
+    with pytest.raises(ValueError, match="evaluate_test"):
+        evaluate_scores(path, corpus, p_thresh, p_test, score_source=source)
+    assert not load_config(path).output_dir.exists()
 
 
 def test_strategies_replay_identical_arrivals(synthetic_corpus: Path, tmp_path: Path) -> None:
@@ -509,7 +708,8 @@ def test_prevalence_shift_is_hand_computable() -> None:
 
 @pytest.fixture
 def external_case(
-    synthetic_corpus: Path, tmp_path: Path,
+    synthetic_corpus: Path,
+    tmp_path: Path,
 ) -> tuple[Path, Corpus, np.ndarray, np.ndarray, dict[str, Any]]:
     path = _config(tmp_path, synthetic_corpus)
     config = load_config(path)
@@ -560,7 +760,8 @@ def test_external_scores_preserve_identity_and_exploratory_provenance(
     assert len(manifest["data_sha256"]["external_evaluation_cohort"]) == 64
     assert manifest["data_sha256"] != corpus.file_hashes
     assert manifest["config"]["model"] == {
-        "kind": "external_scores", "model_name": source["model_name"]
+        "kind": "external_scores",
+        "model_name": source["model_name"],
     }
     assert manifest["unused_model_config"]["analyzer"] == "word"
     assert manifest["split_label_counts"]["test_scored"]["rows"] == 100
@@ -581,9 +782,9 @@ def test_external_scores_reject_invalid_probabilities_before_writing(
         scores[split] = scores[split][:-1]
         message = "must have shape"
     else:
-        scores[split][0, 0] = {
-            "nan": np.nan, "inf": np.inf, "negative": -0.01, "above_one": 1.01
-        }[invalid]
+        scores[split][0, 0] = {"nan": np.nan, "inf": np.inf, "negative": -0.01, "above_one": 1.01}[
+            invalid
+        ]
         message = r"finite probabilities in \[0, 1\]"
     with pytest.raises(ValueError, match=message):
         evaluate_scores(path, corpus, scores["thresh"], scores["test"], score_source=source)
@@ -608,7 +809,8 @@ def test_external_scores_reject_mismatched_row_or_label_order(
 
 
 def test_external_scores_share_exact_baseline_evaluation(
-    synthetic_corpus: Path, tmp_path: Path,
+    synthetic_corpus: Path,
+    tmp_path: Path,
 ) -> None:
     path = _config(tmp_path, synthetic_corpus)
     baseline = run(path)
@@ -623,7 +825,8 @@ def test_external_scores_share_exact_baseline_evaluation(
         "row_ids": {"thresh": thresh["id"].tolist(), "test": corpus.test["id"].tolist()},
     }
     replay = evaluate_scores(
-        path, corpus,
+        path,
+        corpus,
         model.predict_proba(thresh["comment_text"].tolist()),
         model.predict_proba(corpus.test["comment_text"].tolist()),
         score_source=source,
@@ -637,4 +840,64 @@ def test_external_scores_share_exact_baseline_evaluation(
     replay_report.pop("exploratory")
     replay_report.pop("score_source")
     replay_report["eval_slice"] = replay_report["eval_slice"].removeprefix("exploratory ")
+    # The replay has no model, so exactly these model-dependent sub-blocks of
+    # agreement_by_confidence cannot exist there: the calibration table, the
+    # optimism gap (calibration minus selection) and the oov_tercile stratum
+    # (vocabulary of the word vectorizer). Everything else, including per_label,
+    # pooled_review, priority_band, the identity stratum, segment_check and the
+    # alternatives arm, must be identical.
+    for report in (baseline_report, replay_report):
+        agreement = report["agreement_by_confidence"]
+        agreement.pop("calibration")
+        agreement.pop("calibration_note")
+        agreement.pop("optimism_gap")
+        agreement["strata_definition"].pop("oov_tercile")
+        for split in ("threshold_selection", "test"):
+            agreement[split]["strata"].pop("oov_tercile", None)
+    assert replay_report["agreement_by_confidence"]["threshold_selection"]["strata"] == {
+        "identity_term_present": baseline_report["agreement_by_confidence"]["threshold_selection"][
+            "strata"
+        ]["identity_term_present"]
+    }
+    assert "priority_band" in replay_report["agreement_by_confidence"]["test"]
     assert replay_report == baseline_report
+
+
+def _priority_only(threshold: float | None) -> TierThresholds:
+    return TierThresholds(
+        thresholds={
+            "priority_review": {label: threshold for label in LABELS},
+            "human_review": dict.fromkeys(LABELS, 0.5),
+        },
+        labels=LABELS,
+    )
+
+
+def test_segment_check_keeps_the_closed_top_segment_at_threshold_one() -> None:
+    # A threshold of exactly 1.0 is reachable only under the cumulative rule (every qualifying
+    # row scored 1.0). The last segment is closed at 1.0, so it must still be reported instead
+    # of leaving segments=[] and a vacuous all_meet_floor=True.
+    policy = load_policy(Path("review_router/policy.yaml"))
+    y = np.ones((50, len(LABELS)), dtype=int)
+    p = np.ones((50, len(LABELS)))
+    check = _segment_check(_priority_only(1.0), y, p, policy, 5.0)
+    for label in LABELS:
+        segments = check[label]["segments"]
+        assert len(segments) == 1
+        assert segments[0]["lo"] == 1.0 and segments[0]["hi"] == 1.0
+        assert segments[0]["n"] == 50 and segments[0]["agreement"] == 1.0
+        assert check[label]["all_meet_floor"] is True
+
+
+def test_selection_notes_name_the_configured_priority_rule() -> None:
+    shipped = load_policy(Path("review_router/policy.yaml"))
+    assert _selection_notes(_priority_only(None), shipped) == [
+        "no label qualifies for priority_review under the segment rule; the priority band "
+        "contains rule promotions only"
+    ]
+    cumulative = replace(shipped, tier_selection_rules={"priority_review": "cumulative_precision"})
+    assert _selection_notes(_priority_only(None), cumulative) == [
+        "no label qualifies for priority_review under the cumulative_precision rule; the "
+        "priority band contains rule promotions only"
+    ]
+    assert _selection_notes(_priority_only(0.9), shipped) == []

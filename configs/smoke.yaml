@@ -21,6 +21,9 @@ simulation:
   loads_per_hour: [60, 108, 180]
   seeds: [1, 2, 3]
   high_risk_min_weight: 5
-  primary: {load_per_hour: 108, strategy: priority}
+  # The primary ordering is what the queue-clearing gates read and what the
+  # record calls the router; the band-first (priority) ordering remains a
+  # compared alternative.
+  primary: {load_per_hour: 108, strategy: severity}
   thesis_load_per_hour: 180
   headline: {metric: wait, percentile: 50}

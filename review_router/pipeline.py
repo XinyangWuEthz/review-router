@@ -17,15 +17,17 @@ import pickle
 import platform
 import shutil
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import yaml
+from sklearn.metrics import average_precision_score
 
 from review_router import __version__
+from review_router.agreement import agreement_report, oov_share
 from review_router.data import LABELS, Corpus, label_counts, load_corpus
 from review_router.metrics import per_label_metrics, tier_metrics, wilson_interval
 from review_router.model import ModelConfig, TfidfLogitModel
@@ -47,10 +49,19 @@ from review_router.thresholds import (
     TierThresholds,
     apply_rules,
     model_tier,
+    segment_masks,
     select_thresholds,
 )
 
-__all__ = ["RunConfig", "evaluate_scores", "load_config", "run"]
+__all__ = [
+    "RunConfig",
+    "cross_fitted_selection",
+    "evaluate_scores",
+    "harm_proxy",
+    "load_config",
+    "ranking_diagnostics",
+    "run",
+]
 
 HUMAN = "human_review"
 PRIORITY = "priority_review"
@@ -75,6 +86,9 @@ class RunConfig:
     label: str
     headline_metric: str = "wait"
     headline_percentile: int = 50
+    # False stops a run after the development sections: the scored test rows
+    # are never scored. For iterating on orderings and threshold rules.
+    evaluate_test: bool = True
 
 
 def load_config(path: Path) -> RunConfig:
@@ -112,6 +126,9 @@ def load_config(path: Path) -> RunConfig:
     headline_percentile = int(headline.get("percentile", 50))
     if headline_percentile not in (50, 90, 99):
         raise ValueError("headline percentile must be 50, 90 or 99")
+    evaluate_test = raw.get("evaluate_test", True)
+    if not isinstance(evaluate_test, bool):
+        raise ValueError("evaluate_test must be true or false")
     return RunConfig(
         data_dir=resolve(str(raw["data_dir"])),
         output_dir=resolve(str(raw.get("output_dir", "reports"))),
@@ -133,6 +150,7 @@ def load_config(path: Path) -> RunConfig:
         label=str(raw.get("label", path.stem)),
         headline_metric=headline_metric,
         headline_percentile=headline_percentile,
+        evaluate_test=evaluate_test,
     )
 
 
@@ -191,6 +209,7 @@ def _manifest(config: RunConfig, config_path: Path, corpus: Corpus, run_id: str)
         "data_sha256": corpus.file_hashes,
         "seed": config.seed,
         "simulation_seeds": list(config.sim_seeds),
+        "evaluate_test": config.evaluate_test,
         "split_label_counts": splits,
         "dependencies": _dependency_versions(),
         "config": cfg,
@@ -294,11 +313,62 @@ def _allow_false_negatives(final: np.ndarray, y: np.ndarray) -> dict[str, int]:
     return {label: int((allowed & (y[:, j] == 1)).sum()) for j, label in enumerate(LABELS)}
 
 
-def _review_workload(final: np.ndarray, y: np.ndarray) -> dict[str, Any]:
-    """Review demand before simulation; all flagged comments consume human capacity."""
+def harm_proxy(y: np.ndarray, policy: Policy) -> np.ndarray:
+    """Per-row maximum severity weight over the TRUE labels; 0 for a clean row.
+
+    The weights are a policy input applied to annotations. This is the harm
+    proxy the simulator scores and the high-risk definition is built on; it
+    is not a measurement of real-world harm.
+    """
+    weights = np.array([policy.severity_weights.get(label, 0.0) for label in LABELS])
+    truth = np.asarray(y, dtype=float)
+    if truth.ndim != 2 or truth.shape[1] != len(LABELS):
+        raise ValueError(f"y must have shape (n, {len(LABELS)}); got {truth.shape}")
+    return np.asarray((truth * weights).max(axis=1))
+
+
+def _high_risk_by_band(final: np.ndarray, high_risk: np.ndarray) -> dict[str, Any]:
+    """Where the high-risk rows sit: count and share per band, recall into the queue.
+
+    High risk is a property of the true labels, so this shows how many
+    high-risk rows each band holds and how many the allow band lets through.
+    It measures composition, not enforcement or review outcomes.
+    """
+    total = int(high_risk.sum())
+    bands: dict[str, Any] = {}
+    for band in (PRIORITY, HUMAN, ALLOW):
+        mask = final == band
+        n = int(mask.sum())
+        n_high = int((mask & high_risk).sum())
+        bands[band] = {
+            "n": n,
+            "n_high_risk": n_high,
+            "high_risk_share": n_high / n if n else None,
+        }
+    in_queue = bands[PRIORITY]["n_high_risk"] + bands[HUMAN]["n_high_risk"]
+    return {
+        "high_risk_by_band": bands,
+        "n_high_risk_total": total,
+        "high_risk_recall_into_queue": in_queue / total if total else None,
+        "high_risk_recall_into_priority": (
+            bands[PRIORITY]["n_high_risk"] / total if total else None
+        ),
+    }
+
+
+def _review_workload(
+    final: np.ndarray, y: np.ndarray, policy: Policy, high_risk_min_weight: float
+) -> dict[str, Any]:
+    """Review demand before simulation; all flagged comments consume human capacity.
+
+    Precision is any-label precision of the combined review pool. The
+    high-risk composition uses the true-label harm proxy (harm_proxy) at or
+    above high_risk_min_weight, the definition the simulator uses.
+    """
     needs_review = np.isin(final, (PRIORITY, HUMAN))
     n = int(needs_review.sum())
     true_positive = int((needs_review & y.any(axis=1)).sum())
+    high_risk = harm_proxy(y, policy) >= high_risk_min_weight
     return {
         "n_total": len(final),
         "n_requires_human_review": n,
@@ -308,6 +378,7 @@ def _review_workload(final: np.ndarray, y: np.ndarray) -> dict[str, Any]:
         "n_truly_positive": true_positive,
         "precision": true_positive / n if n else None,
         "precision_ci95": list(wilson_interval(true_positive, n)) if n else None,
+        **_high_risk_by_band(final, high_risk),
     }
 
 
@@ -551,6 +622,264 @@ def _prevalence_shift(
     return out
 
 
+# --------------------------------------------------------------------------- agreement
+
+
+def _oov_terciles(
+    model: Any, texts: list[str], cuts: list[float] | None = None
+) -> tuple[np.ndarray | None, list[float] | None]:
+    """OOV share per text and the tercile cut points (given, or computed from these texts).
+
+    None when the model has no word vectorizer (external scores, char_wb only).
+    """
+    shares = oov_share(model, texts) if model is not None else None
+    if shares is None:
+        return None, None
+    if cuts is None:
+        cuts = [float(q) for q in np.quantile(shares, [1 / 3, 2 / 3])]
+    return shares, cuts
+
+
+def _strata(
+    identity: np.ndarray, oov: np.ndarray | None, cuts: list[float] | None
+) -> dict[str, np.ndarray]:
+    """Row strata for the agreement tables: identity term 0/1 and, when known, OOV tercile."""
+    strata: dict[str, np.ndarray] = {"identity_term_present": identity.astype(int)}
+    if oov is not None and cuts is not None:
+        strata["oov_tercile"] = np.digitize(oov, cuts)
+    return strata
+
+
+def _segment_check(
+    thresholds: TierThresholds,
+    y: np.ndarray,
+    p: np.ndarray,
+    policy: Policy,
+    high_risk_min_weight: float,
+) -> dict[str, Any]:
+    """Per label: the priority threshold and the declared segments at or above it.
+
+    Read on the selection split with the same edges the segment rule uses.
+    all_meet_floor is whether every such segment meets the floor with
+    min_rows rows, whatever rule chose the threshold; None when disabled.
+    """
+    segments = policy.agreement_segments
+    assert segments is not None  # Policy fills the default
+    floor = policy.tier_precision_floors[PRIORITY]
+    rule = policy.tier_selection_rules.get(PRIORITY, "cumulative_precision")
+    out: dict[str, Any] = {}
+    for j, label in enumerate(LABELS):
+        threshold = thresholds.thresholds[PRIORITY][label]
+        edges = segments.edges_for(policy.severity_weights.get(label, 0.0), high_risk_min_weight)
+        rows: list[dict[str, Any]] = []
+        if threshold is not None:
+            last = len(edges) - 2
+            for i, mask in enumerate(segment_masks(p[:, j], edges)):
+                # The last segment is closed at edges[-1], so a threshold equal to
+                # edges[-1] keeps its single-value slice instead of skipping it.
+                if edges[i + 1] < threshold or (edges[i + 1] <= threshold and i != last):
+                    continue
+                mask = mask & (p[:, j] >= threshold)
+                n = int(mask.sum())
+                positives = int(y[mask, j].sum())
+                rows.append(
+                    {
+                        "lo": max(edges[i], threshold),
+                        "hi": edges[i + 1],
+                        "n": n,
+                        "agreement": positives / n if n else None,
+                        "meets_floor": n >= segments.min_rows and positives / n >= floor
+                        if n
+                        else False,
+                    }
+                )
+        out[label] = {
+            "tier": PRIORITY,
+            "threshold": threshold,
+            "rule": rule,
+            "edges": list(edges),
+            "segments": rows,
+            "all_meet_floor": all(r["meets_floor"] for r in rows)
+            if threshold is not None
+            else None,
+        }
+    return out
+
+
+def _identity_share(final: np.ndarray, identity: np.ndarray) -> dict[str, Any]:
+    """Rows with an identity term per review band: a composition count, not an error rate."""
+    has_term = identity.astype(bool)
+    out: dict[str, Any] = {}
+    for band in (PRIORITY, HUMAN):
+        mask = final == band
+        n = int(mask.sum())
+        with_term = int((mask & has_term).sum())
+        out[band] = {
+            "n": n,
+            "n_with_identity_term": with_term,
+            "share": with_term / n if n else None,
+        }
+    return out
+
+
+def _cumulative_alternative(
+    y: np.ndarray,
+    p: np.ndarray,
+    identity: np.ndarray,
+    policy: Policy,
+    high_risk_min_weight: float,
+    min_pos: int,
+) -> dict[str, Any]:
+    """The same split selected with both tiers on the cumulative rule, for comparison.
+
+    Same floors, same rules and subgroup thresholds; only the population
+    selection rule differs. Development-split numbers, in-sample.
+    """
+    alt_policy = replace(
+        policy,
+        tier_selection_rules={
+            tier: "cumulative_precision" for tier in policy.tier_precision_floors
+        },
+    )
+    alt = select_thresholds(
+        y,
+        p,
+        LABELS,
+        alt_policy,
+        {"identity_term_present": identity},
+        high_risk_min_weight=high_risk_min_weight,
+    )
+    routing = _route(p, y, identity, alt, alt_policy)
+    final = routing["final_tier"]
+    return {
+        "thresholds": alt.as_json(),
+        "tiers": tier_metrics(final, routing["correct"], (PRIORITY, HUMAN, ALLOW), min_pos),
+        **_high_risk_by_band(final, harm_proxy(y, policy) >= high_risk_min_weight),
+        "identity_share": _identity_share(final, identity),
+        "note": "both tiers selected by cumulative precision at the configured floors on the "
+        "same selection split; in-sample development numbers for comparison only",
+    }
+
+
+def _selection_notes(thresholds: TierThresholds, policy: Policy) -> list[str]:
+    notes: list[str] = []
+    if all(t is None for t in thresholds.thresholds[PRIORITY].values()):
+        rule = policy.tier_selection_rules.get(PRIORITY, "cumulative_precision")
+        rule_name = "segment" if rule == "segment_agreement" else rule
+        notes.append(
+            f"no label qualifies for priority_review under the {rule_name} rule; the priority "
+            "band contains rule promotions only"
+        )
+    return notes
+
+
+def _optimism_gap(thresh: dict[str, Any], calib: dict[str, Any]) -> dict[str, Any]:
+    """Per-segment agreement on the selection split minus the calibration split."""
+
+    def gaps(a: list[dict[str, Any]], b: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rows = []
+        for ra, rb in zip(a, b, strict=True):
+            gap = (
+                ra["agreement"] - rb["agreement"]
+                if ra["agreement"] is not None and rb["agreement"] is not None
+                else None
+            )
+            rows.append(
+                {
+                    "lo": ra["lo"],
+                    "hi": ra["hi"],
+                    "threshold_selection": ra["agreement"],
+                    "calibration": rb["agreement"],
+                    "gap": gap,
+                }
+            )
+        return rows
+
+    return {
+        "pooled_review": gaps(thresh["pooled_review"], calib["pooled_review"]),
+        "per_label": {
+            label: gaps(thresh["per_label"][label]["table"], calib["per_label"][label]["table"])
+            for label in LABELS
+        },
+        "note": "threshold-selection minus calibration agreement per segment; both splits are "
+        "random slices of train.csv, so this bounds selection optimism and cannot show the "
+        "train-to-test shift",
+    }
+
+
+def _agreement_by_confidence(
+    corpus: Corpus,
+    p_calib: np.ndarray | None,
+    y_thresh: np.ndarray,
+    p_thresh: np.ndarray,
+    selection_routing: dict[str, Any],
+    strata_thresh: dict[str, np.ndarray],
+    oov_cuts: list[float] | None,
+    model: Any,
+    policy: Policy,
+    high_risk_min_weight: float,
+) -> dict[str, Any]:
+    """Agreement tables on the development splits; the test block is added later if scored."""
+    thresh_report = agreement_report(
+        y_thresh,
+        p_thresh,
+        LABELS,
+        policy,
+        high_risk_min_weight,
+        final_tier=selection_routing["final_tier"],
+        rule_action=selection_routing["rule_action"],
+        strata=strata_thresh,
+    )
+    calib_report: dict[str, Any] | None = None
+    if p_calib is not None:
+        calib_frame = corpus.train[corpus.train["split"] == "calib"]
+        x_calib = calib_frame["comment_text"].astype(str).tolist()
+        y_calib = calib_frame[list(LABELS)].to_numpy(dtype=int)
+        oov_calib, _ = _oov_terciles(model, x_calib, oov_cuts)
+        calib_report = agreement_report(
+            y_calib,
+            p_calib,
+            LABELS,
+            policy,
+            high_risk_min_weight,
+            strata=_strata(identity_term_present(x_calib), oov_calib, oov_cuts),
+        )
+    return {
+        "calibration": calib_report,
+        "calibration_note": (
+            None
+            if calib_report is not None
+            else "not available: external scores or no calibration split scored"
+        ),
+        "threshold_selection": thresh_report,
+        "optimism_gap": (
+            _optimism_gap(thresh_report, calib_report) if calib_report is not None else None
+        ),
+        "strata_definition": {
+            "identity_term_present": "whole-word match of review_router.signals.IDENTITY_TERMS",
+            "oov_tercile": (
+                {
+                    "cut_points": oov_cuts,
+                    "degenerate": oov_cuts[0] == oov_cuts[1],
+                    "rows_per_stratum_threshold_selection": {
+                        str(k): int((strata_thresh["oov_tercile"] == k).sum()) for k in range(3)
+                    },
+                    "definition": "share of word-analyzer tokens absent from the training "
+                    "vocabulary; terciles cut at the 1/3 and 2/3 quantiles of the "
+                    "threshold-selection split. Rows tied with a cut point go to the upper "
+                    "stratum, so equal cut points (degenerate) collapse the terciles into "
+                    "one stratum",
+                }
+                if oov_cuts is not None
+                else None
+            ),
+        },
+        "note": "calib is in-sample for the Platt fit and out-of-sample for thresholds; thresh "
+        "is the reverse. Agreement = share of rows in the segment with the label positive; "
+        "development splits only, not test results",
+    }
+
+
 # --------------------------------------------------------------------------- simulation
 
 
@@ -565,8 +894,7 @@ def queue_inputs(
     queued = np.flatnonzero(np.isin(final, (PRIORITY, HUMAN)))
     weights = np.array([policy.severity_weights.get(label, 0.0) for label in LABELS])
     p = proba[queued]
-    truth = y[queued]
-    harm = (truth * weights).max(axis=1)
+    harm = harm_proxy(y[queued], policy)
     severity = (p * weights).max(axis=1) if len(queued) else np.zeros(0)
     return {
         "queued": queued,
@@ -578,6 +906,132 @@ def queue_inputs(
             "severity": severity,
             "priority": priority_review_scores(final[queued] == PRIORITY, severity),
         },
+    }
+
+
+def ranking_diagnostics(
+    inputs: dict[str, Any],
+    high_risk_min_weight: float,
+    fractions: tuple[float, ...] = (0.5, 0.67, 1.0),
+) -> dict[str, Any]:
+    """How much true harm each ordering score reaches in the top part of the review pool.
+
+    For every priority key in `inputs` (see queue_inputs) and for the reference
+    key oracle_true_harm (the true-label harm proxy itself, which uses true
+    labels and is not shippable), the pool is sorted by the score, descending
+    and stable, and the top k = ceil(f * n) rows are read at each fraction f:
+    harm_share_at_k is their share of the pool's total harm proxy and
+    high_risk_share_at_k the share of the pool's high-risk rows they contain.
+    ap_vs_high_risk is the average precision of the score against the
+    high-risk indicator (None when the indicator is constant). fifo scores are
+    constant, so its order is the pool's row order, not a simulated arrival
+    stream. These are static ranking diagnostics over the whole pool; they do
+    not simulate capacity or time, and say nothing about rows outside the pool.
+    """
+    harm = np.asarray(inputs["harm"], dtype=float)
+    n = int(len(harm))
+    high_risk = harm >= high_risk_min_weight
+    n_high = int(high_risk.sum())
+    out: dict[str, Any] = {
+        "n_pool": n,
+        "n_high_risk": n_high,
+        "fractions": [float(f) for f in fractions],
+        "by_key": {},
+        "note": "oracle_true_harm ranks by the true-label harm proxy: it uses true labels and "
+        "is not shippable; it is the ceiling for these shares. Shares are top-k over the whole "
+        f"review pool (both bands), k = ceil(fraction * n_pool); high risk = harm proxy >= "
+        f"{high_risk_min_weight:g}; fifo scores are constant, so its order is pool row order.",
+    }
+    if n == 0:
+        return out
+    total_harm = float(harm.sum())
+    scores: dict[str, Any] = {**inputs["priorities"], "oracle_true_harm": harm}
+    for key, score in scores.items():
+        values = np.asarray(score, dtype=float)
+        order = np.argsort(-values, kind="stable")
+        at_fraction: list[dict[str, Any]] = []
+        for f in fractions:
+            k = min(n, math.ceil(f * n))
+            top = order[:k]
+            at_fraction.append(
+                {
+                    "fraction": float(f),
+                    "k": int(k),
+                    "harm_share_at_k": (
+                        float(harm[top].sum() / total_harm) if total_harm > 0 else None
+                    ),
+                    "high_risk_share_at_k": (
+                        float(high_risk[top].sum() / n_high) if n_high else None
+                    ),
+                }
+            )
+        out["by_key"][key] = {
+            "ap_vs_high_risk": (
+                float(average_precision_score(high_risk, values)) if 0 < n_high < n else None
+            ),
+            "at_fraction": at_fraction,
+        }
+    return out
+
+
+def _cross_fit_folds(n: int, k: int, seed: int) -> np.ndarray:
+    """Fold id per row: seeded permutation, position modulo k; every row is in one fold."""
+    if k < 2:
+        raise ValueError("cross-fitting needs at least two folds")
+    permutation = np.random.default_rng(seed).permutation(n)
+    folds = np.empty(n, dtype=int)
+    folds[permutation] = np.arange(n) % k
+    return folds
+
+
+def cross_fitted_selection(
+    y: np.ndarray,
+    proba: np.ndarray,
+    identity: np.ndarray,
+    policy: Policy,
+    *,
+    high_risk_min_weight: float,
+    k: int = 5,
+    seed: int = 0,
+) -> dict[str, Any]:
+    """Band quality on the selection split with thresholds refit away from each row.
+
+    Rows are split into k deterministic folds. For each fold, thresholds
+    (population and subgroup, with the same signals) are selected on the other
+    k-1 folds and the held-out fold is routed with them, rules included. The
+    held-out tiers are concatenated back into row order and summarised like
+    the in-sample selection tables, so band membership is out-of-sample
+    relative to the thresholds that define it. This bounds the optimism of
+    selecting and reading precision on the same rows. Every fold comes from
+    the same train.csv distribution: it says nothing about distribution shift
+    or about the scored test rows.
+    """
+    n = len(proba)
+    folds = _cross_fit_folds(n, k, seed)
+    final = np.full(n, ALLOW, dtype=object)
+    correct = np.zeros(n, dtype=bool)
+    per_fold: list[dict[str, Any]] = []
+    for fold in range(k):
+        held = folds == fold
+        fit = ~held
+        thresholds = select_thresholds(
+            y[fit], proba[fit], LABELS, policy, {"identity_term_present": identity[fit]}
+        )
+        routing = _route(proba[held], y[held], identity[held], thresholds, policy)
+        final[held] = routing["final_tier"]
+        correct[held] = routing["correct"]
+        per_fold.append(thresholds.as_json())
+    min_pos = int(policy.gates.get("min_predicted_positives_for_precision", 30))
+    return {
+        "k": k,
+        "seed": seed,
+        "fold_sizes": [int((folds == fold).sum()) for fold in range(k)],
+        "tiers": tier_metrics(final, correct, (PRIORITY, HUMAN, ALLOW), min_pos),
+        "review_workload": _review_workload(final, y, policy, high_risk_min_weight),
+        "thresholds_per_fold": per_fold,
+        "note": "thresholds refit on k-1 folds; band membership is out-of-sample relative to "
+        "the thresholds that define it; the same train.csv distribution, so this bounds "
+        "selection optimism, not distribution shift",
     }
 
 
@@ -691,6 +1145,7 @@ def _run_simulation(
             ],
             "priority_order": "priority_review first, then human_review; within each tier, "
             "higher max predicted probability times severity weight first; ties use arrival order",
+            "primary_order": _ORDER_DESCRIPTIONS[config.primary_strategy],
             "handle_time": "deterministic",
             "review_completion_definition": (
                 "simulated reviewer service finished; moderation requires human confirmation; "
@@ -715,14 +1170,16 @@ def _run_simulation(
         "primary": {
             "load_per_hour": config.primary_load_per_hour,
             "strategy": config.primary_strategy,
-            "note": "queue-clearing gates read this load; the router strategy is compared "
-            "against fifo at the same load for time-to-action",
+            "note": "queue-clearing gates read this load; the router is the configured "
+            "primary ordering (strategy), compared against fifo at the same load for "
+            "time-to-action",
         },
         "thesis": {
             "load_per_hour": config.thesis_load_per_hour,
             "strategy": config.primary_strategy,
             "note": "harm handled per reviewer-hour only differs between orderings when "
-            "the queue does not clear, so the FIFO comparison reads this load",
+            "the queue does not clear, so the FIFO comparison and the paired comparison "
+            "of the primary ordering against every alternative read this load",
         },
         "headline": headline,
         # Gate inputs. Ordering cannot change harm handled once everything is
@@ -747,7 +1204,7 @@ def _run_simulation(
         "reviewer_utilization": mean(router, "reviewer_utilization"),
         "time_metrics": metrics,
         "summary": summary,
-        "paired": _paired(rows),
+        "paired": _paired(rows, config.primary_strategy),
         "table": rows,
     }
     return section, job_rows
@@ -803,7 +1260,8 @@ def _headline(metrics: dict[str, Any], config: RunConfig) -> dict[str, Any]:
             "jobs that started, including in-progress reviews"
             if metric == "wait"
             else "jobs completed within the horizon"
-        ) + "; pooled over seeds; populations may differ by strategy; "
+        )
+        + "; pooled over seeds; populations may differ by strategy; "
         "read with completion and unfinished counts",
         "selected": compare(metric, pct),
         "supplementary_high_risk": {
@@ -813,14 +1271,6 @@ def _headline(metrics: dict[str, Any], config: RunConfig) -> dict[str, Any]:
     }
 
 
-_PAIRS: tuple[tuple[str, str], ...] = (
-    ("priority", "fifo"),
-    ("priority", "prob"),
-    ("priority", "severity"),
-    ("severity", "fifo"),
-    ("prob", "fifo"),
-    ("severity", "prob"),
-)
 _HIGHER_IS_BETTER: dict[str, bool] = {
     "high_risk_handled": True,
     "harm_per_reviewer_hour": True,
@@ -828,21 +1278,47 @@ _HIGHER_IS_BETTER: dict[str, bool] = {
     "high_risk_wait_p90": False,
     "wait_p90": False,
 }
+# How each ordering picks the next waiting job; see queue_inputs and simulate.
+_ORDER_DESCRIPTIONS: dict[str, str] = {
+    "severity": "highest max predicted probability times severity weight first; "
+    "ties use arrival order",
+    "prob": "highest max predicted probability first; ties use arrival order",
+    "priority": "priority_review band first, then human_review; within each band, highest "
+    "max predicted probability times severity weight first; ties use arrival order",
+    "fifo": "arrival order",
+}
 
 
-def _paired(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Per-seed paired differences between orderings.
+def _ordering_pairs(primary: str) -> list[tuple[str, str]]:
+    """Strategy pairs for the paired comparison, the primary ordering first.
+
+    The primary ordering is paired with every alternative, then the alternatives
+    with each other; within a non-primary pair the strategy that appears later
+    in STRATEGIES comes first. With primary 'priority' this reproduces the six
+    legacy keys (priority_vs_fifo ... severity_vs_prob).
+    """
+    if primary not in STRATEGIES:
+        raise ValueError(f"unknown primary strategy {primary!r}; choose from {STRATEGIES}")
+    others = [s for s in STRATEGIES if s != primary]
+    pairs = [(primary, s) for s in others]
+    pairs += [(later, earlier) for i, later in enumerate(others) for earlier in others[:i]]
+    return pairs
+
+
+def _paired(rows: list[dict[str, Any]], primary: str) -> dict[str, dict[str, Any]]:
+    """Per-seed paired differences between orderings, keyed first_vs_second@load.
 
     Every ordering replays the same arrivals for a given (load, seed), so the
     honest comparison is paired: how many seeds favour the first ordering, not
-    whether the seed means overlap.
+    whether the seed means overlap. The primary ordering is the first member of
+    its pairs, so the gate reads f"{primary}_vs_{alternative}@{load}".
     """
     by = {(r["load_per_hour"], r["seed"], r["strategy"]): r for r in rows}
     loads = sorted({r["load_per_hour"] for r in rows})
     seeds = sorted({r["seed"] for r in rows})
     out: dict[str, dict[str, Any]] = {}
     for load in loads:
-        for first, second in _PAIRS:
+        for first, second in _ordering_pairs(primary):
             entry: dict[str, Any] = {}
             for field, higher in _HIGHER_IS_BETTER.items():
                 diffs = []
@@ -908,41 +1384,82 @@ def _fmt(value: Any, digits: int = 3) -> str:
     return str(value)
 
 
-def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
-    workload = report["review_workload"]
+def _tier_row(m: dict[str, Any], digits: int = 3) -> str:
+    return f"{m['n_predicted_positive']} | {_fmt(m['coverage'])} | {_fmt(m['precision'], digits)}"
+
+
+def _md_high_risk_by_band(
+    splits: list[tuple[str, dict[str, Any]]], high_risk_min_weight: float
+) -> list[str]:
+    """Count and share of high-risk rows per band, plus recall into the queue, per split."""
     lines = [
-        f"# Run {manifest['run_id']} ({manifest['label']})",
         "",
-        f"commit `{manifest['git_commit']}`" + (" (dirty)" if manifest["git_dirty"] else ""),
-        f", seed {manifest['seed']}, scored test rows "
-        f"{manifest['split_label_counts']['test_scored']['rows']}.",
+        "## High-risk composition by band",
         "",
-        "Decision mode: human confirmation. Both priority_review and human_review require "
-        "reviewers; the router emits no automatic enforcement actions. This offline evaluation "
-        "does not observe completed human decisions.",
+        f"High risk = true-label harm proxy >= {high_risk_min_weight} (the simulator's "
+        "definition). Share = high-risk rows / rows in the band. Recall into queue = high-risk "
+        "rows in either review band / all high-risk rows in the split. Composition of what was "
+        "routed, not a review outcome.",
         "",
-        f"Review demand: {workload['n_requires_human_review']} / {workload['n_total']} comments "
-        f"({_fmt(workload['review_fraction'])}), including "
-        f"{workload['n_priority_review']} priority "
-        f"and {workload['n_human_review']} regular reviews. Pool precision is "
-        f"{_fmt(workload['precision'])}, Wilson 95% CI {workload['precision_ci95']}.",
+        "| split | band | n | high-risk | share |",
+        "|---|---|---:|---:|---:|",
+    ]
+    recall: list[str] = []
+    for name, workload in splits:
+        for band, m in workload["high_risk_by_band"].items():
+            lines.append(
+                f"| {name} | {band} | {m['n']} | {m['n_high_risk']} "
+                f"| {_fmt(m['high_risk_share'])} |"
+            )
+        recall.append(
+            f"{name}: {_fmt(workload['high_risk_recall_into_queue'])} of "
+            f"{workload['n_high_risk_total']} high-risk rows enter the queue, "
+            f"{_fmt(workload['high_risk_recall_into_priority'])} into priority_review"
+        )
+    return [*lines, "", "Recall into the queue: " + "; ".join(recall) + "."]
+
+
+def _md_ranking(pools: list[tuple[str, dict[str, Any]]]) -> list[str]:
+    """High-risk share captured in the top part of each pool, per ordering key, plus AP."""
+    fractions: list[float] = pools[0][1]["fractions"] if pools else []
+    lines = [
         "",
+        "## Ranking diagnostics (static, whole review pool)",
+        "",
+        "Pool rows are sorted by each ordering score; the top ceil(f * n) rows are read at each "
+        "fraction f. Cells are the share of the pool's high-risk rows in that top part; AP is the "
+        "average precision of the score against the high-risk indicator. oracle_true_harm uses "
+        "true labels and is not shippable; it is the ceiling. fifo scores are constant, so its "
+        "order is pool row order, not a simulated arrival stream. No capacity or time is "
+        "simulated here.",
+        "",
+        "| pool | ordering | AP vs high-risk | "
+        + " | ".join(f"HR share @{100 * f:.0f}%" for f in fractions)
+        + " |",
+        "|---|---|---:|" + "---:|" * len(fractions),
+    ]
+    for name, ranking in pools:
+        if not ranking["by_key"]:
+            lines.append(f"| {name} | (empty pool) | n/a |" + " n/a |" * len(fractions))
+            continue
+        for key, entry in ranking["by_key"].items():
+            shares = " | ".join(_fmt(a["high_risk_share_at_k"]) for a in entry["at_fraction"])
+            lines.append(
+                f"| {name} (n={ranking['n_pool']}, high-risk {ranking['n_high_risk']}) | {key} "
+                f"| {_fmt(entry['ap_vs_high_risk'])} | {shares} |"
+            )
+    return lines
+
+
+def _md_test_quality(report: dict[str, Any]) -> list[str]:
+    selection = report["threshold_selection"]["per_label"]
+    lines = [
         "## Per-label quality (scored test set)",
         "",
         "| label | positives | AP (selection) | AP | ROC-AUC | human thr | P@human | R@human "
         "| priority thr | P@priority | R@priority |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    selection = report["threshold_selection"]["per_label"]
-    if report["synthetic"]:
-        lines[2:2] = ["SYNTHETIC pipeline check only; these are not Jigsaw results.", ""]
-    if report.get("exploratory"):
-        source = report["score_source"]
-        lines[2:2] = [
-            f"EXPLORATORY external-score evaluation for {source['model_name']}; "
-            "these results do not certify the full baseline or deployment readiness.",
-            "",
-        ]
     for label, m in report["per_label"].items():
         h, a = m["at_human_review"], m["at_priority_review"]
         lines.append(
@@ -961,10 +1478,7 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
     for tier, m in report["tiers"].items():
         ci = m["precision_ci95"]
         ci_s = f"[{ci[0]:.3f}, {ci[1]:.3f}]" if ci else ""
-        lines.append(
-            f"| {tier} | {m['n_predicted_positive']} | {_fmt(m['coverage'])} "
-            f"| {_fmt(m['precision'])} | {ci_s} | {m['precision_note'] or ''} |"
-        )
+        lines.append(f"| {tier} | {_tier_row(m)} | {ci_s} | {m['precision_note'] or ''} |")
     lines += [
         "",
         "Model tier before rules (for comparison):",
@@ -975,33 +1489,42 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
     for tier, m in report["tiers_model_only"].items():
         ci = m["precision_ci95"]
         ci_s = f"[{ci[0]:.3f}, {ci[1]:.3f}]" if ci else ""
-        lines.append(
-            f"| {tier} | {m['n_predicted_positive']} | {_fmt(m['coverage'])} "
-            f"| {_fmt(m['precision'])} | {ci_s} |"
-        )
-    rules = report["rules"]
-    lines += [
-        "",
+        lines.append(f"| {tier} | {_tier_row(m)} | {ci_s} |")
+    return [*lines, ""]
+
+
+def _md_selection(report: dict[str, Any]) -> list[str]:
+    ts = report["threshold_selection"]
+    cross = ts["cross_fitted"]
+    rules = ts["rules"]
+    lines = [
         "## Threshold-selection split (development data, not test results)",
         "",
         "Precision targets are selected per label. Combining labels, separating review "
-        "priorities and applying rules can change final-tier precision. Both tiers join the queue.",
+        "priorities and applying rules can change final-tier precision. Both tiers join the queue. "
+        f"In-sample: thresholds selected and read on the same rows. Cross-fitted ({cross['k']} "
+        "folds): thresholds refit on the other folds, each row routed by thresholds it did not "
+        "select; same distribution, so this bounds selection optimism, not distribution shift.",
         "",
-        "| final tier | n | coverage | precision |",
-        "|---|---:|---:|---:|",
+        "| final tier | n | coverage | precision | n (cross-fitted) | coverage (cross-fitted) "
+        "| precision (cross-fitted) |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
-    for tier, m in report["threshold_selection"]["tiers"].items():
-        lines.append(
-            f"| {tier} | {m['n_predicted_positive']} | {_fmt(m['coverage'])} "
-            f"| {_fmt(m['precision'], 4)} |"
-        )
+    for tier, m in ts["tiers"].items():
+        lines.append(f"| {tier} | {_tier_row(m, 4)} | {_tier_row(cross['tiers'][tier], 4)} |")
     lines += [
         "",
-        f"On the test set, rules matched on {rules['n_rows_with_any_rule']} rows; "
+        f"On the selection split, rules matched on {rules['n_rows_with_any_rule']} rows; "
         f"{rules['n_added_to_queue_from_allow']} moved allow -> review "
         f"({rules['n_added_to_queue_from_allow_true_positive']} truly positive); "
-        f"{rules['n_promoted_to_priority_review']} were promoted to priority_review.",
-        f"Hierarchy violation rate: {report['consistency']['hierarchy_violation_rate']:.4%}.",
+        f"{rules['n_promoted_to_priority_review']} were promoted to priority_review. "
+        f"Truly positive rows allowed, per label: {ts['allow_false_negatives']}.",
+    ]
+    return lines
+
+
+def _md_subgroups(report: dict[str, Any]) -> list[str]:
+    lines = [
         "",
         "## Subgroup thresholds",
         "",
@@ -1021,7 +1544,11 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
                 f"| {st['n_removed_by_subgroup_threshold']} "
                 f"| {st['n_removed_truly_positive_any_label']} |"
             )
-    lines += [
+    return lines
+
+
+def _md_identity(report: dict[str, Any]) -> list[str]:
+    lines = [
         "",
         "## False discoveries and false positives on identity mentions",
         "",
@@ -1084,7 +1611,11 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
             f"| {row['term']} | {row['n_predicted_positive']} | {row['n_false_positive']} "
             f"| {_fmt(row['false_discovery_rate'])} |"
         )
-    lines += [
+    return lines
+
+
+def _md_simulation(report: dict[str, Any]) -> list[str]:
+    lines = [
         "",
         "## Queue simulation (mean ± std over seeds)",
         "",
@@ -1103,7 +1634,8 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
             f"Arrival loads are post-admission review demand. The combined review pool is "
             f"{a['queue_fraction']:.2%} of input comments; equivalent input rates under this "
             f"fixed pool fraction are {a['equivalent_input_loads_per_hour']}. "
-            f"Priority order: {a['priority_order']}."
+            f"Primary ordering ({sim['primary']['strategy']}): {a['primary_order']}. "
+            f"Band-first (priority) order: {a['priority_order']}."
         )
         lines.append(
             "Wait quantiles are minutes until service starts, for all started jobs. "
@@ -1180,30 +1712,188 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
                 f"{_fmt(c['p90'], 1)} / {_fmt(c['p99'], 1)} ({c['n']}) | "
                 f"{'yes' if w['p99_reliable'] and c['p99_reliable'] else 'no'} |"
             )
+    return lines
+
+
+def _md_prevalence(report: dict[str, Any]) -> list[str]:
     ps = report.get("prevalence_shift")
-    if ps:
-        lines += [
-            "",
-            "## Prevalence shift and predicted volume",
-            "",
-            "| label | prevalence train file | prevalence test | ratio | actual positives "
-            "| model-expected positives | volume overshoot | ROC-AUC test | AP selection "
-            "| AP test |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
-        ]
-        for label in LABELS:
-            e = ps[label]
-            m = report["per_label"][label]
+    if not ps:
+        return []
+    lines = [
+        "",
+        "## Prevalence shift and predicted volume",
+        "",
+        "| label | prevalence train file | prevalence test | ratio | actual positives "
+        "| model-expected positives | volume overshoot | ROC-AUC test | AP selection "
+        "| AP test |",
+        "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    ]
+    for label in LABELS:
+        e = ps[label]
+        m = report["per_label"][label]
+        lines.append(
+            f"| {label} | {_fmt(e['prevalence_train_file'], 4)} "
+            f"| {_fmt(e['prevalence_test'], 4)} "
+            f"| {_fmt(e['prevalence_ratio_train_over_test'], 2)} "
+            f"| {e['actual_positives_test']} "
+            f"| {_fmt(e['model_expected_positives_test'], 0)} "
+            f"| {_fmt(e['volume_overshoot_model'], 2)} | {_fmt(m['roc_auc'])} "
+            f"| {_fmt(report['threshold_selection']['per_label'][label]['average_precision'])} "
+            f"| {_fmt(m['average_precision'])} |"
+        )
+    return lines
+
+
+def _md_agreement(report: dict[str, Any]) -> list[str]:
+    """Pooled agreement per segment on the selection split, the segment check and the arms."""
+    abc = report["agreement_by_confidence"]
+    ts = report["threshold_selection"]
+    thresh = abc["threshold_selection"]
+    lines = [
+        "",
+        "## Agreement by confidence (development splits)",
+        "",
+        "Score segments on the threshold-selection split; agreement = share of rows in the "
+        "segment with any positive label, against the pooled max probability. Coverage is the "
+        "segment's share of the split. Development data, not test results; the calibration "
+        "split table and the per-segment optimism gap are in report.json.",
+        "",
+        "| segment | n | coverage | agreement | 95% CI | recall share |",
+        "|---|---:|---:|---:|---|---:|",
+    ]
+    top = thresh["edges"][-1]
+    for row in thresh["pooled_review"]:
+        close = "]" if row["hi"] >= top else ")"  # the last segment is closed at the top edge
+        lo = (
+            "< " + f"{row['hi']:g}"
+            if row["lo"] is None
+            else f"[{row['lo']:g}, {row['hi']:g}{close}"
+        )
+        ci = row["agreement_ci95"]
+        ci_s = f"[{ci[0]:.3f}, {ci[1]:.3f}]" if ci else ""
+        lines.append(
+            f"| {lo} | {row['n']} | {_fmt(row['coverage'], 4)} | {_fmt(row['agreement'])} "
+            f"| {ci_s} | {_fmt(row['recall_share'])} |"
+        )
+    lines += [
+        "",
+        f"Selection rules: {ts['selection_rules']}. Priority segment check per label (segments "
+        "at or above the chosen threshold, n and agreement on the selection split):",
+        "",
+        "| label | threshold | rule | segments (lo: n, agreement) | all meet floor |",
+        "|---|---:|---|---|---|",
+    ]
+    for label, check in ts["segment_check"].items():
+        segs = "; ".join(
+            f"{seg['lo']:g}: {seg['n']}, {_fmt(seg['agreement'])}" for seg in check["segments"]
+        )
+        lines.append(
+            f"| {label} | {_fmt(check['threshold'], 4)} | {check['rule']} | {segs or 'n/a'} "
+            f"| {check['all_meet_floor']} |"
+        )
+    for note in ts["selection_notes"]:
+        lines.append(f"\nNote: {note}.")
+    alt = ts["alternatives"]["cumulative_precision"]
+    lines += [
+        "",
+        "Arms on the selection split (in-sample): the shipped rules versus both tiers on "
+        "cumulative precision at the same floors.",
+        "",
+        "| arm | band | n | coverage | precision | high-risk rows | identity-term share |",
+        "|---|---|---:|---:|---:|---:|---:|",
+    ]
+    arms = [
+        ("shipped", ts["tiers"], ts["review_workload"]["high_risk_by_band"], ts["identity_share"]),
+        ("cumulative_precision", alt["tiers"], alt["high_risk_by_band"], alt["identity_share"]),
+    ]
+    for name, tiers, high_risk, identity in arms:
+        for band in (PRIORITY, HUMAN):
             lines.append(
-                f"| {label} | {_fmt(e['prevalence_train_file'], 4)} "
-                f"| {_fmt(e['prevalence_test'], 4)} "
-                f"| {_fmt(e['prevalence_ratio_train_over_test'], 2)} "
-                f"| {e['actual_positives_test']} "
-                f"| {_fmt(e['model_expected_positives_test'], 0)} "
-                f"| {_fmt(e['volume_overshoot_model'], 2)} | {_fmt(m['roc_auc'])} "
-                f"| {_fmt(report['threshold_selection']['per_label'][label]['average_precision'])} "
-                f"| {_fmt(m['average_precision'])} |"
+                f"| {name} | {band} | {_tier_row(tiers[band], 4)} "
+                f"| {high_risk[band]['n_high_risk']} | {_fmt(identity[band]['share'])} |"
             )
+    shipped = {label: check["threshold"] for label, check in ts["segment_check"].items()}
+    lines.append(
+        f"\nShipped priority thresholds: {shipped}. "
+        f"Cumulative-rule thresholds: {alt['thresholds']}."
+    )
+    return [*lines, ""]
+
+
+def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
+    """The report as tables. A development report has no test sections; they say so."""
+    scored = "tiers" in report  # False for a development run (evaluate_test: false)
+    ts = report["threshold_selection"]
+    lines = [
+        f"# Run {manifest['run_id']} ({manifest['label']})",
+        "",
+        f"commit `{manifest['git_commit']}`"
+        + (" (dirty)" if manifest["git_dirty"] else "")
+        + f", seed {manifest['seed']}, "
+        + (
+            f"scored test rows {manifest['split_label_counts']['test_scored']['rows']}."
+            if scored
+            else "test rows not scored (evaluate_test: false); development splits only."
+        ),
+        "",
+        "Decision mode: human confirmation. Both priority_review and human_review require "
+        "reviewers; the router emits no automatic enforcement actions. This offline evaluation "
+        "does not observe completed human decisions.",
+        "",
+    ]
+    if report["synthetic"]:
+        lines[2:2] = ["SYNTHETIC pipeline check only; these are not Jigsaw results.", ""]
+    if report.get("exploratory"):
+        source = report["score_source"]
+        lines[2:2] = [
+            f"EXPLORATORY external-score evaluation for {source['model_name']}; "
+            "these results do not certify the full baseline or deployment readiness.",
+            "",
+        ]
+    if scored:
+        workload = report["review_workload"]
+        lines += [
+            f"Review demand: {workload['n_requires_human_review']} / {workload['n_total']} "
+            f"comments ({_fmt(workload['review_fraction'])}), including "
+            f"{workload['n_priority_review']} priority "
+            f"and {workload['n_human_review']} regular reviews. Pool precision is "
+            f"{_fmt(workload['precision'])}, Wilson 95% CI {workload['precision_ci95']}.",
+            "",
+        ]
+        lines += _md_test_quality(report)
+    else:
+        lines += [
+            "Development run: test rows not scored. Thresholds, band composition and ranking "
+            "diagnostics below are computed on the threshold-selection split only; there is "
+            "no per-label test quality, routing-tier, identity, subgroup or simulation section.",
+            "",
+        ]
+    lines += _md_selection(report)
+    lines += _md_agreement(report)
+    if scored:
+        rules = report["rules"]
+        lines += [
+            f"On the test set, rules matched on {rules['n_rows_with_any_rule']} rows; "
+            f"{rules['n_added_to_queue_from_allow']} moved allow -> review "
+            f"({rules['n_added_to_queue_from_allow_true_positive']} truly positive); "
+            f"{rules['n_promoted_to_priority_review']} were promoted to priority_review.",
+            f"Hierarchy violation rate: {report['consistency']['hierarchy_violation_rate']:.4%}.",
+        ]
+    composition = [
+        ("selection", ts["review_workload"]),
+        ("selection (cross-fitted)", ts["cross_fitted"]["review_workload"]),
+    ]
+    pools = [("selection", ts["ranking"])]
+    if scored:
+        composition.append(("test", report["review_workload"]))
+        pools.append(("test", report["ranking"]))
+    lines += _md_high_risk_by_band(composition, report["high_risk_min_weight"])
+    lines += _md_ranking(pools)
+    if scored:
+        lines += _md_subgroups(report)
+        lines += _md_identity(report)
+        lines += _md_simulation(report)
+        lines += _md_prevalence(report)
     lines.append("")
     return "\n".join(lines)
 
@@ -1245,10 +1935,18 @@ def run(config_path: Path) -> Path:
     x_thresh, _ = part("thresh")
     model = TfidfLogitModel(config.model).fit(x_train, y_train, config.seed)
     model.calibrate(x_calib, y_calib)
+    # The calibration split is in-sample for the Platt fit; its agreement
+    # table is reported next to the selection split's, never used to select.
+    p_calib = model.predict_proba(x_calib)
     p_thresh = model.predict_proba(x_thresh)
-    p_test = model.predict_proba(corpus.test["comment_text"].astype(str).tolist())
+    # A development run stops before the scored test rows are scored.
+    p_test = (
+        model.predict_proba(corpus.test["comment_text"].astype(str).tolist())
+        if config.evaluate_test
+        else None
+    )
     return _evaluate_scores(
-        config, corpus, p_thresh, p_test, policy, run_dir, manifest, model=model
+        config, corpus, p_thresh, p_test, policy, run_dir, manifest, model=model, p_calib=p_calib
     )
 
 
@@ -1321,6 +2019,11 @@ def evaluate_scores(
     """
     config_path = config_path.resolve()
     config = load_config(config_path)
+    if not config.evaluate_test:
+        raise ValueError(
+            "external scores need a config with evaluate_test true; a development config "
+            "never scores the test rows"
+        )
     policy = load_policy(config.policy_path)
     p_thresh, p_test, cohort_hash = _validate_external_scores(
         corpus, p_thresh, p_test, score_source
@@ -1334,7 +2037,8 @@ def evaluate_scores(
     manifest["score_source"] = score_source
     manifest["unused_model_config"] = manifest["config"]["model"]
     manifest["config"]["model"] = {
-        "kind": "external_scores", "model_name": score_source["model_name"]
+        "kind": "external_scores",
+        "model_name": score_source["model_name"],
     }
     return _evaluate_scores(
         config, corpus, p_thresh, p_test, policy, run_dir, manifest, model=model
@@ -1345,13 +2049,24 @@ def _evaluate_scores(
     config: RunConfig,
     corpus: Corpus,
     p_thresh: np.ndarray,
-    proba: np.ndarray,
+    proba: np.ndarray | None,
     policy: Policy,
     run_dir: Path,
     manifest: dict[str, Any],
     *,
     model: Any,
+    p_calib: np.ndarray | None = None,
 ) -> Path:
+    """Select thresholds on the selection split, then evaluate the scored test rows.
+
+    Everything under report["threshold_selection"] is computed from the
+    selection split alone. proba is None for a development run
+    (evaluate_test: false): the run then writes thresholds.json, model.pkl,
+    the development sections, report.json and report.md, and stops without
+    predictions.csv, simulation_jobs.csv or any test section. p_calib, the
+    calibration split's probabilities, is None on the external-score path;
+    it only feeds the agreement-by-confidence tables.
+    """
     import pandas as pd
 
     run_id = manifest["run_id"]
@@ -1359,8 +2074,14 @@ def _evaluate_scores(
     x_thresh = frame["comment_text"].astype(str).tolist()
     y_thresh = frame[list(LABELS)].to_numpy(dtype=int)
     identity_thresh = identity_term_present(x_thresh)
+    high_risk_min_weight = config.high_risk_min_weight
     thresholds = select_thresholds(
-        y_thresh, p_thresh, LABELS, policy, {"identity_term_present": identity_thresh}
+        y_thresh,
+        p_thresh,
+        LABELS,
+        policy,
+        {"identity_term_present": identity_thresh},
+        high_risk_min_weight=high_risk_min_weight,
     )
     selection_routing = _route(p_thresh, y_thresh, identity_thresh, thresholds, policy)
     (run_dir / "thresholds.json").write_text(json.dumps(thresholds.as_json(), indent=2))
@@ -1368,18 +2089,94 @@ def _evaluate_scores(
         with (run_dir / "model.pkl").open("wb") as handle:
             pickle.dump(model, handle)
 
+    min_pos = int(policy.gates.get("min_predicted_positives_for_precision", 30))
+    synthetic = (config.data_dir / "SYNTHETIC.txt").is_file()
+    selection_final = selection_routing["final_tier"]
+    oov_thresh, oov_cuts = _oov_terciles(model, x_thresh)
+    strata_thresh = _strata(identity_thresh, oov_thresh, oov_cuts)
+    report: dict[str, Any] = {
+        "run_id": run_id,
+        "eval_slice": "synthetic scored test rows" if synthetic else "scored test rows",
+        "synthetic": synthetic,
+        "policy_version": policy.version,
+        "evaluate_test": proba is not None,
+        "high_risk_min_weight": high_risk_min_weight,
+        "decision_contract": {
+            "mode": "human_confirmation",
+            "requires_human_confirmation": True,
+            "automatic_actions": 0,
+        },
+        "threshold_selection": {
+            "note": "development data; per-label precision targets do not guarantee tier precision",
+            "per_label": per_label_metrics(y_thresh, p_thresh, LABELS, thresholds.thresholds),
+            "review_workload": _review_workload(
+                selection_final, y_thresh, policy, high_risk_min_weight
+            ),
+            "tiers": tier_metrics(
+                selection_final, selection_routing["correct"], (PRIORITY, HUMAN, ALLOW), min_pos
+            ),
+            "tiers_model_only": tier_metrics(
+                selection_routing["model_tier"],
+                selection_routing["correct_model"],
+                (PRIORITY, HUMAN, ALLOW),
+                min_pos,
+            ),
+            "rules": _rule_stats(selection_routing, policy),
+            "allow_false_negatives": _allow_false_negatives(selection_final, y_thresh),
+            "ranking": ranking_diagnostics(
+                queue_inputs(p_thresh, y_thresh, selection_final, policy, high_risk_min_weight),
+                high_risk_min_weight,
+            ),
+            "cross_fitted": cross_fitted_selection(
+                y_thresh,
+                p_thresh,
+                identity_thresh,
+                policy,
+                high_risk_min_weight=high_risk_min_weight,
+                seed=config.seed,
+            ),
+            "selection_rules": dict(policy.tier_selection_rules),
+            "segment_check": _segment_check(
+                thresholds, y_thresh, p_thresh, policy, high_risk_min_weight
+            ),
+            "identity_share": _identity_share(selection_final, identity_thresh),
+            "alternatives": {
+                "cumulative_precision": _cumulative_alternative(
+                    y_thresh, p_thresh, identity_thresh, policy, high_risk_min_weight, min_pos
+                )
+            },
+            "selection_notes": _selection_notes(thresholds, policy),
+        },
+        "agreement_by_confidence": _agreement_by_confidence(
+            corpus,
+            p_calib,
+            y_thresh,
+            p_thresh,
+            selection_routing,
+            strata_thresh,
+            oov_cuts,
+            model,
+            policy,
+            high_risk_min_weight,
+        ),
+    }
+    if proba is None:
+        report["eval_slice"] = "development splits only; test rows not scored"
+        _write_run_outputs(run_dir, manifest, report)
+        return run_dir
+
     x_test = corpus.test["comment_text"].astype(str).tolist()
     y_test = corpus.test[list(LABELS)].to_numpy(dtype=int)
     identity = identity_term_present(x_test)
     routing = _route(proba, y_test, identity, thresholds, policy)
 
-    min_pos = int(policy.gates.get("min_predicted_positives_for_precision", 30))
     weights = np.array([policy.severity_weights.get(label, 0.0) for label in LABELS])
     predictions = pd.DataFrame({"id": corpus.test["id"].to_numpy()})
     for j, label in enumerate(LABELS):
         predictions[f"y_{label}"] = y_test[:, j]
     for j, label in enumerate(LABELS):
         predictions[f"p_{label}"] = proba[:, j]
+    predictions["p_max"] = proba.max(axis=1)
     predictions["identity_term_present"] = identity.astype(int)
     predictions["severity_score"] = (proba * weights).max(axis=1)
     predictions["model_tier"] = routing["model_tier"]
@@ -1388,62 +2185,54 @@ def _evaluate_scores(
     predictions["requires_human_review"] = np.isin(routing["final_tier"], (PRIORITY, HUMAN))
     predictions.to_csv(run_dir / "predictions.csv", index=False)
 
-    synthetic = (config.data_dir / "SYNTHETIC.txt").is_file()
-    report: dict[str, Any] = {
-        "run_id": run_id,
-        "eval_slice": "synthetic scored test rows" if synthetic else "scored test rows",
-        "synthetic": synthetic,
-        "policy_version": policy.version,
-        "decision_contract": {
-            "mode": "human_confirmation",
-            "requires_human_confirmation": True,
-            "automatic_actions": 0,
-        },
-        "review_workload": _review_workload(routing["final_tier"], y_test),
-        "threshold_selection": {
-            "note": "development data; per-label precision targets do not guarantee tier precision",
-            "per_label": per_label_metrics(y_thresh, p_thresh, LABELS, thresholds.thresholds),
-            "review_workload": _review_workload(selection_routing["final_tier"], y_thresh),
+    report.update(
+        {
+            "review_workload": _review_workload(
+                routing["final_tier"], y_test, policy, high_risk_min_weight
+            ),
+            "per_label": per_label_metrics(y_test, proba, LABELS, thresholds.thresholds),
             "tiers": tier_metrics(
-                selection_routing["final_tier"],
-                selection_routing["correct"],
-                (PRIORITY, HUMAN, ALLOW),
-                min_pos,
+                routing["final_tier"], routing["correct"], (PRIORITY, HUMAN, ALLOW), min_pos
             ),
             "tiers_model_only": tier_metrics(
-                selection_routing["model_tier"],
-                selection_routing["correct_model"],
-                (PRIORITY, HUMAN, ALLOW),
-                min_pos,
+                routing["model_tier"], routing["correct_model"], (PRIORITY, HUMAN, ALLOW), min_pos
             ),
-        },
-        "per_label": per_label_metrics(y_test, proba, LABELS, thresholds.thresholds),
-        "tiers": tier_metrics(
-            routing["final_tier"], routing["correct"], (PRIORITY, HUMAN, ALLOW), min_pos
-        ),
-        "tiers_model_only": tier_metrics(
-            routing["model_tier"], routing["correct_model"], (PRIORITY, HUMAN, ALLOW), min_pos
-        ),
-        "tier_correctness": {
-            PRIORITY: "any label is truly positive; human confirmation is still required",
-            HUMAN: "any label is truly positive",
-        },
-        "allow_false_negatives": _allow_false_negatives(routing["final_tier"], y_test),
-        "identity_false_positives": {
-            "threshold_selection": _identity_concentration(
-                selection_routing, identity_thresh, x_thresh
+            "tier_correctness": {
+                PRIORITY: "any label is truly positive; human confirmation is still required",
+                HUMAN: "any label is truly positive",
+            },
+            "allow_false_negatives": _allow_false_negatives(routing["final_tier"], y_test),
+            "identity_false_positives": {
+                "threshold_selection": _identity_concentration(
+                    selection_routing, identity_thresh, x_thresh
+                ),
+                "test": _identity_concentration(routing, identity, x_test),
+            },
+            "rules": _rule_stats(routing, policy),
+            "subgroup_thresholds": {
+                "thresholds": thresholds.subgroup,
+                "threshold_selection": _subgroup_stats(selection_routing, y_thresh, policy),
+                "test": _subgroup_stats(routing, y_test, policy),
+            },
+            "consistency": _consistency(proba),
+            "prevalence_shift": _prevalence_shift(manifest["split_label_counts"], y_test, proba),
+            "ranking": ranking_diagnostics(
+                queue_inputs(proba, y_test, routing["final_tier"], policy, high_risk_min_weight),
+                high_risk_min_weight,
             ),
-            "test": _identity_concentration(routing, identity, x_test),
-        },
-        "rules": _rule_stats(routing, policy),
-        "subgroup_thresholds": {
-            "thresholds": thresholds.subgroup,
-            "threshold_selection": _subgroup_stats(selection_routing, y_thresh, policy),
-            "test": _subgroup_stats(routing, y_test, policy),
-        },
-        "consistency": _consistency(proba),
-        "prevalence_shift": _prevalence_shift(manifest["split_label_counts"], y_test, proba),
-    }
+        }
+    )
+    oov_test, _ = _oov_terciles(model, x_test, oov_cuts)
+    report["agreement_by_confidence"]["test"] = agreement_report(
+        y_test,
+        proba,
+        LABELS,
+        policy,
+        high_risk_min_weight,
+        final_tier=routing["final_tier"],
+        rule_action=routing["rule_action"],
+        strata=_strata(identity, oov_test, oov_cuts),
+    )
     if manifest.get("exploratory"):
         report["exploratory"] = True
         report["score_source"] = manifest["score_source"]
@@ -1453,15 +2242,31 @@ def _evaluate_scores(
     )
     report["simulation"] = simulation
     record_columns = [
-        "strategy", "load_per_hour", "seed", "comment_id", "trigger_reason", "job_index",
-        "arrival_min", "start_min", "completion_min", "status", "high_risk", "harm",
-        "priority_score", "wait_min", "completion_latency_min",
+        "strategy",
+        "load_per_hour",
+        "seed",
+        "comment_id",
+        "trigger_reason",
+        "job_index",
+        "arrival_min",
+        "start_min",
+        "completion_min",
+        "status",
+        "high_risk",
+        "harm",
+        "priority_score",
+        "wait_min",
+        "completion_latency_min",
     ]
     pd.DataFrame(job_rows, columns=record_columns).to_csv(
         run_dir / "simulation_jobs.csv", index=False
     )
+    _write_run_outputs(run_dir, manifest, report)
+    return run_dir
+
+
+def _write_run_outputs(run_dir: Path, manifest: dict[str, Any], report: dict[str, Any]) -> None:
     manifest["finished_utc"] = datetime.now(UTC).isoformat(timespec="seconds")
     (run_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str))
     (run_dir / "report.json").write_text(json.dumps(report, indent=2, default=str))
     (run_dir / "report.md").write_text(_report_md(report, manifest))
-    return run_dir

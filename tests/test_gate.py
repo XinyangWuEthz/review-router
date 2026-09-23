@@ -51,6 +51,11 @@ def _report_path() -> Path:
 
 def _load_report(kind: str) -> dict[str, Any]:
     report: dict[str, Any] = json.loads(_report_path().read_text(encoding="utf-8"))
+    if report.get("evaluate_test") is False:
+        pytest.fail(
+            f"${REPORT_ENV} points at a development run (evaluate_test: false); "
+            "test rows were not scored, so it is not a gate input"
+        )
     if kind not in report:
         pytest.fail(f"explicit evaluation report has no {kind!r} section")
     return report
@@ -240,7 +245,6 @@ def test_all_flagged_comments_require_human_capacity() -> None:
         assert set(assumptions["queue_tiers"]) == {"priority_review", "human_review"}
 
 
-
 def test_configured_priority_review_precision_floor() -> None:
     """Precision is diagnostic by default; an explicit future target is checked."""
     floor = _floor(
@@ -316,9 +320,7 @@ def test_queue_clears_at_the_primary_load() -> None:
     key = f"{primary['strategy']}@{primary['load_per_hour']:g}"
     wait = sim["time_metrics"][key]["pooled_over_seeds"]["wait"]
     assert wait["p50"] is not None, wait
-    assert wait["p50"] <= _capacity("wait_p50_max_min"), (
-        f"pooled primary wait p50 degraded: {wait}"
-    )
+    assert wait["p50"] <= _capacity("wait_p50_max_min"), f"pooled primary wait p50 degraded: {wait}"
 
 
 def test_queue_depth_stays_within_configured_limit() -> None:
@@ -328,13 +330,65 @@ def test_queue_depth_stays_within_configured_limit() -> None:
     assert sim["queue_depth_p95"] <= depth_max, f"queue depth exceeds limit: {sim}"
 
 
-
 def test_reviewer_utilization() -> None:
     report = _load_report("simulation")
     sim = report["simulation"]
     assert sim["reviewer_utilization"] >= GATES["capacity"]["reviewer_utilization_min"], (
         f"scheduler is underutilizing reviewers: {sim}"
     )
+
+
+def test_primary_ordering_is_no_worse_than_alternatives() -> None:
+    """Paired per-seed comparison of the primary ordering with each declared alternative.
+
+    Read at the thesis (overload) load on the two precedence metrics only. The
+    primary ordering fails when its mean per-seed difference is below minus the
+    declared tolerance. Wait quantiles are not read here. This is a benchmark
+    comparison with an a-priori tolerance, not a statistical noninferiority test.
+    """
+    spec = GATES["capacity"].get("ordering_vs_alternatives")
+    if not spec:
+        pytest.skip("no ordering_vs_alternatives block under gates.capacity in policy.yaml")
+    report = _load_report("simulation")
+    sim = report["simulation"]
+    primary = sim["primary"]["strategy"]
+    load = float(sim["thesis"]["load_per_hour"])
+    paired = sim.get("paired", {})
+    tolerances = {
+        "high_risk_handled": float(spec["high_risk_handled_tolerance"]),
+        "harm_per_reviewer_hour": float(spec["harm_per_reviewer_hour_tolerance"]),
+    }
+    alternatives = [alt for alt in spec["alternatives"] if alt != primary]
+    if len(alternatives) < len(spec["alternatives"]):
+        print(f"note: {primary!r} is the primary ordering and is not compared with itself")
+    if not alternatives:
+        pytest.skip(f"every declared alternative is the primary ordering {primary!r}")
+    unavailable: list[str] = []
+    compared = 0
+    for alt in alternatives:
+        key = f"{primary}_vs_{alt}@{load:g}"
+        if key not in paired:
+            pytest.fail(
+                f"simulation.paired has no {key!r} entry; the run did not pair the primary "
+                f"ordering {primary!r} with {alt!r} at the thesis load"
+            )
+        for field, tolerance in tolerances.items():
+            entry = paired[key][field]
+            if entry is None:
+                # No seed had both values. The other comparisons still decide.
+                unavailable.append(f"{key} {field}")
+                continue
+            compared += 1
+            assert entry["mean_diff"] >= -tolerance, (
+                f"primary ordering {primary!r} loses to {alt!r} on {field} at {load:g}/h: "
+                f"mean per-seed difference {entry['mean_diff']:.3f} < -{tolerance:g}; "
+                f"primary better in {entry['n_seeds_first_better']} of {entry['n_seeds']} "
+                f"seeds; entry={entry}"
+            )
+    if unavailable:
+        print("note: no seed had both values for " + ", ".join(unavailable))
+    if not compared:
+        pytest.skip("no ordering comparison was available: " + ", ".join(unavailable))
 
 
 # ----------------------------------------------------------------------------- 4. reproducibility
@@ -388,9 +442,7 @@ def test_every_time_metric_is_recomputable_from_the_records() -> None:
         for load in config.loads_per_hour
         for seed in config.sim_seeds
     }
-    saved_scenarios = {
-        (r["strategy"], float(r["load_per_hour"]), int(r["seed"])) for r in rows
-    }
+    saved_scenarios = {(r["strategy"], float(r["load_per_hour"]), int(r["seed"])) for r in rows}
     # Zero-arrival scenarios can have no records; table entries still establish
     # their presence. Every nonempty record scenario must belong to the config.
     assert saved_scenarios <= scenarios, "records contain unexpected scenarios"
@@ -403,7 +455,8 @@ def test_every_time_metric_is_recomputable_from_the_records() -> None:
     for key, block in sim["time_metrics"].items():
         strategy, load = key.split("@")
         subset = [
-            r for r in rows
+            r
+            for r in rows
             if r["strategy"] == strategy and float(r["load_per_hour"]) == float(load)
         ]
         recomputed = time_metrics(JobRecords.from_rows(subset, horizon))
@@ -414,8 +467,10 @@ def test_every_time_metric_is_recomputable_from_the_records() -> None:
             records = JobRecords.from_rows(seed_rows, horizon)
             tm = time_metrics(records)
             table_row = next(
-                r for r in sim["table"]
-                if r["strategy"] == strategy and float(r["load_per_hour"]) == float(load)
+                r
+                for r in sim["table"]
+                if r["strategy"] == strategy
+                and float(r["load_per_hour"]) == float(load)
                 and int(r["seed"]) == seed
             )
             derived = {
@@ -448,19 +503,25 @@ def test_every_time_metric_is_recomputable_from_the_records() -> None:
             )
             busy = np.clip(
                 np.minimum(records.completion_min[records.started], horizon)
-                - records.start_min[records.started], 0.0, None,
+                - records.start_min[records.started],
+                0.0,
+                None,
             ).sum()
             handled_harm = float(records.harm[records.completed].sum())
-            derived.update({
-                "harm_arrived": float(records.harm.sum()),
-                "harm_handled": handled_harm,
-                "harm_per_reviewer_hour": handled_harm / (config.sim.reviewers * horizon / 60),
-                "reviewer_utilization": float(busy / (config.sim.reviewers * horizon)),
-                "queue_depth_p95": float(np.percentile(depth, 95)) if len(depth) else 0.0,
-            })
+            derived.update(
+                {
+                    "harm_arrived": float(records.harm.sum()),
+                    "harm_handled": handled_harm,
+                    "harm_per_reviewer_hour": handled_harm / (config.sim.reviewers * horizon / 60),
+                    "reviewer_utilization": float(busy / (config.sim.reviewers * horizon)),
+                    "queue_depth_p95": float(np.percentile(depth, 95)) if len(depth) else 0.0,
+                }
+            )
             _assert_same(
-                table_row, {"strategy": strategy, "load_per_hour": float(load),
-                            "seed": seed, **derived}, tol, f"{key}/{seed}",
+                table_row,
+                {"strategy": strategy, "load_per_hour": float(load), "seed": seed, **derived},
+                tol,
+                f"{key}/{seed}",
             )
             for column, values in (
                 ("wait_min", records.wait_min),
@@ -468,11 +529,13 @@ def test_every_time_metric_is_recomputable_from_the_records() -> None:
             ):
                 stored = np.array([r[column] for r in seed_rows], dtype=float)
                 assert np.allclose(stored, values, rtol=0.0, atol=tol, equal_nan=True), (
-                    key, seed, column
+                    key,
+                    seed,
+                    column,
                 )
     summary = _summarise(sim["table"])
     _assert_same(sim["summary"], summary, tol, "summary")
-    _assert_same(sim["paired"], _paired(sim["table"]), tol, "paired")
+    _assert_same(sim["paired"], _paired(sim["table"], config.primary_strategy), tol, "paired")
     _assert_same(sim["headline"], _headline(sim["time_metrics"], config), tol, "headline")
 
     def mean(load: float, strategy: str, field: str) -> Any:
@@ -482,7 +545,8 @@ def test_every_time_metric_is_recomputable_from_the_records() -> None:
     def comparison(load: float, field: str) -> dict[str, Any]:
         return {
             "router": mean(load, config.primary_strategy, field),
-            "fifo": mean(load, "fifo", field), "load_per_hour": load,
+            "fifo": mean(load, "fifo", field),
+            "load_per_hour": load,
         }
 
     for field, load in (
@@ -492,18 +556,22 @@ def test_every_time_metric_is_recomputable_from_the_records() -> None:
         _assert_same(sim[field], comparison(load, field), tol, field)
     for field in ("high_risk_handled", "high_risk_arrived"):
         for scenario, load in (
-            ("primary", config.primary_load_per_hour), ("thesis", config.thesis_load_per_hour)
+            ("primary", config.primary_load_per_hour),
+            ("thesis", config.thesis_load_per_hour),
         ):
             _assert_same(sim[field][scenario], comparison(load, field), tol, f"{field}/{scenario}")
     for field in ("completion_ratio", "backlog_end", "queue_depth_p95", "reviewer_utilization"):
         _assert_same(
-            sim[field], mean(config.primary_load_per_hour, config.primary_strategy, field),
-            tol, field,
+            sim[field],
+            mean(config.primary_load_per_hour, config.primary_strategy, field),
+            tol,
+            field,
         )
     _assert_same(
         sim["high_risk_unfinished"],
         mean(config.primary_load_per_hour, config.primary_strategy, "high_risk_unhandled"),
-        tol, "high_risk_unfinished",
+        tol,
+        "high_risk_unfinished",
     )
 
 
@@ -522,9 +590,7 @@ def test_replaying_a_scenario_reproduces_the_saved_records() -> None:
     policy = load_policy(run_dir / "policy.yaml")
     tol = float(GATES["reproducibility"]["float_tolerance"])
     assert GATES["reproducibility"]["scenario"] == {"load": "primary", "seed": "first"}
-    pred = pd.read_csv(
-        run_dir / "predictions.csv", dtype={"id": str}, float_precision="round_trip"
-    )
+    pred = pd.read_csv(run_dir / "predictions.csv", dtype={"id": str}, float_precision="round_trip")
     proba = pred[[f"p_{label}" for label in LABELS]].to_numpy(dtype=float)
     y = pred[[f"y_{label}" for label in LABELS]].to_numpy(dtype=int)
     inputs = queue_inputs(
@@ -536,12 +602,18 @@ def test_replaying_a_scenario_reproduces_the_saved_records() -> None:
     for strategy in dict.fromkeys((config.primary_strategy, "fifo")):
         scenario = draw_scenario(seed, load, len(inputs["queued"]), config.sim)
         result, records = simulate(
-            scenario, inputs["priorities"][strategy], inputs["harm"], inputs["high_risk"],
-            config.sim, strategy,
+            scenario,
+            inputs["priorities"][strategy],
+            inputs["harm"],
+            inputs["high_risk"],
+            config.sim,
+            strategy,
         )
         saved = [
-            r for r in rows
-            if r["strategy"] == strategy and float(r["load_per_hour"]) == load
+            r
+            for r in rows
+            if r["strategy"] == strategy
+            and float(r["load_per_hour"]) == load
             and int(r["seed"]) == seed
         ]
         expected = records.rows(
@@ -549,20 +621,28 @@ def test_replaying_a_scenario_reproduces_the_saved_records() -> None:
         )
         assert len(saved) == len(expected), (strategy, len(saved), len(expected))
         numeric = (
-            "arrival_min", "start_min", "completion_min", "harm", "priority_score",
-            "wait_min", "completion_latency_min",
+            "arrival_min",
+            "start_min",
+            "completion_min",
+            "harm",
+            "priority_score",
+            "wait_min",
+            "completion_latency_min",
         )
         for field in numeric:
             observed = np.array([r[field] for r in saved], dtype=float)
             replayed = np.array([r[field] for r in expected], dtype=float)
             assert np.allclose(observed, replayed, rtol=0.0, atol=tol, equal_nan=True), (
-                strategy, field
+                strategy,
+                field,
             )
         for field in ("job_index", "status", "high_risk", "comment_id"):
             assert [r[field] for r in saved] == [r[field] for r in expected], (strategy, field)
         table_row = next(
-            r for r in report["simulation"]["table"]
-            if r["strategy"] == strategy and float(r["load_per_hour"]) == load
+            r
+            for r in report["simulation"]["table"]
+            if r["strategy"] == strategy
+            and float(r["load_per_hour"]) == load
             and int(r["seed"]) == seed
         )
         _assert_same(
@@ -715,7 +795,6 @@ def test_null_label_floor_does_not_skip_other_configured_labels(
         test_per_label_average_precision()
 
 
-
 @pytest.mark.parametrize("scenario", ["primary", "thesis"])
 def test_high_risk_completions_do_not_fall_below_fifo(scenario: str) -> None:
     """Wait quantiles must not improve by dropping unfinished high-risk work."""
@@ -731,63 +810,167 @@ def test_high_risk_completions_do_not_fall_below_fifo(scenario: str) -> None:
     )
 
 
-
 def test_priority_work_cannot_be_omitted_from_reviewer_capacity(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """Catch the old behavior that simulated only the ordinary review band."""
     path = tmp_path / "report.json"
-    path.write_text(json.dumps({
-        "decision_contract": {
-            "mode": "human_confirmation", "requires_human_confirmation": True,
-            "automatic_actions": 0,
-        },
-        "tiers": {
-            "priority_review": {"n_predicted_positive": 10},
-            "human_review": {"n_predicted_positive": 20},
-            "allow": {"n_predicted_positive": 70},
-        },
-        "review_workload": {
-            "n_total": 100, "n_priority_review": 10, "n_human_review": 20,
-            "n_requires_human_review": 30,
-        },
-        "simulation": {"assumptions": {
-            "queued_jobs": 20, "queue_tiers": ["human_review"],
-        }},
-    }))
+    path.write_text(
+        json.dumps(
+            {
+                "decision_contract": {
+                    "mode": "human_confirmation",
+                    "requires_human_confirmation": True,
+                    "automatic_actions": 0,
+                },
+                "tiers": {
+                    "priority_review": {"n_predicted_positive": 10},
+                    "human_review": {"n_predicted_positive": 20},
+                    "allow": {"n_predicted_positive": 70},
+                },
+                "review_workload": {
+                    "n_total": 100,
+                    "n_priority_review": 10,
+                    "n_human_review": 20,
+                    "n_requires_human_review": 30,
+                },
+                "simulation": {
+                    "assumptions": {
+                        "queued_jobs": 20,
+                        "queue_tiers": ["human_review"],
+                    }
+                },
+            }
+        )
+    )
     monkeypatch.setenv(REPORT_ENV, str(path))
     with pytest.raises(AssertionError):
         test_all_flagged_comments_require_human_capacity()
-
 
 
 def test_faster_waits_do_not_hide_fewer_high_risk_completions(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     path = tmp_path / "report.json"
-    path.write_text(json.dumps({"simulation": {
-        "high_risk_wait_p90": {"router": 1.0, "fifo": 5.0},
-        "high_risk_handled": {"primary": {"router": 8.0, "fifo": 10.0}},
-    }}))
+    path.write_text(
+        json.dumps(
+            {
+                "simulation": {
+                    "high_risk_wait_p90": {"router": 1.0, "fifo": 5.0},
+                    "high_risk_handled": {"primary": {"router": 8.0, "fifo": 10.0}},
+                }
+            }
+        )
+    )
     monkeypatch.setenv(REPORT_ENV, str(path))
     monkeypatch.setitem(GATES["capacity"], "high_risk_handled_vs_fifo_min", 1.0)
     with pytest.raises(AssertionError, match="fewer high-risk"):
         test_high_risk_completions_do_not_fall_below_fifo("primary")
 
 
+_ORDERING_SPEC: dict[str, Any] = {
+    "alternatives": ["fifo"],
+    "high_risk_handled_tolerance": 1.0,
+    "harm_per_reviewer_hour_tolerance": 0.5,
+}
+
+
+def _ordering_report(
+    high_risk_diff: float, harm_diff: float, key: str = "severity_vs_fifo@180"
+) -> dict[str, Any]:
+    """A stipulated paired entry for the ordering gate; not a measurement."""
+
+    def entry(mean_diff: float) -> dict[str, Any]:
+        return {
+            "mean_diff": mean_diff,
+            "min_diff": mean_diff,
+            "max_diff": mean_diff,
+            "n_seeds": 5,
+            "n_seeds_first_better": 0,
+            "n_seeds_tied": 0,
+        }
+
+    return {
+        "simulation": {
+            "primary": {"strategy": "severity", "load_per_hour": 108.0},
+            "thesis": {"strategy": "severity", "load_per_hour": 180.0},
+            "paired": {
+                key: {
+                    "high_risk_handled": entry(high_risk_diff),
+                    "harm_per_reviewer_hour": entry(harm_diff),
+                }
+            },
+        }
+    }
+
+
+def test_ordering_loss_beyond_the_tolerance_fails(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(REPORT_ENV, str(_write_run(tmp_path, _ordering_report(-1.5, 0.0))))
+    monkeypatch.setitem(GATES["capacity"], "ordering_vs_alternatives", _ORDERING_SPEC)
+    with pytest.raises(AssertionError, match="loses to 'fifo' on high_risk_handled"):
+        test_primary_ordering_is_no_worse_than_alternatives()
+
+
+def test_ordering_loss_of_exactly_the_tolerance_passes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(REPORT_ENV, str(_write_run(tmp_path, _ordering_report(-1.0, -0.5))))
+    monkeypatch.setitem(GATES["capacity"], "ordering_vs_alternatives", _ORDERING_SPEC)
+    test_primary_ordering_is_no_worse_than_alternatives()
+
+
+def test_missing_ordering_pair_fails_instead_of_raising_key_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    report = _ordering_report(0.0, 0.0, key="priority_vs_fifo@180")
+    monkeypatch.setenv(REPORT_ENV, str(_write_run(tmp_path, report)))
+    monkeypatch.setitem(GATES["capacity"], "ordering_vs_alternatives", _ORDERING_SPEC)
+    with pytest.raises(pytest.fail.Exception, match="no 'severity_vs_fifo@180' entry"):
+        test_primary_ordering_is_no_worse_than_alternatives()
+
+
+def test_unavailable_ordering_comparison_does_not_hide_a_loss(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    report = _ordering_report(0.0, -1.0)
+    report["simulation"]["paired"]["severity_vs_fifo@180"]["high_risk_handled"] = None
+    monkeypatch.setenv(REPORT_ENV, str(_write_run(tmp_path, report)))
+    monkeypatch.setitem(GATES["capacity"], "ordering_vs_alternatives", _ORDERING_SPEC)
+    with pytest.raises(AssertionError, match="loses to 'fifo' on harm_per_reviewer_hour"):
+        test_primary_ordering_is_no_worse_than_alternatives()
+
+
+def test_ordering_gate_skips_only_when_no_comparison_is_available(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    report = _ordering_report(0.0, 0.0)
+    entry = report["simulation"]["paired"]["severity_vs_fifo@180"]
+    entry["high_risk_handled"] = entry["harm_per_reviewer_hour"] = None
+    monkeypatch.setenv(REPORT_ENV, str(_write_run(tmp_path, report)))
+    monkeypatch.setitem(GATES["capacity"], "ordering_vs_alternatives", _ORDERING_SPEC)
+    with pytest.raises(pytest.skip.Exception, match="no ordering comparison was available"):
+        test_primary_ordering_is_no_worse_than_alternatives()
+
 
 def test_positive_wait_cannot_skip_against_zero_fifo_wait(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     path = tmp_path / "report.json"
-    path.write_text(json.dumps({"simulation": {
-        "high_risk_wait_p90": {"router": 1.0, "fifo": 0.0},
-    }}))
+    path.write_text(
+        json.dumps(
+            {
+                "simulation": {
+                    "high_risk_wait_p90": {"router": 1.0, "fifo": 0.0},
+                }
+            }
+        )
+    )
     monkeypatch.setenv(REPORT_ENV, str(path))
     monkeypatch.setitem(GATES["capacity"], "high_risk_wait_p90_vs_fifo_max", 1.0)
     with pytest.raises(AssertionError, match="no longer reaches"):
         test_router_reaches_high_risk_earlier_than_fifo()
-
 
 
 @pytest.mark.parametrize(
@@ -813,7 +996,6 @@ def test_discovery_disparity_gate_distinguishes_evidence_from_uncertainty(
         _check_discovery_rate_ratio(section, 1.25, 30)
 
 
-
 def test_discovery_disparity_gate_does_not_pass_small_samples() -> None:
     section = {
         "with_identity_term": {"n_predicted_positive": 5},
@@ -825,7 +1007,6 @@ def test_discovery_disparity_gate_does_not_pass_small_samples() -> None:
         _check_discovery_rate_ratio(section, 1.25, 30)
 
 
-
 def test_discovery_disparity_gate_rejects_nonfinite_interval() -> None:
     section = {
         "with_identity_term": {"n_predicted_positive": 100},
@@ -835,7 +1016,6 @@ def test_discovery_disparity_gate_rejects_nonfinite_interval() -> None:
     }
     with pytest.raises(pytest.fail.Exception, match="invalid subgroup FDR ratio interval"):
         _check_discovery_rate_ratio(section, 1.25, 30)
-
 
 
 @pytest.mark.parametrize("snapshot", ["policy.yaml", "config.yaml"])
@@ -873,8 +1053,13 @@ def test_real_evaluation_rejects_synthetic_or_unpinned_data(
 
 @pytest.mark.parametrize(
     "contents",
-    ["", "invalid train.csv\n", "0" * 64 + " train.csv\n", "0" * 64 + " ../train.csv\n",
-     ("0" * 64 + " train.csv\n") * 2],
+    [
+        "",
+        "invalid train.csv\n",
+        "0" * 64 + " train.csv\n",
+        "0" * 64 + " ../train.csv\n",
+        ("0" * 64 + " train.csv\n") * 2,
+    ],
 )
 def test_incomplete_or_malformed_corpus_pins_are_rejected(tmp_path: Path, contents: str) -> None:
     from scripts.verify_data import load_pins
@@ -888,12 +1073,15 @@ def test_incomplete_or_malformed_corpus_pins_are_rejected(tmp_path: Path, conten
 def test_wait_p50_gate_ignores_configurable_headline(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    report = {"simulation": {
-        "completion_ratio": 1.0, "backlog_end": 0,
-        "primary": {"strategy": "priority", "load_per_hour": 108.0},
-        "time_metrics": {"priority@108": {"pooled_over_seeds": {"wait": {"p50": 2.0}}}},
-        "headline": {"metric": "completion_latency", "selected": {"router": 0.0}},
-    }}
+    report = {
+        "simulation": {
+            "completion_ratio": 1.0,
+            "backlog_end": 0,
+            "primary": {"strategy": "priority", "load_per_hour": 108.0},
+            "time_metrics": {"priority@108": {"pooled_over_seeds": {"wait": {"p50": 2.0}}}},
+            "headline": {"metric": "completion_latency", "selected": {"router": 0.0}},
+        }
+    }
     monkeypatch.setenv(REPORT_ENV, str(_write_run(tmp_path, report)))
     monkeypatch.setitem(GATES["capacity"], "wait_p50_max_min", 1.0)
     with pytest.raises(AssertionError, match="pooled primary wait p50 degraded"):
