@@ -124,6 +124,41 @@ def test_report_uses_the_pinned_real_corpus_when_required() -> None:
     assert _manifest().get("data_sha256") == expected, "report used an unpinned corpus"
 
 
+def test_report_reuses_the_configured_frozen_model() -> None:
+    """A referenced lock can change without changing the YAML config's hash."""
+    from review_router.frozen import read_lock
+    from review_router.pipeline import load_config
+
+    manifest = _manifest()
+    recorded = Path(str(manifest.get("config_path", "")))
+    requested = os.environ.get(CONFIG_ENV)
+    candidates = [Path(requested)] if requested else [recorded, ROOT / "configs" / recorded.name]
+    current = next((candidate for candidate in candidates if candidate.is_file()), None)
+    assert current is not None, f"config {recorded} named by the manifest is missing"
+    lock_path = load_config(current).frozen_model
+    if lock_path is None:
+        return
+    if manifest.get("execution_mode") == "train" and manifest.get("explicit_retrain") is True:
+        return
+    assert manifest.get("execution_mode") == "frozen_model", (
+        "a frozen-model config requires frozen execution or explicit retraining"
+    )
+    source = manifest.get("model_source")
+    assert isinstance(source, dict), "frozen model provenance is missing"
+    assert lock_path.is_file(), f"configured frozen model lock is missing: {lock_path}"
+    lock_sha = _sha256(lock_path)
+    assert source.get("lock_sha256") == lock_sha, "current frozen model lock differs from manifest"
+    saved_lock = _run_dir() / "frozen-model.json"
+    assert saved_lock.is_file(), "saved frozen model lock is missing"
+    assert _sha256(saved_lock) == lock_sha, "saved frozen model lock differs from manifest"
+    lock = read_lock(saved_lock)
+    model_sha = lock["files"]["model.pkl"]
+    assert source.get("model_sha256") == model_sha, "model provenance differs from frozen lock"
+    saved_model = _run_dir() / "model.pkl"
+    assert saved_model.is_file(), "saved frozen model is missing"
+    assert _sha256(saved_model) == model_sha, "saved model differs from frozen lock"
+
+
 def test_report_comes_from_a_clean_checkout_when_required() -> None:
     """In the real-evaluation workflow the report must match the commit under test."""
     if not os.environ.get(REQUIRE_CLEAN_ENV):
@@ -748,6 +783,102 @@ def test_report_made_with_another_config_fails(
     monkeypatch.delenv(CONFIG_ENV, raising=False)
     with pytest.raises(AssertionError, match="different baseline.yaml"):
         test_report_was_made_with_the_current_policy_and_config()
+
+
+@pytest.fixture
+def frozen_gate_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """Minimal provenance fixture; the gate never deserializes the model."""
+    import yaml
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    model = run_dir / "model.pkl"
+    model.write_bytes(b"frozen scorer fixture")
+    lock = {
+        "version": 1,
+        "files": {"model.pkl": _sha256(model), "manifest.json": "1" * 64, "splits.csv": "2" * 64},
+    }
+    lock_path = tmp_path / "frozen-baseline.json"
+    lock_path.write_text(json.dumps(lock))
+    (run_dir / "frozen-model.json").write_bytes(lock_path.read_bytes())
+    settings = yaml.safe_load((ROOT / "configs" / "smoke.yaml").read_text())
+    settings["frozen_model"] = str(lock_path)
+    config = tmp_path / "baseline.yaml"
+    config.write_text(yaml.safe_dump(settings))
+    (run_dir / "config.yaml").write_bytes(config.read_bytes())
+    manifest = {
+        "config_path": str(config),
+        "execution_mode": "frozen_model",
+        "model_source": {"lock_sha256": _sha256(lock_path), "model_sha256": _sha256(model)},
+    }
+    monkeypatch.setenv(REPORT_ENV, str(_write_run(run_dir, {}, manifest)))
+    monkeypatch.setenv(CONFIG_ENV, str(config))
+    return run_dir
+
+
+def test_frozen_model_gate_accepts_matching_artifacts(frozen_gate_run: Path) -> None:
+    test_report_reuses_the_configured_frozen_model()
+
+
+@pytest.mark.parametrize(
+    "mutation, message",
+    [
+        ("current_lock", "current frozen model lock differs"),
+        ("saved_lock", "saved frozen model lock differs"),
+        ("missing_lock", "saved frozen model lock is missing"),
+        ("model", "saved model differs"),
+        ("missing_model", "saved frozen model is missing"),
+        ("source_model", "model provenance differs"),
+        ("missing_source", "frozen model provenance is missing"),
+        ("implicit_train", "requires frozen execution or explicit retraining"),
+        ("string_retrain", "requires frozen execution or explicit retraining"),
+    ],
+)
+def test_frozen_model_gate_rejects_mutations(
+    frozen_gate_run: Path, mutation: str, message: str
+) -> None:
+    manifest_path = frozen_gate_run / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    if mutation == "current_lock":
+        path = frozen_gate_run.parent / "frozen-baseline.json"
+        path.write_text(path.read_text() + "\n")
+    elif mutation == "saved_lock":
+        path = frozen_gate_run / "frozen-model.json"
+        path.write_text(path.read_text() + "\n")
+    elif mutation == "missing_lock":
+        (frozen_gate_run / "frozen-model.json").unlink()
+    elif mutation == "model":
+        (frozen_gate_run / "model.pkl").write_bytes(b"different scorer")
+    elif mutation == "missing_model":
+        (frozen_gate_run / "model.pkl").unlink()
+    elif mutation == "source_model":
+        manifest["model_source"]["model_sha256"] = "0" * 64
+    elif mutation == "missing_source":
+        manifest.pop("model_source")
+    else:
+        manifest["execution_mode"] = "train"
+        if mutation == "string_retrain":
+            manifest["explicit_retrain"] = "true"
+    manifest_path.write_text(json.dumps(manifest))
+    with pytest.raises(AssertionError, match=message):
+        test_report_reuses_the_configured_frozen_model()
+
+
+def test_frozen_model_gate_accepts_explicit_retraining(frozen_gate_run: Path) -> None:
+    manifest_path = frozen_gate_run / "manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(execution_mode="train", explicit_retrain=True)
+    manifest.pop("model_source")
+    manifest_path.write_text(json.dumps(manifest))
+    (frozen_gate_run / "frozen-model.json").unlink()
+    test_report_reuses_the_configured_frozen_model()
+
+
+def test_frozen_model_gate_leaves_unfrozen_configs_usable(
+    frozen_gate_run: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(CONFIG_ENV, str(ROOT / "configs" / "smoke.yaml"))
+    test_report_reuses_the_configured_frozen_model()
 
 
 def test_dirty_or_foreign_commit_fails_when_clean_is_required(

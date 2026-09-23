@@ -7,6 +7,7 @@ evaluate_test: false
 data_dir: data/jigsaw          # train.csv, test.csv, test_labels.csv (official Jigsaw 2018)
 output_dir: reports
 seed: 20260922
+frozen_model: configs/frozen-baseline.json  # fixed vocabulary, classifier and Platt parameters
 
 split:                          # of train.csv; scored test rows are held out entirely
   train: 0.6                    # TF-IDF vocabulary + six logistic heads

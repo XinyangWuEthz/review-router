@@ -1,6 +1,9 @@
-"""One-command experiment: data -> model -> thresholds -> routing -> queue simulation -> report.
+"""Router experiment: data -> frozen scorer -> thresholds -> routing -> queue -> report.
 
     python scripts/run_pipeline.py --config configs/baseline.yaml
+
+Baseline and development configs load a pinned scorer. --retrain is a separate
+full-training check; configs without a frozen_model, such as smoke, train normally.
 
 Every run writes a self-describing directory under the configured output dir:
 manifest.json (data hashes, split counts, commit, dependency versions, seeds),
@@ -29,6 +32,7 @@ from sklearn.metrics import average_precision_score
 from review_router import __version__
 from review_router.agreement import agreement_report, oov_share
 from review_router.data import LABELS, Corpus, label_counts, load_corpus
+from review_router.frozen import load_frozen_model
 from review_router.metrics import per_label_metrics, tier_metrics, wilson_interval
 from review_router.model import ModelConfig, TfidfLogitModel
 from review_router.policy import DEFAULT_POLICY_PATH, Policy, load_policy
@@ -89,6 +93,7 @@ class RunConfig:
     # False stops a run after the development sections: the scored test rows
     # are never scored. For iterating on orderings and threshold rules.
     evaluate_test: bool = True
+    frozen_model: Path | None = None
 
 
 def load_config(path: Path) -> RunConfig:
@@ -151,6 +156,7 @@ def load_config(path: Path) -> RunConfig:
         headline_metric=headline_metric,
         headline_percentile=headline_percentile,
         evaluate_test=evaluate_test,
+        frozen_model=resolve(str(raw["frozen_model"])) if raw.get("frozen_model") else None,
     )
 
 
@@ -1924,25 +1930,39 @@ def _prepare_run(
     return run_dir, manifest
 
 
-def run(config_path: Path) -> Path:
+def run(config_path: Path, *, retrain: bool = False) -> Path:
     config_path = config_path.resolve()
     config = load_config(config_path)
     policy = load_policy(config.policy_path)
     if policy.decision_mode != "human_confirmation":
         raise ValueError("the current pipeline requires a human_confirmation policy")
     corpus = load_corpus(config.data_dir, config.split_fractions, config.seed)
-    # Start provenance before training, so the run duration still includes fit/calibration.
+    model_artifact = None
+    source = None
+    if config.frozen_model is not None and not retrain:
+        model, model_artifact, source = load_frozen_model(
+            config.frozen_model, corpus, config.model, config.seed, config.split_fractions
+        )
+    # Invalid frozen inputs fail before creating an evaluation directory.
     run_dir, manifest = _prepare_run(config_path, config, corpus, policy)
+    manifest["execution_mode"] = "frozen_model" if source is not None else "train"
+    if source is not None:
+        manifest["model_source"] = source
+        assert config.frozen_model is not None
+        shutil.copyfile(config.frozen_model, run_dir / "frozen-model.json")
+    elif retrain:
+        manifest["explicit_retrain"] = True
 
     def part(name: str) -> tuple[list[str], np.ndarray]:
         frame = corpus.train[corpus.train["split"] == name]
         return frame["comment_text"].astype(str).tolist(), frame[list(LABELS)].to_numpy(dtype=int)
 
-    x_train, y_train = part("train")
     x_calib, y_calib = part("calib")
     x_thresh, _ = part("thresh")
-    model = TfidfLogitModel(config.model).fit(x_train, y_train, config.seed)
-    model.calibrate(x_calib, y_calib)
+    if source is None:
+        x_train, y_train = part("train")
+        model = TfidfLogitModel(config.model).fit(x_train, y_train, config.seed)
+        model.calibrate(x_calib, y_calib)
     # The calibration split is in-sample for the Platt fit; its agreement
     # table is reported next to the selection split's, never used to select.
     p_calib = model.predict_proba(x_calib)
@@ -1954,7 +1974,16 @@ def run(config_path: Path) -> Path:
         else None
     )
     return _evaluate_scores(
-        config, corpus, p_thresh, p_test, policy, run_dir, manifest, model=model, p_calib=p_calib
+        config,
+        corpus,
+        p_thresh,
+        p_test,
+        policy,
+        run_dir,
+        manifest,
+        model=model,
+        p_calib=p_calib,
+        model_artifact=model_artifact,
     )
 
 
@@ -2064,6 +2093,7 @@ def _evaluate_scores(
     *,
     model: Any,
     p_calib: np.ndarray | None = None,
+    model_artifact: Path | None = None,
 ) -> Path:
     """Select thresholds on the selection split, then evaluate the scored test rows.
 
@@ -2093,7 +2123,9 @@ def _evaluate_scores(
     )
     selection_routing = _route(p_thresh, y_thresh, identity_thresh, thresholds, policy)
     (run_dir / "thresholds.json").write_text(json.dumps(thresholds.as_json(), indent=2))
-    if model is not None:
+    if model_artifact is not None:
+        shutil.copyfile(model_artifact, run_dir / "model.pkl")
+    elif model is not None:
         with (run_dir / "model.pkl").open("wb") as handle:
             pickle.dump(model, handle)
 

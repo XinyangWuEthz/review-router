@@ -84,9 +84,14 @@ of the protocol is a line in `configs/baseline.yaml` or
 `review_router/policy.yaml`, and the pipeline module docstring walks the stages.
 
 ```bash
-pip install -e ".[ml,dev]"
+pip install -c configs/frozen-ml.txt -e ".[ml,dev]"
 # Put the official Jigsaw 2018 files in data/jigsaw/: train.csv, test.csv, test_labels.csv
 # (Kaggle: jigsaw-toxic-comment-classification-challenge; the corpus is not redistributed here.)
+# One-time restore from the saved, accepted CI run:
+gh run download 35857528118 --repo XinyangWuEthz/review-router \
+  --name evaluation-210d9857220b23d175d4aff5a54ab221ad86280b \
+  --dir reports/ci-35857528118
+python scripts/restore_frozen_model.py --source-run reports/ci-35857528118
 python scripts/run_pipeline.py --config configs/baseline.yaml
 ```
 
@@ -113,19 +118,46 @@ One run writes `reports/<run_id>/` with:
 | `predictions.csv` | one row per scored test comment: labels, calibrated probabilities, model tier, matched rules, final tier and human-review requirement |
 | `simulation_jobs.csv` | every simulated arrival, with strategy, seed, times, status, risk and routing reason |
 | `model.pkl` | fitted TF-IDF vocabulary, classifiers and calibrators |
+| `frozen-model.json` | scorer lock snapshot for frozen runs; its hash and source training commit are in the manifest |
 | `report.json` | decision contract, total review workload, per-label and tier quality with Wilson intervals, subgroup diagnostics, rule effects, four-strategy simulation |
 | `report.md` | the same, as tables |
 
-The pipeline is: TF-IDF + six logistic heads fitted on `train`, Platt-calibrated
-on `calib`, tier thresholds chosen on `thresh` from the precision floors in
-`policy.yaml`, rules applied with priority, then a fixed-capacity review queue
+The scorer is frozen from the accepted run at commit `210d9857220b`. Its word
+vocabulary, IDF, six logistic heads and Platt calibration parameters are reused
+without fitting. `configs/frozen-baseline.json` pins the model, source manifest,
+split assignments and model implementation. Both baseline and development runs
+reject changed data, model settings, splits or incompatible ML dependencies;
+missing artifacts never trigger training. Each report records the original
+training commit separately from the current router commit and copies the exact
+model bytes. The current project studies the router on top of this fixed scorer.
+The [freeze record](record/frozen-router.md) documents the real-data replay and
+its numerical limits.
+
+Keep `models/frozen-baseline/` backed up: GitHub Actions artifacts have limited
+retention, and its cache is not permanent storage. The restore command can use
+any saved copy whose files match the lock. CI uses the frozen scorer by default.
+Freezing prevents vocabulary-cap tie selection from changing router inputs.
+It does not fix the underlying full-training reproducibility issue. Minor
+floating-point inference differences can still occur across platforms. Use the
+saved predictions for exact score reuse in queue comparisons, and the shared
+incoming stream when admission rules change.
+
+Full-training checks are explicit and do not replace the pinned model:
+
+```bash
+python scripts/run_pipeline.py --config configs/baseline.yaml --retrain
+```
+
+The original scorer was fitted on `train` and Platt-calibrated on `calib`.
+Router iterations still choose tier thresholds on `thresh` from the targets in
+`policy.yaml`, apply rules, then simulate a fixed-capacity review queue
 (4 reviewers, 2 min per item, 8 h, loads of 60 / 108 / 180 per hour, 5 seeds)
 replayed under FIFO, probability, severity and priority-band ordering. Every
 strategy sees the identical arrivals. Model fitting, calibration and threshold
 selection use separate portions of the training data. The scored test set has
 now been inspected across several policy iterations, so these results are an
 iterative benchmark rather than a fresh, untouched final evaluation. Further
-model and threshold selection should use development data, with new held-out
+threshold selection should use development data, with new held-out
 data needed for an independent confirmation.
 
 The 90% and 95% targets select thresholds independently for each label.
