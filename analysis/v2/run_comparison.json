@@ -1,0 +1,1187 @@
+{
+  "runs": [
+    {
+      "run": "20260923T074244236943Z-human-review-baseline",
+      "label": "human-review-baseline",
+      "model": {
+        "max_features": 200000,
+        "ngram_max": 2,
+        "min_df": 3,
+        "C": 4.0,
+        "max_iter": 1000,
+        "analyzer": "word",
+        "char_ngram_min": 2,
+        "char_ngram_max": 5,
+        "char_max_features": 300000
+      },
+      "git_commit": "01897e4549194cc8322dba83671d912e8fe5e5ba",
+      "git_dirty": false,
+      "tiers": {
+        "priority_review": {
+          "test_precision": 0.7625945945945946,
+          "test_precision_ci95": [
+            0.7501171690329096,
+            0.7746361675367648
+          ],
+          "test_n_predicted_positive": 4625,
+          "test_coverage": 0.07229047485072994,
+          "selection_precision": 0.9723587223587223,
+          "selection_n_predicted_positive": 1628
+        },
+        "human_review": {
+          "test_precision": 0.41899109792284867,
+          "test_precision_ci95": [
+            0.3956432577233725,
+            0.4427074657478304
+          ],
+          "test_n_predicted_positive": 1685,
+          "test_coverage": 0.026337178405076746,
+          "selection_precision": 0.7973568281938326,
+          "selection_n_predicted_positive": 454
+        }
+      },
+      "per_label": {
+        "toxic": {
+          "average_precision": 0.752184951704409,
+          "roc_auc": 0.9569541029799007
+        },
+        "severe_toxic": {
+          "average_precision": 0.31126081415093715,
+          "roc_auc": 0.981912884414067
+        },
+        "obscene": {
+          "average_precision": 0.7733891183021634,
+          "roc_auc": 0.971524362084933
+        },
+        "threat": {
+          "average_precision": 0.45797903621474007,
+          "roc_auc": 0.9917297028570469
+        },
+        "insult": {
+          "average_precision": 0.6960639271574238,
+          "roc_auc": 0.9654037029086796
+        },
+        "identity_hate": {
+          "average_precision": 0.480036045041327,
+          "roc_auc": 0.9739788700251516
+        }
+      },
+      "review_workload": {
+        "n_total": 63978,
+        "n_requires_human_review": 6310,
+        "n_priority_review": 4625,
+        "n_human_review": 1685,
+        "review_fraction": 0.09862765325580668,
+        "n_truly_positive": 4233,
+        "precision": 0.6708399366085579,
+        "precision_ci95": [
+          0.659144705155756,
+          0.6823272836550001
+        ]
+      },
+      "recall": {
+        "top_tier": "priority_review",
+        "flagged": {
+          "k": 6310,
+          "n": 63978
+        },
+        "positives_flagged": {
+          "k": 4233,
+          "n": 6243,
+          "share": 0.6780394041326285
+        },
+        "positives_in_top": {
+          "k": 3527,
+          "n": 6243,
+          "share": 0.5649527470767259
+        },
+        "high_risk_flagged": {
+          "k": 916,
+          "n": 1080,
+          "share": 0.8481481481481481
+        },
+        "high_risk_in_top": {
+          "k": 838,
+          "n": 1080,
+          "share": 0.7759259259259259
+        },
+        "high_risk_in_allow": {
+          "k": 164,
+          "n": 1080,
+          "share": 0.15185185185185185
+        },
+        "harm_total": 15736.0,
+        "harm_flagged": 11886.0
+      },
+      "queue_equal_review_load": {
+        "router_strategy": "priority",
+        "assumption": "post-admission review demand, not all incoming comments",
+        "queue_fraction": 0.09862765325580668,
+        "by_load": {
+          "fifo@60": {
+            "harm_per_reviewer_hour": {
+              "mean": 27.66875,
+              "std": 3.4772474746557798
+            },
+            "high_risk_handled": {
+              "mean": 66.6,
+              "std": 13.52922762023021
+            },
+            "high_risk_unhandled": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "high_risk_wait_p90": {
+              "mean": 0.2610311468147634,
+              "std": 0.09866686500636346
+            },
+            "completion_ratio": {
+              "mean": 0.9959142142714512,
+              "std": 0.004082943871166383
+            },
+            "backlog_end": {
+              "mean": 0.4,
+              "std": 0.8000000000000002
+            }
+          },
+          "priority@60": {
+            "harm_per_reviewer_hour": {
+              "mean": 27.66875,
+              "std": 3.4772474746557798
+            },
+            "high_risk_handled": {
+              "mean": 66.6,
+              "std": 13.52922762023021
+            },
+            "high_risk_unhandled": {
+              "mean": 0.0,
+              "std": 0.0
+            },
+            "high_risk_wait_p90": {
+              "mean": 0.1850333972718142,
+              "std": 0.09209303758416616
+            },
+            "completion_ratio": {
+              "mean": 0.9959142142714512,
+              "std": 0.004082943871166383
+            },
+            "backlog_end": {
+              "mean": 0.4,
+              "std": 0.8000000000000002
+            }
+          },
+          "fifo@108": {
+            "harm_per_reviewer_hour": {
+              "mean": 50.4125,
+              "std": 3.455995695888524
+            },
+            "high_risk_handled": {
+              "mean": 123.4,
+              "std": 17.670314088889306
+            },
+            "high_risk_unhandled": {
+              "mean": 0.4,
+              "std": 0.48989794855663565
+            },
+            "high_risk_wait_p90": {
+              "mean": 5.6038938899473845,
+              "std": 1.9884627946570457
+            },
+            "completion_ratio": {
+              "mean": 0.994271372623818,
+              "std": 0.002060062206193563
+            },
+            "backlog_end": {
+              "mean": 1.2,
+              "std": 1.5999999999999999
+            }
+          },
+          "priority@108": {
+            "harm_per_reviewer_hour": {
+              "mean": 50.46875,
+              "std": 3.399620842829388
+            },
+            "high_risk_handled": {
+              "mean": 123.6,
+              "std": 17.442476888332116
+            },
+            "high_risk_unhandled": {
+              "mean": 0.2,
+              "std": 0.4
+            },
+            "high_risk_wait_p90": {
+              "mean": 1.0579462700523024,
+              "std": 0.08435844668035268
+            },
+            "completion_ratio": {
+              "mean": 0.994271372623818,
+              "std": 0.002060062206193563
+            },
+            "backlog_end": {
+              "mean": 1.2,
+              "std": 1.5999999999999999
+            }
+          },
+          "fifo@180": {
+            "harm_per_reviewer_hour": {
+              "mean": 56.0875,
+              "std": 1.2777238062273082
+            },
+            "high_risk_handled": {
+              "mean": 137.6,
+              "std": 3.0066592756745814
+            },
+            "high_risk_unhandled": {
+              "mean": 69.4,
+              "std": 8.63944442658207
+            },
+            "high_risk_wait_p90": {
+              "mean": 138.93568650526217,
+              "std": 9.437340086326076
+            },
+            "completion_ratio": {
+              "mean": 0.6709026783635214,
+              "std": 0.018797071090613824
+            },
+            "backlog_end": {
+              "mean": 464.8,
+              "std": 41.498915648484115
+            }
+          },
+          "priority@180": {
+            "harm_per_reviewer_hour": {
+              "mean": 70.24375,
+              "std": 1.7087093082206815
+            },
+            "high_risk_handled": {
+              "mean": 184.2,
+              "std": 5.635601121442148
+            },
+            "high_risk_unhandled": {
+              "mean": 22.8,
+              "std": 5.344155686354955
+            },
+            "high_risk_wait_p90": {
+              "mean": 1.6255596529913752,
+              "std": 0.3117537034948911
+            },
+            "completion_ratio": {
+              "mean": 0.6709026783635214,
+              "std": 0.018797071090613824
+            },
+            "backlog_end": {
+              "mean": 464.8,
+              "std": 41.498915648484115
+            }
+          }
+        },
+        "headline": {
+          "metric": "wait",
+          "percentile": 50,
+          "load_per_hour": 108.0,
+          "router_strategy": "priority",
+          "population": "jobs that started, including in-progress reviews; pooled over seeds; populations may differ by strategy; read with completion and unfinished counts",
+          "selected": {
+            "router": 0.39927141864706783,
+            "fifo": 1.4173549491476933,
+            "n_router": 4356,
+            "n_fifo": 4356,
+            "absolute_difference_min": 1.0180835305006255,
+            "reduction": 0.7182982153573005
+          },
+          "supplementary_high_risk": {
+            "note": "reported alongside, never a substitute for the selected metric",
+            "wait_p90": {
+              "router": 1.0453785398163267,
+              "fifo": 5.9319116631549464,
+              "n_router": 619,
+              "n_fifo": 619,
+              "absolute_difference_min": 4.886533123338619,
+              "reduction": 0.8237703797395507,
+              "percentile": 90
+            }
+          }
+        }
+      }
+    },
+    {
+      "run": "20260923T074315427980Z-word-char",
+      "label": "word-char",
+      "model": {
+        "max_features": 200000,
+        "ngram_max": 2,
+        "min_df": 3,
+        "C": 4.0,
+        "max_iter": 1000,
+        "analyzer": "word+char_wb",
+        "char_ngram_min": 2,
+        "char_ngram_max": 5,
+        "char_max_features": 300000
+      },
+      "git_commit": "01897e4549194cc8322dba83671d912e8fe5e5ba",
+      "git_dirty": false,
+      "tiers": {
+        "priority_review": {
+          "test_precision": 0.7564612326043738,
+          "test_precision_ci95": [
+            0.7444068805686201,
+            0.7681241598057367
+          ],
+          "test_n_predicted_positive": 5030,
+          "test_coverage": 0.07862077589171278,
+          "selection_precision": 0.9720479178551056,
+          "selection_n_predicted_positive": 1753
+        },
+        "human_review": {
+          "test_precision": 0.38681531749878817,
+          "test_precision_ci95": [
+            0.3660283677716387,
+            0.40802300032276284
+          ],
+          "test_n_predicted_positive": 2063,
+          "test_coverage": 0.03224545937666073,
+          "selection_precision": 0.7936507936507936,
+          "selection_n_predicted_positive": 504
+        }
+      },
+      "per_label": {
+        "toxic": {
+          "average_precision": 0.7797458430663513,
+          "roc_auc": 0.9641197817812052
+        },
+        "severe_toxic": {
+          "average_precision": 0.319034948534027,
+          "roc_auc": 0.9845772394600234
+        },
+        "obscene": {
+          "average_precision": 0.7962028882748183,
+          "roc_auc": 0.9777053131077155
+        },
+        "threat": {
+          "average_precision": 0.5037053192483367,
+          "roc_auc": 0.9929769494792097
+        },
+        "insult": {
+          "average_precision": 0.7313732964127642,
+          "roc_auc": 0.9714118536100609
+        },
+        "identity_hate": {
+          "average_precision": 0.5617938605235346,
+          "roc_auc": 0.9836692729857919
+        }
+      },
+      "review_workload": {
+        "n_total": 63978,
+        "n_requires_human_review": 7093,
+        "n_priority_review": 5030,
+        "n_human_review": 2063,
+        "review_fraction": 0.1108662352683735,
+        "n_truly_positive": 4603,
+        "precision": 0.6489496686874383,
+        "precision_ci95": [
+          0.6377640786146096,
+          0.6599740084263092
+        ]
+      },
+      "recall": {
+        "top_tier": "priority_review",
+        "flagged": {
+          "k": 7093,
+          "n": 63978
+        },
+        "positives_flagged": {
+          "k": 4603,
+          "n": 6243,
+          "share": 0.7373057824763736
+        },
+        "positives_in_top": {
+          "k": 3805,
+          "n": 6243,
+          "share": 0.6094826205349992
+        },
+        "high_risk_flagged": {
+          "k": 958,
+          "n": 1080,
+          "share": 0.8870370370370371
+        },
+        "high_risk_in_top": {
+          "k": 874,
+          "n": 1080,
+          "share": 0.8092592592592592
+        },
+        "high_risk_in_allow": {
+          "k": 122,
+          "n": 1080,
+          "share": 0.11296296296296296
+        },
+        "harm_total": 15736.0,
+        "harm_flagged": 12711.0
+      },
+      "queue_equal_review_load": {
+        "router_strategy": "priority",
+        "assumption": "post-admission review demand, not all incoming comments",
+        "queue_fraction": 0.1108662352683735,
+        "by_load": {
+          "fifo@60": {
+            "harm_per_reviewer_hour": {
+              "mean": 26.05,
+              "std": 0.6796713360146946
+            },
+            "high_risk_handled": {
+              "mean": 63.0,
+              "std": 2.0
+            },
+            "high_risk_unhandled": {
+              "mean": 0.4,
+              "std": 0.48989794855663565
+            },
+            "high_risk_wait_p90": {
+              "mean": 0.3718292903473327,
+              "std": 0.1383451025023771
+            },
+            "completion_ratio": {
+              "mean": 0.9959142142714512,
+              "std": 0.004082943871166383
+            },
+            "backlog_end": {
+              "mean": 0.4,
+              "std": 0.8000000000000002
+            }
+          },
+          "priority@60": {
+            "harm_per_reviewer_hour": {
+              "mean": 26.05,
+              "std": 0.6796713360146946
+            },
+            "high_risk_handled": {
+              "mean": 63.0,
+              "std": 2.0
+            },
+            "high_risk_unhandled": {
+              "mean": 0.4,
+              "std": 0.48989794855663565
+            },
+            "high_risk_wait_p90": {
+              "mean": 0.24345803361856228,
+              "std": 0.12360636524080595
+            },
+            "completion_ratio": {
+              "mean": 0.9959142142714512,
+              "std": 0.004082943871166383
+            },
+            "backlog_end": {
+              "mean": 0.4,
+              "std": 0.8000000000000002
+            }
+          },
+          "fifo@108": {
+            "harm_per_reviewer_hour": {
+              "mean": 48.2125,
+              "std": 2.3421577925067303
+            },
+            "high_risk_handled": {
+              "mean": 118.6,
+              "std": 13.720058308913996
+            },
+            "high_risk_unhandled": {
+              "mean": 0.4,
+              "std": 0.48989794855663565
+            },
+            "high_risk_wait_p90": {
+              "mean": 5.8823339568174795,
+              "std": 3.0664270271330474
+            },
+            "completion_ratio": {
+              "mean": 0.994271372623818,
+              "std": 0.002060062206193563
+            },
+            "backlog_end": {
+              "mean": 1.2,
+              "std": 1.5999999999999999
+            }
+          },
+          "priority@108": {
+            "harm_per_reviewer_hour": {
+              "mean": 48.2625,
+              "std": 2.3616896758465113
+            },
+            "high_risk_handled": {
+              "mean": 118.8,
+              "std": 13.891004283348272
+            },
+            "high_risk_unhandled": {
+              "mean": 0.2,
+              "std": 0.4
+            },
+            "high_risk_wait_p90": {
+              "mean": 1.2948558807583659,
+              "std": 0.39912045902326165
+            },
+            "completion_ratio": {
+              "mean": 0.994271372623818,
+              "std": 0.002060062206193563
+            },
+            "backlog_end": {
+              "mean": 1.2,
+              "std": 1.5999999999999999
+            }
+          },
+          "fifo@180": {
+            "harm_per_reviewer_hour": {
+              "mean": 53.925,
+              "std": 3.364950315383572
+            },
+            "high_risk_handled": {
+              "mean": 128.4,
+              "std": 17.10672382427448
+            },
+            "high_risk_unhandled": {
+              "mean": 63.4,
+              "std": 6.086049621881176
+            },
+            "high_risk_wait_p90": {
+              "mean": 139.46773764080615,
+              "std": 6.664129311058455
+            },
+            "completion_ratio": {
+              "mean": 0.6709026783635214,
+              "std": 0.018797071090613824
+            },
+            "backlog_end": {
+              "mean": 464.8,
+              "std": 41.498915648484115
+            }
+          },
+          "priority@180": {
+            "harm_per_reviewer_hour": {
+              "mean": 67.61875,
+              "std": 4.011234224026316
+            },
+            "high_risk_handled": {
+              "mean": 172.2,
+              "std": 22.4624130493587
+            },
+            "high_risk_unhandled": {
+              "mean": 19.6,
+              "std": 2.0591260281974
+            },
+            "high_risk_wait_p90": {
+              "mean": 1.5454015071223857,
+              "std": 0.5854601081720056
+            },
+            "completion_ratio": {
+              "mean": 0.6709026783635214,
+              "std": 0.018797071090613824
+            },
+            "backlog_end": {
+              "mean": 464.8,
+              "std": 41.498915648484115
+            }
+          }
+        },
+        "headline": {
+          "metric": "wait",
+          "percentile": 50,
+          "load_per_hour": 108.0,
+          "router_strategy": "priority",
+          "population": "jobs that started, including in-progress reviews; pooled over seeds; populations may differ by strategy; read with completion and unfinished counts",
+          "selected": {
+            "router": 0.4059995390359177,
+            "fifo": 1.4173549491476933,
+            "n_router": 4356,
+            "n_fifo": 4356,
+            "absolute_difference_min": 1.0113554101117757,
+            "reduction": 0.7135512601976944
+          },
+          "supplementary_high_risk": {
+            "note": "reported alongside, never a substitute for the selected metric",
+            "wait_p90": {
+              "router": 1.2304074325063974,
+              "fifo": 6.487102986270139,
+              "n_router": 595,
+              "n_fifo": 595,
+              "absolute_difference_min": 5.256695553763741,
+              "reduction": 0.8103302144099551,
+              "percentile": 90
+            }
+          }
+        }
+      }
+    }
+  ],
+  "matched_volume": {
+    "score": "max calibrated label probability",
+    "k": [
+      6310,
+      7093
+    ],
+    "runs": {
+      "human-review-baseline": [
+        {
+          "k": 6310,
+          "positives": 4234,
+          "high_risk": 916,
+          "harm": 11879.0
+        },
+        {
+          "k": 7093,
+          "positives": 4488,
+          "high_risk": 936,
+          "harm": 12390.0
+        }
+      ],
+      "word-char": [
+        {
+          "k": 6310,
+          "positives": 4338,
+          "high_risk": 941,
+          "harm": 12209.0
+        },
+        {
+          "k": 7093,
+          "positives": 4601,
+          "high_risk": 958,
+          "harm": 12707.0
+        }
+      ]
+    }
+  },
+  "equal_input": {
+    "reference": "human-review-baseline",
+    "input_rates_per_hour": [
+      608.3486529318542,
+      1095.0275752773375,
+      1825.0459587955627
+    ],
+    "runs": {
+      "human-review-baseline": {
+        "queue_fraction": 0.09862765325580668,
+        "seeds": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ],
+        "by_input": {
+          "608.3": {
+            "review_load_per_hour": 59.99999999999999,
+            "priority": {
+              "review_arrivals": {
+                "mean": 480.25,
+                "std": 22.346258370427357
+              },
+              "completion_ratio": {
+                "mean": 0.9951753242926576,
+                "std": 0.00356329276668206
+              },
+              "backlog_end": {
+                "mean": 0.25,
+                "std": 0.6386663736585051
+              },
+              "positives_completed_per_hour": {
+                "mean": 39.83125,
+                "std": 2.615513874738073
+              },
+              "clean_share_of_completed": {
+                "mean": 0.33344394727541604,
+                "std": 0.026921807599779028
+              },
+              "high_risk_arrived": {
+                "mean": 69.65,
+                "std": 10.2097734394163
+              },
+              "high_risk_handled": {
+                "mean": 69.4,
+                "std": 10.220721985003644
+              },
+              "high_risk_unhandled": {
+                "mean": 0.25,
+                "std": 0.5501196042201808
+              },
+              "harm_handled_per_hour": {
+                "mean": 112.325,
+                "std": 10.284313553327605
+              }
+            },
+            "fifo": {
+              "review_arrivals": {
+                "mean": 480.25,
+                "std": 22.346258370427357
+              },
+              "completion_ratio": {
+                "mean": 0.9951753242926576,
+                "std": 0.00356329276668206
+              },
+              "backlog_end": {
+                "mean": 0.25,
+                "std": 0.6386663736585051
+              },
+              "positives_completed_per_hour": {
+                "mean": 39.83125,
+                "std": 2.615513874738073
+              },
+              "clean_share_of_completed": {
+                "mean": 0.33344394727541604,
+                "std": 0.026921807599779028
+              },
+              "high_risk_arrived": {
+                "mean": 69.65,
+                "std": 10.2097734394163
+              },
+              "high_risk_handled": {
+                "mean": 69.4,
+                "std": 10.220721985003644
+              },
+              "high_risk_unhandled": {
+                "mean": 0.25,
+                "std": 0.5501196042201808
+              },
+              "harm_handled_per_hour": {
+                "mean": 112.325,
+                "std": 10.284313553327605
+              }
+            }
+          },
+          "1095.0": {
+            "review_load_per_hour": 107.99999999999999,
+            "priority": {
+              "review_arrivals": {
+                "mean": 868.55,
+                "std": 33.05732660251375
+              },
+              "completion_ratio": {
+                "mean": 0.9920539634808916,
+                "std": 0.0041203301361252866
+              },
+              "backlog_end": {
+                "mean": 3.15,
+                "std": 3.2650461429801374
+              },
+              "positives_completed_per_hour": {
+                "mean": 71.8,
+                "std": 3.187248442085892
+              },
+              "clean_share_of_completed": {
+                "mean": 0.33342465632543494,
+                "std": 0.012115579180945366
+              },
+              "high_risk_arrived": {
+                "mean": 126.6,
+                "std": 14.136179786185815
+              },
+              "high_risk_handled": {
+                "mean": 126.1,
+                "std": 13.931788716532607
+              },
+              "high_risk_unhandled": {
+                "mean": 0.5,
+                "std": 0.8271701918685112
+              },
+              "harm_handled_per_hour": {
+                "mean": 202.49375,
+                "std": 11.87866806229598
+              }
+            },
+            "fifo": {
+              "review_arrivals": {
+                "mean": 868.55,
+                "std": 33.05732660251375
+              },
+              "completion_ratio": {
+                "mean": 0.9920539634808916,
+                "std": 0.0041203301361252866
+              },
+              "backlog_end": {
+                "mean": 3.15,
+                "std": 3.2650461429801374
+              },
+              "positives_completed_per_hour": {
+                "mean": 71.725,
+                "std": 3.1880739937262565
+              },
+              "clean_share_of_completed": {
+                "mean": 0.33411520424957636,
+                "std": 0.01249531037506781
+              },
+              "high_risk_arrived": {
+                "mean": 126.6,
+                "std": 14.136179786185815
+              },
+              "high_risk_handled": {
+                "mean": 125.75,
+                "std": 13.871117285094309
+              },
+              "high_risk_unhandled": {
+                "mean": 0.85,
+                "std": 0.8750939799154206
+              },
+              "harm_handled_per_hour": {
+                "mean": 202.1375,
+                "std": 11.891221607378675
+              }
+            }
+          },
+          "1825.0": {
+            "review_load_per_hour": 180.0,
+            "priority": {
+              "review_arrivals": {
+                "mean": 1422.9,
+                "std": 30.99218916878387
+              },
+              "completion_ratio": {
+                "mean": 0.6716267269124867,
+                "std": 0.01392087212210805
+              },
+              "backlog_end": {
+                "mean": 463.65,
+                "std": 30.039053527734612
+              },
+              "positives_completed_per_hour": {
+                "mean": 93.91875,
+                "std": 1.9122505857317913
+              },
+              "clean_share_of_completed": {
+                "mean": 0.2134636848814825,
+                "std": 0.015282069302423644
+              },
+              "high_risk_arrived": {
+                "mean": 209.75,
+                "std": 11.751259730903657
+              },
+              "high_risk_handled": {
+                "mean": 187.0,
+                "std": 10.46296727561194
+              },
+              "high_risk_unhandled": {
+                "mean": 22.75,
+                "std": 4.290442254225327
+              },
+              "harm_handled_per_hour": {
+                "mean": 283.025,
+                "std": 9.094677448636475
+              }
+            },
+            "fifo": {
+              "review_arrivals": {
+                "mean": 1422.9,
+                "std": 30.99218916878387
+              },
+              "completion_ratio": {
+                "mean": 0.6716267269124867,
+                "std": 0.01392087212210805
+              },
+              "backlog_end": {
+                "mean": 463.65,
+                "std": 30.039053527734612
+              },
+              "positives_completed_per_hour": {
+                "mean": 80.60625,
+                "std": 1.8251149026553743
+              },
+              "clean_share_of_completed": {
+                "mean": 0.3249395003632735,
+                "std": 0.015272909279357953
+              },
+              "high_risk_arrived": {
+                "mean": 209.75,
+                "std": 11.751259730903657
+              },
+              "high_risk_handled": {
+                "mean": 138.6,
+                "std": 7.876681107113446
+              },
+              "high_risk_unhandled": {
+                "mean": 71.15,
+                "std": 9.685990969055855
+              },
+              "harm_handled_per_hour": {
+                "mean": 225.675,
+                "std": 6.582647643615751
+              }
+            }
+          }
+        }
+      },
+      "word-char": {
+        "queue_fraction": 0.1108662352683735,
+        "seeds": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11,
+          12,
+          13,
+          14,
+          15,
+          16,
+          17,
+          18,
+          19,
+          20
+        ],
+        "by_input": {
+          "608.3": {
+            "review_load_per_hour": 67.44532488114105,
+            "priority": {
+              "review_arrivals": {
+                "mean": 532.15,
+                "std": 20.56382874446242
+              },
+              "completion_ratio": {
+                "mean": 0.9959664983739869,
+                "std": 0.0023696260370420818
+              },
+              "backlog_end": {
+                "mean": 0.05,
+                "std": 0.22360679774997894
+              },
+              "positives_completed_per_hour": {
+                "mean": 42.80625,
+                "std": 1.9911295888197946
+              },
+              "clean_share_of_completed": {
+                "mean": 0.3538254752719973,
+                "std": 0.018131369548250172
+              },
+              "high_risk_arrived": {
+                "mean": 71.1,
+                "std": 7.224956747275377
+              },
+              "high_risk_handled": {
+                "mean": 70.9,
+                "std": 7.203069521135819
+              },
+              "high_risk_unhandled": {
+                "mean": 0.2,
+                "std": 0.41039134083406165
+              },
+              "harm_handled_per_hour": {
+                "mean": 117.95625,
+                "std": 6.095225023910542
+              }
+            },
+            "fifo": {
+              "review_arrivals": {
+                "mean": 532.15,
+                "std": 20.56382874446242
+              },
+              "completion_ratio": {
+                "mean": 0.9959664983739869,
+                "std": 0.0023696260370420818
+              },
+              "backlog_end": {
+                "mean": 0.05,
+                "std": 0.22360679774997894
+              },
+              "positives_completed_per_hour": {
+                "mean": 42.80625,
+                "std": 1.9911295888197946
+              },
+              "clean_share_of_completed": {
+                "mean": 0.3538254752719973,
+                "std": 0.018131369548250172
+              },
+              "high_risk_arrived": {
+                "mean": 71.1,
+                "std": 7.224956747275377
+              },
+              "high_risk_handled": {
+                "mean": 70.9,
+                "std": 7.203069521135819
+              },
+              "high_risk_unhandled": {
+                "mean": 0.2,
+                "std": 0.41039134083406165
+              },
+              "harm_handled_per_hour": {
+                "mean": 117.95625,
+                "std": 6.095225023910542
+              }
+            }
+          },
+          "1095.0": {
+            "review_load_per_hour": 121.40158478605387,
+            "priority": {
+              "review_arrivals": {
+                "mean": 973.85,
+                "std": 40.76540716161966
+              },
+              "completion_ratio": {
+                "mean": 0.9617550335123937,
+                "std": 0.02347452930969278
+              },
+              "backlog_end": {
+                "mean": 34.05,
+                "std": 24.38609396659023
+              },
+              "positives_completed_per_hour": {
+                "mean": 77.3,
+                "std": 2.4059274390773435
+              },
+              "clean_share_of_completed": {
+                "mean": 0.33915132525134123,
+                "std": 0.014578702407626735
+              },
+              "high_risk_arrived": {
+                "mean": 133.8,
+                "std": 13.201275855406035
+              },
+              "high_risk_handled": {
+                "mean": 132.3,
+                "std": 13.079111510142301
+              },
+              "high_risk_unhandled": {
+                "mean": 1.5,
+                "std": 0.9459053029269173
+              },
+              "harm_handled_per_hour": {
+                "mean": 216.63125,
+                "std": 13.425995687373373
+              }
+            },
+            "fifo": {
+              "review_arrivals": {
+                "mean": 973.85,
+                "std": 40.76540716161966
+              },
+              "completion_ratio": {
+                "mean": 0.9617550335123937,
+                "std": 0.02347452930969278
+              },
+              "backlog_end": {
+                "mean": 34.05,
+                "std": 24.38609396659023
+              },
+              "positives_completed_per_hour": {
+                "mean": 75.91875,
+                "std": 1.8792823903372209
+              },
+              "clean_share_of_completed": {
+                "mean": 0.35086713172782774,
+                "std": 0.013533973427218845
+              },
+              "high_risk_arrived": {
+                "mean": 133.8,
+                "std": 13.201275855406035
+              },
+              "high_risk_handled": {
+                "mean": 128.45,
+                "std": 11.847606909147695
+              },
+              "high_risk_unhandled": {
+                "mean": 5.35,
+                "std": 4.307582054690861
+              },
+              "harm_handled_per_hour": {
+                "mean": 211.475,
+                "std": 11.652069502204771
+              }
+            }
+          },
+          "1825.0": {
+            "review_load_per_hour": 202.33597464342313,
+            "priority": {
+              "review_arrivals": {
+                "mean": 1626.0,
+                "std": 37.00782278611403
+              },
+              "completion_ratio": {
+                "mean": 0.5882035359003076,
+                "std": 0.01334329038541194
+              },
+              "backlog_end": {
+                "mean": 666.05,
+                "std": 37.02413864096319
+              },
+              "positives_completed_per_hour": {
+                "mean": 96.4125,
+                "std": 1.6608395942699394
+              },
+              "clean_share_of_completed": {
+                "mean": 0.19315740761024341,
+                "std": 0.013974051717264426
+              },
+              "high_risk_arrived": {
+                "mean": 218.45,
+                "std": 18.619387179694407
+              },
+              "high_risk_handled": {
+                "mean": 191.35,
+                "std": 16.790583200428934
+              },
+              "high_risk_unhandled": {
+                "mean": 27.1,
+                "std": 4.822098254800224
+              },
+              "harm_handled_per_hour": {
+                "mean": 291.93125,
+                "std": 12.58866416505446
+              }
+            },
+            "fifo": {
+              "review_arrivals": {
+                "mean": 1626.0,
+                "std": 37.00782278611403
+              },
+              "completion_ratio": {
+                "mean": 0.5882035359003076,
+                "std": 0.01334329038541194
+              },
+              "backlog_end": {
+                "mean": 666.05,
+                "std": 37.02413864096319
+              },
+              "positives_completed_per_hour": {
+                "mean": 77.11875,
+                "std": 1.879369907708432
+              },
+              "clean_share_of_completed": {
+                "mean": 0.35462003548818155,
+                "std": 0.015771597896272086
+              },
+              "high_risk_arrived": {
+                "mean": 218.45,
+                "std": 18.619387179694407
+              },
+              "high_risk_handled": {
+                "mean": 127.4,
+                "std": 14.324803663575986
+              },
+              "high_risk_unhandled": {
+                "mean": 91.05,
+                "std": 11.564350847596929
+              },
+              "harm_handled_per_hour": {
+                "mean": 212.9125,
+                "std": 11.052439299705934
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
