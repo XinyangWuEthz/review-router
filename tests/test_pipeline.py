@@ -297,15 +297,15 @@ def test_headline_with_no_samples_does_not_claim_fifo_zero(
 def _assert_agreement_sections(report: dict[str, Any]) -> None:
     """The step-3 reporting blocks: agreement by confidence and the selection diagnostics."""
     agreement = report["agreement_by_confidence"]
-    assert {"calibration", "threshold_selection", "test", "optimism_gap"} <= set(agreement)
-    assert agreement["calibration"] is not None and agreement["optimism_gap"] is not None
+    assert {"calibration", "threshold_selection", "test", "split_agreement_gap"} <= set(agreement)
+    assert agreement["calibration"] is not None and agreement["split_agreement_gap"] is not None
     thresh = agreement["threshold_selection"]
     assert set(thresh["per_label"]) == set(LABELS)
     pooled = thresh["pooled_review"]
     assert pooled[0]["lo"] is None and pooled[-1]["hi"] == 1.0
     assert sum(row["n"] for row in pooled) == thresh["n_rows"]
     assert abs(sum(row["coverage"] for row in pooled) - 1.0) < 1e-9
-    assert "priority_band" in thresh and "n_rules_promoted" in thresh["priority_band"]
+    assert "priority_band" in thresh and "n_rows_matching_priority_rule" in thresh["priority_band"]
     assert set(thresh["strata"]) == {"identity_term_present", "oov_tercile"}
     assert len(agreement["strata_definition"]["oov_tercile"]["cut_points"]) == 2
     selection = report["threshold_selection"]
@@ -842,7 +842,7 @@ def test_external_scores_share_exact_baseline_evaluation(
     replay_report["eval_slice"] = replay_report["eval_slice"].removeprefix("exploratory ")
     # The replay has no model, so exactly these model-dependent sub-blocks of
     # agreement_by_confidence cannot exist there: the calibration table, the
-    # optimism gap (calibration minus selection) and the oov_tercile stratum
+    # descriptive split gap (selection minus calibration) and the oov_tercile stratum
     # (vocabulary of the word vectorizer). Everything else, including per_label,
     # pooled_review, priority_band, the identity stratum, segment_check and the
     # alternatives arm, must be identical.
@@ -850,7 +850,7 @@ def test_external_scores_share_exact_baseline_evaluation(
         agreement = report["agreement_by_confidence"]
         agreement.pop("calibration")
         agreement.pop("calibration_note")
-        agreement.pop("optimism_gap")
+        agreement.pop("split_agreement_gap")
         agreement["strata_definition"].pop("oov_tercile")
         for split in ("threshold_selection", "test"):
             agreement[split]["strata"].pop("oov_tercile", None)

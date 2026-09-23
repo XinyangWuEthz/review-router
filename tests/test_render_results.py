@@ -524,6 +524,31 @@ def test_ordering_gate_rows_follow_the_declared_alternatives(priority_run: Path)
     )
 
 
+@pytest.mark.parametrize(
+    "strategy,description",
+    [
+        ("priority", "serves priority_review before human_review"),
+        ("severity", "serves the combined review pool by predicted severity"),
+        ("prob", "serves the combined review pool by maximum calibrated label probability"),
+        ("fifo", "serves the combined review pool in arrival order"),
+    ],
+)
+def test_review_band_precedence_matches_the_saved_primary_ordering(
+    priority_run: Path, strategy: str, description: str
+) -> None:
+    path = priority_run / "report.json"
+    report = json.loads(path.read_text())
+    report["simulation"]["primary"]["strategy"] = strategy
+    path.write_text(json.dumps(report))
+    text = RENDERER.render(priority_run)
+    assert description in text
+    assert "priority_review schedules a human review earlier" not in text
+    if strategy == "priority":
+        assert "The band-first priority ordering is reported as an alternative" not in text
+    else:
+        assert "the review band does not change queue precedence" in text
+
+
 def test_record_time_tables_state_populations_and_sample_counts(priority_run: Path) -> None:
     import numpy as np
 

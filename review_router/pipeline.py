@@ -773,7 +773,7 @@ def _selection_notes(thresholds: TierThresholds, policy: Policy) -> list[str]:
     return notes
 
 
-def _optimism_gap(thresh: dict[str, Any], calib: dict[str, Any]) -> dict[str, Any]:
+def _split_agreement_gap(thresh: dict[str, Any], calib: dict[str, Any]) -> dict[str, Any]:
     """Per-segment agreement on the selection split minus the calibration split."""
 
     def gaps(a: list[dict[str, Any]], b: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -801,9 +801,10 @@ def _optimism_gap(thresh: dict[str, Any], calib: dict[str, Any]) -> dict[str, An
             label: gaps(thresh["per_label"][label]["table"], calib["per_label"][label]["table"])
             for label in LABELS
         },
-        "note": "threshold-selection minus calibration agreement per segment; both splits are "
-        "random slices of train.csv, so this bounds selection optimism and cannot show the "
-        "train-to-test shift",
+        "note": "threshold-selection minus calibration agreement per segment. Calibration "
+        "rows fitted the Platt calibrator, so this is a descriptive split comparison, not "
+        "an independent estimate or bound on threshold-selection optimism. It does not "
+        "measure train-to-test shift",
     }
 
 
@@ -852,8 +853,8 @@ def _agreement_by_confidence(
             else "not available: external scores or no calibration split scored"
         ),
         "threshold_selection": thresh_report,
-        "optimism_gap": (
-            _optimism_gap(thresh_report, calib_report) if calib_report is not None else None
+        "split_agreement_gap": (
+            _split_agreement_gap(thresh_report, calib_report) if calib_report is not None else None
         ),
         "strata_definition": {
             "identity_term_present": "whole-word match of review_router.signals.IDENTITY_TERMS",
@@ -1001,8 +1002,9 @@ def cross_fitted_selection(
     k-1 folds and the held-out fold is routed with them, rules included. The
     held-out tiers are concatenated back into row order and summarised like
     the in-sample selection tables, so band membership is out-of-sample
-    relative to the thresholds that define it. This bounds the optimism of
-    selecting and reading precision on the same rows. Every fold comes from
+    relative to the thresholds that define it. This estimates band quality
+    away from threshold fitting; it is not a formal bound on selection
+    optimism. Every fold comes from
     the same train.csv distribution: it says nothing about distribution shift
     or about the scored test rows.
     """
@@ -1015,7 +1017,12 @@ def cross_fitted_selection(
         held = folds == fold
         fit = ~held
         thresholds = select_thresholds(
-            y[fit], proba[fit], LABELS, policy, {"identity_term_present": identity[fit]}
+            y[fit],
+            proba[fit],
+            LABELS,
+            policy,
+            {"identity_term_present": identity[fit]},
+            high_risk_min_weight=high_risk_min_weight,
         )
         routing = _route(proba[held], y[held], identity[held], thresholds, policy)
         final[held] = routing["final_tier"]
@@ -1030,8 +1037,8 @@ def cross_fitted_selection(
         "review_workload": _review_workload(final, y, policy, high_risk_min_weight),
         "thresholds_per_fold": per_fold,
         "note": "thresholds refit on k-1 folds; band membership is out-of-sample relative to "
-        "the thresholds that define it; the same train.csv distribution, so this bounds "
-        "selection optimism, not distribution shift",
+        "the thresholds that define it; this estimates band quality in the same train.csv "
+        "distribution, not distribution shift, and is not a formal bound on selection optimism",
     }
 
 
@@ -1504,7 +1511,8 @@ def _md_selection(report: dict[str, Any]) -> list[str]:
         "priorities and applying rules can change final-tier precision. Both tiers join the queue. "
         f"In-sample: thresholds selected and read on the same rows. Cross-fitted ({cross['k']} "
         "folds): thresholds refit on the other folds, each row routed by thresholds it did not "
-        "select; same distribution, so this bounds selection optimism, not distribution shift.",
+        "select. This estimates band quality with held-out threshold fitting on the same "
+        "distribution; it is not a formal bound or a test of distribution shift.",
         "",
         "| final tier | n | coverage | precision | n (cross-fitted) | coverage (cross-fitted) "
         "| precision (cross-fitted) |",
@@ -1756,7 +1764,7 @@ def _md_agreement(report: dict[str, Any]) -> list[str]:
         "Score segments on the threshold-selection split; agreement = share of rows in the "
         "segment with any positive label, against the pooled max probability. Coverage is the "
         "segment's share of the split. Development data, not test results; the calibration "
-        "split table and the per-segment optimism gap are in report.json.",
+        "split table and the descriptive per-segment split agreement gap are in report.json.",
         "",
         "| segment | n | coverage | agreement | 95% CI | recall share |",
         "|---|---:|---:|---:|---|---:|",

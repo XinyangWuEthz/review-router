@@ -55,8 +55,9 @@ These are identities over the label counts, not model results.
 - **Segment agreement selects the priority band.** The `priority_review`
   threshold for a label is the lowest declared score edge such that every
   segment at or above it meets the 0.95 target on its own with at least 30
-  rows on the selection split, following the bin-and-measure-agreement method
-  of Thomas et al. (arXiv 2406.12800). The cumulative rule let a strong top
+  rows on the selection split. This is a project extension inspired by the
+  confidence-threshold analysis of Thomas et al. (arXiv 2406.12800), whose
+  paper does not prescribe the per-segment 95% / 30-row rule. The cumulative rule let a strong top
   segment carry weaker ones below it (toxic selected 0.847 while the
   [0.95, 0.98) bin alone reached 0.937); the segment rule reports the
   agreement and coverage of every segment instead. The `human_review` band

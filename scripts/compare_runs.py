@@ -18,13 +18,14 @@ Sections, each present only when the runs carry the data:
 - Queue at equal review load: the report's own simulation summary. Its
   arrival rates are post-admission review demand, so two models are compared
   at the same number of review jobs per hour even if one flags more comments.
-- Queue at equal comment input (--equal-input, policy v2 runs only): common
+- Queue at equal comment input (--equal-input, human-confirmation runs only): common
   random numbers. For each seed one stream of incoming comments is drawn from
   the scored test rows (Poisson arrivals, rows sampled with replacement) and
   shared by every run; each run admits the comments it flags and reviews them
   with 4 reviewers. A model that flags more gets more review work, and every
-  high-risk comment it leaves in allow counts as not reviewed. Input rates are
-  the reference run's equivalent input loads. Differences are paired by seed.
+  high-risk comment it leaves in allow counts as not reviewed. Severity,
+  band-first priority and FIFO orderings share the same stream. Input rates
+  are the reference run's equivalent input loads. Differences are paired by seed.
 - Audit overlap (--audit, round-1 runs with an auto_action tier only).
 
 Standard deviations: the report's own simulation summary uses the population
@@ -61,7 +62,7 @@ SIM_FIELDS = (
     "backlog_end",
 )
 EQUAL_INPUT_SEEDS = tuple(range(1, 201))
-EQUAL_INPUT_STRATEGIES = ("priority", "fifo")
+EQUAL_INPUT_STRATEGIES = ("severity", "priority", "fifo")
 
 
 def load(run: Path) -> dict[str, Any]:
@@ -102,7 +103,7 @@ def recall_table(
 ) -> dict[str, Any]:
     """Where the truly positive and high-risk rows went. Hand-computable from predictions.
 
-    "Flagged" is every tier except allow: under policy v2 that is the review
+    "Flagged" is every tier except allow: under human confirmation that is the review
     queue; under round 1 it also includes auto_action.
     """
     flagged = final != "allow"
@@ -293,7 +294,9 @@ def _prepare_stream(item: dict[str, Any]) -> None:
     inputs = queue_inputs(proba, y, final, policy, hr_min)
     flagged = final != "allow"
     if not np.array_equal(np.flatnonzero(flagged), inputs["queued"]):
-        raise SystemExit(f"{item['run']}: flagged rows are not the review queue (not a v2 run?)")
+        raise SystemExit(
+            f"{item['run']}: flagged rows are not the review queue (not a human-confirmation run?)"
+        )
     queue_pos = np.full(len(final), -1)
     queue_pos[inputs["queued"]] = np.arange(len(inputs["queued"]))
     weights = np.array([policy.severity_weights.get(lb, 0.0) for lb in LABELS])
@@ -599,7 +602,9 @@ def main() -> None:
     if args.equal_input:
         reference = base["report"]["simulation"].get("assumptions") or {}
         if "queue_fraction" not in reference:
-            raise SystemExit("--equal-input needs policy v2 runs (report has no queue_fraction)")
+            raise SystemExit(
+                "--equal-input needs human-confirmation runs (report has no queue_fraction)"
+            )
         rates = equal_input_loads(reference["queue_fraction"], list(reference["loads_per_hour"]))
         extra["equal_input"] = shared_stream(items, rates)
     args.out.mkdir(parents=True, exist_ok=True)

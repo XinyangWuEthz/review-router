@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import replace
 
 import numpy as np
 import pytest
@@ -22,7 +23,7 @@ from review_router.pipeline import (
     harm_proxy,
     ranking_diagnostics,
 )
-from review_router.policy import load_policy
+from review_router.policy import AgreementSegments, load_policy
 
 POLICY = load_policy()
 HIGH_RISK = 5.0
@@ -169,3 +170,25 @@ def test_cross_fitted_selection_is_deterministic_and_covers_every_row() -> None:
     assert any(t[H]["toxic"] is not None for t in first["thresholds_per_fold"])
     assert "not distribution shift" in first["note"]
     json.dumps(first, allow_nan=False)
+
+
+def test_cross_fitted_selection_uses_the_configured_high_risk_cutoff() -> None:
+    policy = replace(
+        POLICY,
+        rules=(),
+        subgroup_thresholds=(),
+        agreement_segments=AgreementSegments(
+            edges=(0.5, 0.9, 1.0), high_risk_edges=(0.5, 1.0), min_rows=30
+        ),
+    )
+    y = _rows(*[("toxic",)] * 500)
+    proba = np.zeros_like(y, dtype=float)
+    proba[:, LABELS.index("toxic")] = 0.8
+    # With cutoff 1, toxic uses the high-risk [0.5, 1.0] segment, which
+    # qualifies in every fit fold. The ordinary [0.9, 1.0] segment is empty
+    # and would disable priority if cross-fitting silently used cutoff 5.
+    out = cross_fitted_selection(
+        y, proba, np.zeros(len(y)), policy, high_risk_min_weight=1.0, seed=3
+    )
+    assert all(fold[P]["toxic"] == 0.5 for fold in out["thresholds_per_fold"])
+    assert out["review_workload"]["n_priority_review"] == len(y)

@@ -37,10 +37,10 @@ tier_precision_floors:
 # and lower bins far less.
 # segment_agreement: the priority threshold for a label is the lowest declared
 # edge such that every segment at or above it individually meets the 0.95
-# target with at least min_rows rows on the selection split (the method of
-# Thomas et al., arXiv 2406.12800: bin the score, measure agreement with human
-# labels per bin on development data, act only in bins where agreement is
-# high, report coverage per bin). The edges below were declared after the
+# target with at least min_rows rows on the selection split. This extends
+# the Score("Yes") threshold tuning in Thomas et al., arXiv 2406.12800;
+# the per-segment target and minimum count are this project's rule, not
+# requirements from the paper. The edges below were declared after the
 # round-1 test bins were inspected (record/diagnose.py), so this is
 # test-informed design, not a fresh a-priori choice. The human band keeps the
 # cumulative rule; the identity-term slice keeps the cumulative rule on the

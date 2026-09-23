@@ -457,6 +457,15 @@ def _criteria_lines(
     routing = gates.get("capacity", gates.get("routing", {}))
     sim = report.get("simulation", {})
     primary, thesis = sim.get("primary", {}), sim.get("thesis", {})
+    strategy = primary.get("strategy")
+    ordering_description = {
+        "priority": "It serves priority_review before human_review, using predicted severity within each band. ",
+        "severity": "It serves the combined review pool by predicted severity; the review band does not change queue precedence. ",
+        "prob": "It serves the combined review pool by maximum calibrated label probability; the review band does not change queue precedence. ",
+        "fifo": "It serves the combined review pool in arrival order; the review band does not change queue precedence. ",
+    }.get(strategy, "")
+    if strategy in ("severity", "prob", "fifo"):
+        ordering_description += "The band-first priority ordering is reported as an alternative. "
     ordering = routing.get("ordering_vs_alternatives") or {}
     ordering_text = (
         f"At {fmt(thesis.get('load_per_hour'))}/h the primary ordering's mean per-seed difference against each of "
@@ -467,14 +476,14 @@ def _criteria_lines(
     )
     return [
         "**Decision contract and evaluation criteria.** Every moderation action requires human confirmation. "
-        "The model routes comments to priority_review, human_review or allow; priority_review schedules a human review earlier "
-        "and does not authorize an automatic moderation action. Automatic actions must remain zero.", "",
+        "The model routes comments to priority_review, human_review or allow. Both review bands require human confirmation; "
+        "queue precedence is determined by the configured primary ordering. Automatic actions must remain zero.", "",
         f"The run's per-label selection targets are {fmt(floors.get(PRIORITY), 2)} for priority_review "
         f"and {fmt(floors.get(HUMAN), 2)} for human_review. These are empirical targets on the selection split, "
         "not guarantees of test precision. Per-tier test precision remains diagnostic when its gate is not set.", "",
         f"Comparison gates come from `{source}`. The router is the configured primary ordering, "
-        f"{fmt(primary.get('strategy'))}; the band-first priority ordering is one of the compared alternatives. "
-        "At equal reviewer capacity, the router/FIFO harm-per-reviewer-hour ratio "
+        f"{fmt(strategy)}. " + ordering_description
+        + "At equal reviewer capacity, the router/FIFO harm-per-reviewer-hour ratio "
         f"at {fmt(thesis.get('load_per_hour'))}/h must be ≥ {fmt(routing.get('harm_per_reviewer_hour_vs_fifo_min'))}; "
         f"the high-risk wait p90 ratio at {fmt(primary.get('load_per_hour'))}/h must be ≤ "
         f"{fmt(routing.get('high_risk_wait_p90_vs_fifo_max'))}. The high-risk completed-count ratio must be ≥ "

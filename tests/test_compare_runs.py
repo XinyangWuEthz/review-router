@@ -151,6 +151,17 @@ def test_word_queue_and_all_allow_candidate_complete_comparison(
 
     monkeypatch.setattr(CMP, "EQUAL_INPUT_SEEDS", tuple(range(1, 8)))
     comparison = CMP.shared_stream(items, [20.0])
+    # The shipped severity ordering and the historical priority/FIFO keys all
+    # remain available, including for a candidate with an empty review queue.
+    strategies = {"severity", "priority", "fifo"}
+    for label in ("word", "jev"):
+        by_input = comparison["runs"][label]["by_input"]["20.0"]
+        assert set(by_input) == strategies | {"expected_review_load_per_hour"}
+    assert set(comparison["differences_vs_reference"]["jev"]["20.0"]) == strategies
+    for strategy in strategies:
+        assert comparison["runs"]["jev"]["by_input"]["20.0"][strategy][
+            "review_arrivals"
+        ]["mean"] == 0
     empty = comparison["runs"]["jev"]["by_input"]["20.0"]["priority"]
     word_metrics = comparison["runs"]["word"]["by_input"]["20.0"]["priority"]
     assert word_metrics["review_arrivals"]["mean"] > 0
@@ -169,5 +180,6 @@ def test_word_queue_and_all_allow_candidate_complete_comparison(
     assert "| jev | jev-1.13.0 |" in markdown
     assert "| jev | 0 | 0.0000 | n/a [n/a, n/a] |" in markdown
     assert "| severe_toxic | n/a | n/a | n/a | n/a |" in markdown
+    assert "| severity |" in markdown
     assert "n/a (n=0)" in markdown
     assert "nan" not in markdown

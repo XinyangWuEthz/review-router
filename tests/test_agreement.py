@@ -64,7 +64,7 @@ def test_agreement_report_uses_high_risk_edges_for_heavy_labels_and_reads_rules(
     assert sum(row["n"] for row in report["pooled_review"]) == n
     band = report["priority_band"]
     assert band["n"] == int((final == "priority_review").sum())
-    assert band["n_rules_promoted"] == int((rule_action == "priority_review").sum())
+    assert band["n_rows_matching_priority_rule"] == int((rule_action == "priority_review").sum())
     r101 = report["high_risk_rules"]["R101_high_risk_priority"]
     assert r101["n"] == int((proba[:, 3] >= 0.3).sum())
     assert r101["agreement_label"] == y[proba[:, 3] >= 0.3, 3].mean()
@@ -78,6 +78,50 @@ def _fit(analyzer: str) -> TfidfLogitModel:
     return TfidfLogitModel(ModelConfig(min_df=1, ngram_max=1, analyzer=analyzer)).fit(
         texts, y, seed=0
     )
+
+
+def test_priority_minimum_includes_rule_promotions_below_the_first_edge() -> None:
+    # R101 promotes 30 false positives at threat=0.35; the other 30 priority
+    # rows are true toxic positives in the top score segment. Omitting the
+    # leading bucket would incorrectly report a minimum agreement of 1.0.
+    y = np.zeros((60, len(LABELS)), dtype=int)
+    proba = np.zeros_like(y, dtype=float)
+    proba[:30, LABELS.index("threat")] = 0.35
+    proba[30:, LABELS.index("toxic")] = 0.999
+    y[30:, LABELS.index("toxic")] = 1
+    report = agreement_report(
+        y,
+        proba,
+        LABELS,
+        load_policy(),
+        5.0,
+        final_tier=np.full(60, "priority_review"),
+        rule_action=np.array(["priority_review"] * 30 + [""] * 30),
+    )
+    band = report["priority_band"]
+    assert band["table"][0]["n"] == 30
+    assert band["table"][0]["agreement"] == 0.0
+    assert band["lowest_segment_agreement"] == 0.0
+
+
+def test_priority_rule_match_count_includes_already_priority_rows() -> None:
+    # A high toxic score can put the row into model priority while R101 also
+    # matches it. The diagnostic counts that match without claiming a promotion.
+    y = np.array([[1, 0, 0, 0, 0, 0]])
+    proba = np.array([[0.999, 0.0, 0.0, 0.35, 0.0, 0.0]])
+    report = agreement_report(
+        y,
+        proba,
+        LABELS,
+        load_policy(),
+        5.0,
+        final_tier=np.array(["priority_review"]),
+        rule_action=np.array(["priority_review"]),
+    )
+    band = report["priority_band"]
+    assert band["n_rows_matching_priority_rule"] == 1
+    assert "n_rules_promoted" not in band
+    assert "already in the model's priority band" in band["note"]
 
 
 def test_oov_share_is_one_for_unseen_text_and_low_for_training_text() -> None:

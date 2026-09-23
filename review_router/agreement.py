@@ -1,8 +1,10 @@
 """Agreement-by-confidence tables: label agreement per score segment on development data.
 
-The method follows Thomas et al. (arXiv 2406.12800): bin the score, measure
-agreement with the human labels per bin, act only in bins where agreement is
-high, and report the coverage of every bin. Here agreement is the observed
+Inspired by Thomas et al. (arXiv 2406.12800), which tunes thresholds on the
+model's Score("Yes"), this project also reports agreement per declared score
+segment. Requiring every segment above a threshold to meet a target and a
+minimum row count is this project's extension, not the paper's rule.
+Here agreement is the observed
 share of rows in a segment whose label is positive; coverage is the share of
 the split's rows the segment holds. Both are read on development splits and
 describe those rows only. Nothing here is a population bound, a test result
@@ -150,8 +152,9 @@ def agreement_report(
     'any label positive', the definition both review bands are judged by.
     high_risk_rules: rows matched by each single-condition '>=' rule.
     priority_band (when final_tier is given): the pooled table on the rows
-    whose final tier is priority_review, with the count of rule promotions
-    and the lowest segment agreement. strata (when given): the pooled table
+    whose final tier is priority_review, with the count of rows matching a
+    priority rule (including already-priority rows) and the lowest segment
+    agreement. strata (when given): the pooled table
     per stratum value, e.g. identity_term_present or an OOV tercile.
     """
     segments = _segments(policy)
@@ -178,11 +181,11 @@ def agreement_report(
     if final_tier is not None:
         in_band = np.asarray(final_tier) == PRIORITY
         table = agreement_table(any_true[in_band], p_max[in_band], segments.edges, min_rows)
-        agreements = [row["agreement"] for row in table[1:] if row["n"] > 0]
+        agreements = [row["agreement"] for row in table if row["n"] > 0]
         out["priority_band"] = {
             "n": int(in_band.sum()),
             "table": table,
-            "n_rules_promoted": (
+            "n_rows_matching_priority_rule": (
                 int((np.asarray(rule_action) == PRIORITY).sum())
                 if rule_action is not None
                 else None
@@ -190,7 +193,8 @@ def agreement_report(
             "lowest_segment_agreement": min(agreements) if agreements else None,
             "note": "pooled p_max against any positive label on the final priority band, rule "
             "promotions included; the leading bucket holds rows a rule promoted from below "
-            "the first edge",
+            "the first edge and is included in the lowest segment agreement. The priority-rule "
+            "match count includes rows already in the model's priority band",
         }
     if strata is not None:
         out["strata"] = {
