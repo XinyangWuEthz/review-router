@@ -998,6 +998,13 @@
     },
     "human": {
       "n": 100,
+      "estimate_type": "conditional_sensitivity",
+      "assumptions": [
+        "Unaudited original true positives remain correct under the audit rubric.",
+        "The unweighted audited share is extrapolated to all original false positives."
+      ],
+      "interval_method": "Approximate mapped Wilson interval; no stratification, finite-population correction or annotation uncertainty.",
+      "evaluation_scope": "Historical auto-action false positives only; not an independent evaluation of review worthiness or current human-review precision.",
       "counts": {
         "toxic": 46,
         "borderline": 23,

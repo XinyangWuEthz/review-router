@@ -12,9 +12,9 @@ some OTHER label is true (a "wrong label, right tier" case). Strata sizes
 are proportional to the population, seeded, and written next to the sample.
 
 The verdict columns are left empty. Filling them is human work; the audit
-answers whether 0.904 measures model error or a looser labelling convention
-on the scored test rows. Drawing refuses to overwrite a sample that already
-carries verdicts.
+explores disagreement with the original labels in a selected error sample.
+It does not evaluate whether a comment is worth sending to human review.
+Drawing refuses to overwrite a sample that already carries verdicts.
 
 --score reads the filled sample and writes the "human" section of
 sample_meta.json: verdict counts, agreement with the pre-read, and the
@@ -24,9 +24,12 @@ the human judged toxic held for all of them. Two rules are reported, because
 
     implied precision = 1 - n_false_positive * (1 - share_counted_correct) / n_auto_action
 
-The 95% interval maps the Wilson interval of that share through the same
-formula. It ignores the finite-population correction (100 of 204 sampled), so
-it is conservative.
+These are conditional sensitivity estimates, not measured relabelled precision:
+the original true positives are unaudited and assumed to remain correct under
+the audit rubric. The approximate 95% interval maps an unweighted Wilson interval
+through the same formula; it accounts for neither stratified sampling nor
+annotation uncertainty and omits the finite-population correction. Original
+benchmark labels and the current policy-v2 gates are unchanged.
 """
 
 from __future__ import annotations
@@ -120,6 +123,19 @@ def score(sample: pd.DataFrame, n_auto: int, n_fp: int) -> dict[str, Any]:
     n = len(sample)
     out: dict[str, Any] = {
         "n": n,
+        "estimate_type": "conditional_sensitivity",
+        "assumptions": [
+            "Unaudited original true positives remain correct under the audit rubric.",
+            "The unweighted audited share is extrapolated to all original false positives.",
+        ],
+        "interval_method": (
+            "Approximate mapped Wilson interval; no stratification, finite-population "
+            "correction or annotation uncertainty."
+        ),
+        "evaluation_scope": (
+            "Historical auto-action false positives only; not an independent evaluation "
+            "of review worthiness or current human-review precision."
+        ),
         "counts": {v: int((verdict == v).sum()) for v in VERDICTS},
         "implied_precision": {},
         "floor": AUTO_ACTION_FLOOR,
@@ -174,7 +190,7 @@ def auto_trigger(
     return np.asarray(hit & (~in_group | (p >= max(threshold, subgroup_threshold))))
 
 
-def false_positives(run: Path) -> pd.DataFrame:
+def false_positives(run: Path) -> tuple[pd.DataFrame, int]:
     pred = pd.read_csv(run / "predictions.csv", dtype={"id": str})
     thresholds = json.loads((run / "thresholds.json").read_text())
     if "auto_action" not in thresholds:
@@ -183,10 +199,17 @@ def false_positives(run: Path) -> pd.DataFrame:
             "this audit applies to round-1 runs"
         )
     auto = thresholds["auto_action"]
-    sub = thresholds.get("subgroup", {}).get("auto_action", {}).get("identity_term_present", {})
+    declared = thresholds.get("subgroup", {}).get("auto_action", {})
+    sub = declared.get("identity_term_present", {})
     rows = pred[pred.final_tier == "auto_action"].copy()
     trig_cols = []
-    in_group = rows.identity_term_present.to_numpy() == 1
+    # An absent subgroup imposes no restriction. A declared subgroup with a
+    # null per-label threshold blocks that label, matching model_tier().
+    in_group = (
+        rows.identity_term_present.to_numpy() == 1
+        if "identity_term_present" in declared
+        else np.zeros(len(rows), dtype=bool)
+    )
     for label in LABELS:
         t = auto.get(label)
         if t is None:

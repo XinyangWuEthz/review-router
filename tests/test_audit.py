@@ -57,6 +57,49 @@ def test_auto_trigger_follows_round1_subgroup_semantics() -> None:
     assert AUDIT.auto_trigger(p, in_group, 0.99, 0.5).tolist() == [True, True, True]
 
 
+@pytest.mark.parametrize(
+    "subgroup, expected_ids",
+    [
+        (None, ["clean"]),
+        ({}, ["clean"]),
+        ({"human_review": {"identity_term_present": {"toxic": None}}}, ["clean"]),
+        (
+            {"auto_action": {"identity_term_present": {"toxic": None, "obscene": 0.99}}},
+            ["identity", "clean"],
+        ),
+    ],
+)
+def test_false_positive_audit_distinguishes_absent_subgroup_from_null_threshold(
+    tmp_path: Path, subgroup: dict[str, object] | None, expected_ids: list[str]
+) -> None:
+    # The identity row is truly toxic, but its obscene prediction is wrong.
+    # It is a false positive only when a declared subgroup blocks toxic as
+    # a trigger; an unrelated human-review subgroup must not affect it.
+    pred = pd.DataFrame({
+        "id": ["identity", "clean", "ordinary"],
+        "final_tier": ["auto_action"] * 3,
+        "identity_term_present": [1, 0, 0],
+    })
+    for label in AUDIT.LABELS:
+        pred[f"p_{label}"] = 0.0
+        pred[f"y_{label}"] = 0
+    pred["p_toxic"] = [0.995, 0.1, 0.995]
+    pred["p_obscene"] = [0.995, 0.995, 0.1]
+    pred["y_toxic"] = [1, 0, 1]
+    pred.to_csv(tmp_path / "predictions.csv", index=False)
+    thresholds: dict[str, object] = {"auto_action": {"toxic": 0.99, "obscene": 0.99}}
+    if subgroup is not None:
+        thresholds["subgroup"] = subgroup
+    (tmp_path / "thresholds.json").write_text(json.dumps(thresholds))
+
+    fp, total = AUDIT.false_positives(tmp_path)
+
+    assert total == 3
+    assert fp["id"].tolist() == expected_ids
+    if "identity" in expected_ids:
+        assert fp.loc[fp["id"] == "identity", "trigger_labels"].item() == "obscene"
+
+
 def test_score_counts_both_rules_and_agreement() -> None:
     human = ["toxic"] * 5 + ["borderline"] * 3 + ["clean"] * 2
     preread = ["toxic"] * 4 + ["borderline"] * 4 + ["clean"] * 2
@@ -83,6 +126,7 @@ def test_score_rejects_blank_or_unknown_verdicts(bad: str) -> None:
 
 def test_score_dir_writes_the_human_section(tmp_path: Path) -> None:
     _sample(["toxic", "clean"]).to_csv(tmp_path / "sample.csv", index=False)
+    original_sample = (tmp_path / "sample.csv").read_bytes()
     (tmp_path / "sample_meta.json").write_text(
         json.dumps({"n_auto_action": 10, "n_false_positive": 2, "human": {"protocol": "p"}})
     )
@@ -91,3 +135,5 @@ def test_score_dir_writes_the_human_section(tmp_path: Path) -> None:
     assert meta["human"]["counts"]["toxic"] == 1
     assert meta["human"]["protocol"] == "p"
     assert meta["n_auto_action"] == 10
+    assert meta["human"]["estimate_type"] == "conditional_sensitivity"
+    assert (tmp_path / "sample.csv").read_bytes() == original_sample

@@ -56,6 +56,9 @@ def test_shipped_configs_parse() -> None:
         cfg = load_config(ROOT / "configs" / f"{name}.yaml")
         assert cfg.policy_path.is_file()
         assert cfg.sim.capacity_per_hour == 120
+        assert cfg.model.analyzer == "word"
+        assert cfg.primary_strategy == "priority"
+        assert load_policy(cfg.policy_path).decision_mode == "human_confirmation"
 
 
 def test_unknown_primary_strategy_is_rejected(tmp_path: Path) -> None:

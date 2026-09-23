@@ -62,7 +62,7 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
   nav.bottom { gap: 16px; flex-wrap: wrap; }
 }
 </style></head><body><main>
-<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html" aria-current="page">第 3 步：优先人工审核</a><span>第 4 步：独立数据验证，待做</span></nav>
+<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html" aria-current="page">第 3 步：优先人工审核</a><a href="step4-features.html">第 4 步：误报复核与字符 n-gram</a><span>第 5 步：独立数据验证，暂缓</span></nav>
 
 <span class="tag">第 3 步</span><span class="tag">政策 v2</span>
 <h1>改为优先人工审核</h1>
@@ -75,7 +75,7 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
 <p>高置信不等于高危。先处理高置信评论可能挤占其他高危评论的审核时间，因此保留严重度排序作为对照，并直接检查高危完成数量。</p>
 <h2>本轮工作量与质量</h2>
 <div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">层级</th><th scope="col">评论数</th><th scope="col">占全部评论</th><th scope="col">测试精确率</th><th scope="col">95% 区间</th></tr></thead><tbody><tr><td>priority_review</td><td class='n'>4,625</td><td class='n'>7.23%</td><td class='n'>0.763</td><td>[0.750, 0.775]</td></tr><tr><td>human_review</td><td class='n'>1,685</td><td class='n'>2.63%</td><td class='n'>0.419</td><td>[0.396, 0.443]</td></tr><tr><td>allow</td><td class='n'>57,668</td><td class='n'>90.14%</td><td class='n'>n/a</td><td></td></tr></tbody></table></div>
-<p>总人工需求为 6,310 / 63,978 条，占 9.86%；合并人工队列精确率为 0.671，95% 区间 [0.659, 0.682]。任一真实标签为阳性就计为有审核价值。</p>
+<p>总人工需求为 6,310 / 63,978 条，占 9.86%；合并人工队列精确率为 0.671，95% 区间 [0.659, 0.682]。这里用任一真实标签为阳性作为审核价值的代理指标，并未独立测量一条评论是否值得人工审核。</p>
 <p>运行声明的自动处置数为 0，所有待审评论均要求人工确认。这里评估的是路由建议，未模拟人工复核的正确率或实际处罚结果。</p>
 <h2>逐任务时间与主指标</h2>
 <p>每次仿真保存 <code>simulation_jobs.csv</code>，记录任务到达、开始和完成时间。
@@ -115,5 +115,5 @@ python record/collect_runs.py --human-review reports/&lt;run&gt;
 python record/render.py</code></pre>
 <p class="prov">运行 <code>20260922T141853710066Z-human-review-baseline</code>，commit <code>563a0bf38226</code>，工作区含未提交改动。本页读取保存的 <a href="human_review_run.json">运行数据与政策快照</a>。首轮 99% 目标及未达标结果保留在<a href="step2-round1.html">历史记录</a>，没有按新标准重算。</p>
 
-<nav class="bottom" aria-label="前后步骤"><span><a href="step2-round1.html">← 第 2 步：首轮结果与诊断</a></span><span></span></nav>
+<nav class="bottom" aria-label="前后步骤"><span><a href="step2-round1.html">← 第 2 步：首轮结果与诊断</a></span><span><a href="step4-features.html">第 4 步：误报复核与字符 n-gram →</a></span></nav>
 </main></body></html>

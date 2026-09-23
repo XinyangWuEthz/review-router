@@ -46,23 +46,29 @@ The human pass changed 11 of 100 pre-read verdicts, in both directions:
 Final verdicts: toxic 46, borderline 23, clean 31. Scored with
 `python scripts/audit_auto_action_fp.py --score analysis/auto_action_fp_audit`:
 
-| relabel rule | implied auto-action precision (95% CI) |
+| relabel rule | conditional precision estimate (approximate 95% interval) |
 |---|---:|
 | as measured | 0.904 |
 | audited "toxic" rows are label noise | 0.948 [0.939, 0.958] |
 | "toxic" and "borderline" both count as toxic | 0.970 [0.961, 0.978] |
 
-The interval maps the Wilson interval of the audited share through the
-implied-precision formula and ignores the finite-population correction, so it
-is conservative. Reaching 0.99 would need at most 21 false positives among
+These estimates assume the 1921 unaudited original true positives remain correct
+under the audit rubric and extrapolate the unweighted audited share to all 204
+original false positives. They are not measured precision after relabelling.
+The interval maps a Wilson interval through this formula; it omits stratification,
+the finite-population correction and annotation uncertainty. The 89% agreement
+with the visible LLM pre-read does not measure independent annotator reliability.
+Reaching the historical 0.99 target would need at most 21 false positives among
 2125 auto-action rows, which means at least 90 of the 100 audited rows judged
 toxic. The audit found 46, or 69 under the generous rule.
 
-So the gap is not label noise alone. Relative to the pre-read, the human pass
-raised the lower bound (0.942 to 0.948) because sarcasm and insinuation count
-as attacks, and lowered the upper bound (0.974 to 0.970) because shouting at
+Under these assumptions, changing the label convention alone does not reach
+the old target. Relative to the pre-read, the human pass raised the toxic-only
+estimate (0.942 to 0.948) because sarcasm and insinuation count as attacks,
+and lowered the estimate including borderline (0.974 to 0.970) because shouting at
 someone without an insult, and asking about an identity, are not abuse. The
-31 clean rows are real model errors. They come in two shapes: an abuse word
+31 rows judged clean disagree with the model under this audit rubric. Examples
+include an abuse word
 used without a target ("the animation is stupid", "awh that sucks", the TV
 series *2 Stupid Dogs*, a quoted film line, a regex abuse-filter list), and a
 crude or identity word with no insult at all ("WHAT THE HELL Justin", "u gay
@@ -91,8 +97,8 @@ three intervals overlap and none approaches 0.99.
 The paired view explains why. Word+char drops 62 of the baseline's 204 false
 positives, including 17 of the 31 audited rows judged clean, but its threshold
 admits 517 rows the baseline did not, and 87 of those are new false
-positives. Character n-grams fix the OOV cases and then buy coverage with
-the same non-directed lexical errors at a different set of rows.
+positives. This comparison shows a change in which rows are admitted, but does
+not isolate whether spelling coverage or interpretation of context caused it.
 
 ## Step 3: the same comparison under policy v2 (`v2/`)
 
@@ -135,18 +141,22 @@ four-agent check (raw output in `v2/verification_raw.json`).
 
 ## Conclusion
 
-- The human audit puts the label-convention share of the round-1 gap
-  between 46% and 69% of the false positives. The rest, 31%, are real
-  errors: abuse or crude vocabulary with nobody attacked, which
-  bag-of-n-grams features cannot tell apart from an attack at any
-  threshold. Even a full relabel under the generous rule leaves the tier at
-  0.970, and character n-grams do not change auto-action precision.
+- In this sample, 46 rows were judged toxic, 23 borderline and 31 clean.
+  The conditional estimates are 0.948 and 0.970, both below the old 0.99
+  target. Some examples suggest difficulty interpreting targets and context;
+  they do not prove that every bag-of-n-grams model must make these errors.
+  The audit does not establish which comments are worth human review.
 - Decision (2026-09-23, project owner): do not adopt character n-grams for
   now; `model.analyzer` stays in the code with default `word`. The reason is
   cost (about 6x pipeline time, 2.4x model size), about 12% more review
-  work, and thresholds and gate limits that would have to be re-derived on
-  independent data. It is not that the feature has no effect: the gain on
-  high-risk comments is small but real.
-- Reconsider word+char as a candidate in the independent-data validation
-  step, comparing high-risk misses at equal review volume with thresholds
-  and limits derived for it.
+  work, and unresolved regression failures. Further threshold selection would
+  need development data followed by independent evaluation. Current gates stay
+  unchanged; the measured gain on high-risk comments remains recorded.
+- If independent-data validation is resumed, reconsider word+char at equal
+  review volume with thresholds and limits selected without using the final
+  evaluation set.
+- An independent human evaluation of review worthiness is an optional future
+  direction, deferred on 2026-09-23 because of annotation workload. Ambiguous
+  comments may deserve review even when no violation is confirmed, and some
+  require context that is unavailable. Keep the original Jigsaw labels and
+  existing gates; use this audit as development evidence, not final evaluation.
