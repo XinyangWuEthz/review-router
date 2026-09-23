@@ -144,7 +144,8 @@ JEV = json.loads(JEV_PATH.read_text()) if JEV_PATH.is_file() else None
 if JEV is not None and FEATURES is not None and HUMAN_RUN is not None:
     STEPS.append((
         "step5-jev.html", "第 5 步：Jev 与词模型对照",
-        "注册容量已满，Jev 实测暂缓；已完成固定样本、接入代码与配对 word 基线"
+        "Registration is at capacity; live Jev evaluation is deferred. "
+        "The fixed cohort, client code and paired word baseline are ready"
         if JEV["status"] == "blocked_registration" else
         "固定样本、问题和政策，比较六标签概率及有限审核容量下的表现",
     ))
@@ -1254,15 +1255,17 @@ def build_step5() -> None:
     done = data["status"] == "completed_exploratory"
     status = "已完成探索性对照" if done else "对照尚未完成"
     if data["status"] == "blocked_registration":
-        status = "注册受限，实测暂缓"
+        status = "Registration unavailable; live evaluation deferred"
+    conclusion = data.get("conclusion_en", data["conclusion_zh"])
+    execution_note = data.get("execution_note_en", data.get("execution_note_zh"))
     access = data.get("access_blocker")
     access_note = (
-        '<div class="box warn"><p>项目负责人注册时看到以下提示，'
-        '目前无法完成注册，因此尚未尝试真实 Jev 调用。</p>'
+        '<div class="box warn"><p>The project owner reported the following signup message. '
+        'Registration is currently unavailable, so no live Jev API calls have been attempted.</p>'
         f"<blockquote>{escape(access['message'])}</blockquote>"
-        f"<p>提示指向 <a href=\"{escape(access['information_url'], quote=True)}\">"
-        "TypeSafe 官方动态</a>。此处记录用户遇到的访问限制；"
-        "尚无模型效果结果，不能据此评价 Jev 的好坏。</p></div>"
+        f"<p>The notice links to <a href=\"{escape(access['information_url'], quote=True)}\">"
+        "TypeSafe updates</a>. This records a user-reported access limitation. "
+        "No results are available to assess Jev's performance.</p></div>"
     ) if access else ""
     count_rows = "".join(
         f"<tr><td>{escape(name)}</td><td class='n'>{counts['rows']:,}</td>"
@@ -1398,8 +1401,8 @@ def build_step5() -> None:
 <span class="tag">第 5 步</span><span class="tag">{status}</span>
 <h1>Jev 与词模型：固定样本的探索性对照</h1>
 <p class="lede">{escape(data['updated_utc'])} 更新。目标是在相同数据和审核政策下，检查语义判断能否改善六标签分类与审核排序。现有 baseline 是 TF-IDF 加逻辑回归，本轮没有训练 BERT。</p>
-<div class="box"><b>当前结论：</b>{escape(data['conclusion_zh'])}</div>
-{'<p>' + escape(data['execution_note_zh']) + '</p>' if data.get('execution_note_zh') else ''}
+<div class="box"><b>{'Current conclusion:' if data.get('conclusion_en') else '当前结论：'}</b> {escape(conclusion)}</div>
+{'<p>' + escape(execution_note) + '</p>' if execution_note else ''}
 {access_note}
 {failure_note}
 <div class="toc"><a href="#design">实验设计</a><a href="#samples">固定样本</a><a href="#results">当前结果</a><a href="#comparison">公平比较</a><a href="#cost">成本与复现边界</a><a href="#repro">复现命令</a></div>
@@ -1427,7 +1430,7 @@ def build_step5() -> None:
 <h2 id="repro">复现命令</h2>
 <pre><code># 准备固定样本并运行配对 word 对照，不调用 API
 python scripts/run_jev_experiment.py --prepare-only
-# 注册恢复并取得 API 访问后，配置 TYPESAFE_API_KEY 再执行真实请求
+# Once registration is available, obtain API access and set TYPESAFE_API_KEY
 python scripts/run_jev_experiment.py --allow-network
 # 只用缓存重放，缺失时停止
 python scripts/run_jev_experiment.py

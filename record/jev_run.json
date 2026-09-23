@@ -1,5 +1,5 @@
 {
-  "updated_utc": "2026-09-23T09:30:44.405911+00:00",
+  "updated_utc": "2026-09-23T09:35:21.469035+00:00",
   "status": "blocked_registration",
   "protocol": {
     "scope": "exploratory paired pilot on original Jigsaw labels; not a fresh holdout",
@@ -552,5 +552,7 @@
     "message": "Whoops, we're full - check https://x.com/typesafeai for more information!",
     "information_url": "https://x.com/typesafeai",
     "live_jev_attempted": false
-  }
+  },
+  "conclusion_en": "Live Jev evaluation is deferred because TypeSafe registration is currently unavailable. No real Jev predictions have been collected, so its effect on classification and review queues is unknown. The default remains word.",
+  "execution_note_en": "2026-09-23: The project owner reported that signup was at capacity and could not obtain API access. No live Jev API calls have been attempted. The paired word baseline and offline integration tests are complete; simulated test responses verify the code only and are not evidence of model performance."
 }
