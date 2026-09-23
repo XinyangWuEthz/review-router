@@ -3,6 +3,7 @@ label: human-review-baseline
 data_dir: data/jigsaw          # train.csv, test.csv, test_labels.csv (official Jigsaw 2018)
 output_dir: reports
 seed: 20260922
+frozen_model: configs/frozen-baseline.json  # fixed vocabulary, classifier and Platt parameters
 
 split:                          # of train.csv; scored test rows are held out entirely
   train: 0.6                    # TF-IDF vocabulary + six logistic heads
@@ -26,7 +27,10 @@ simulation:                     # assumptions, not measurements
   high_risk_min_weight: 5       # threat (10), identity_hate (6), severe_toxic (5)
   primary:                      # near-capacity load the queue-clearing gates read, and the
     load_per_hour: 108          # router strategy compared against fifo on time-to-action
-    strategy: priority
+    # The primary ordering is what the queue-clearing gates read and what the
+    # record calls the router; the band-first (priority) ordering remains a
+    # compared alternative.
+    strategy: severity
   thesis_load_per_hour: 180     # overload where ordering changes harm handled per reviewer-hour
   headline:                     # the ONE time metric the protocol selects for reporting
     metric: wait                # wait = start of review - arrival; completion_latency = completion - arrival

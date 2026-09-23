@@ -12,6 +12,7 @@ import pytest
 
 from review_router.metrics import per_label_metrics, tier_metrics
 from review_router.pipeline import _review_workload
+from review_router.policy import load_policy
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -80,7 +81,9 @@ def test_undefined_metrics_do_not_become_zero_or_mismatched_seed_pairs() -> None
     assert CMP._mean_std([None, None]) == {"mean": None, "std": None, "valid_n": 0}
     # Only the first seed has a defined ratio in both runs; do not pair seed 2 with seed 3.
     assert CMP._paired([1.0, None, 0.5], [0.25, 0.8, None]) == {
-        "mean": 0.75, "se": None, "valid_n": 1,
+        "mean": 0.75,
+        "se": None,
+        "valid_n": 1,
     }
 
 
@@ -118,7 +121,8 @@ def test_stream_counts_high_risk_left_in_allow_as_not_reviewed(tmp_path: Path) -
 
 
 def test_word_queue_and_all_allow_candidate_complete_comparison(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     word = _stream_item(tmp_path)
     word["label"] = "word"
@@ -141,12 +145,23 @@ def test_word_queue_and_all_allow_candidate_complete_comparison(
             "tiers": tiers,
             "threshold_selection": {"tiers": tiers},
             "per_label": per_label_metrics(y, proba, CMP.LABELS, thresholds),
-            "review_workload": _review_workload(final, y),
+            "review_workload": _review_workload(final, y, load_policy(), 5),
         }
         item["manifest"] = {"git_commit": "abc12345", "git_dirty": False}
 
     monkeypatch.setattr(CMP, "EQUAL_INPUT_SEEDS", tuple(range(1, 8)))
     comparison = CMP.shared_stream(items, [20.0])
+    # The shipped severity ordering and the historical priority/FIFO keys all
+    # remain available, including for a candidate with an empty review queue.
+    strategies = {"severity", "priority", "fifo"}
+    for label in ("word", "jev"):
+        by_input = comparison["runs"][label]["by_input"]["20.0"]
+        assert set(by_input) == strategies | {"expected_review_load_per_hour"}
+    assert set(comparison["differences_vs_reference"]["jev"]["20.0"]) == strategies
+    for strategy in strategies:
+        assert (
+            comparison["runs"]["jev"]["by_input"]["20.0"][strategy]["review_arrivals"]["mean"] == 0
+        )
     empty = comparison["runs"]["jev"]["by_input"]["20.0"]["priority"]
     word_metrics = comparison["runs"]["word"]["by_input"]["20.0"]["priority"]
     assert word_metrics["review_arrivals"]["mean"] > 0
@@ -161,10 +176,10 @@ def test_word_queue_and_all_allow_candidate_complete_comparison(
     assert difference["high_risk_not_reviewed"]["valid_n"] == 7
     json.dumps(comparison, allow_nan=False)
 
-    markdown = CMP.to_markdown([CMP.summarize(item) for item in items],
-                               {"equal_input": comparison})
+    markdown = CMP.to_markdown([CMP.summarize(item) for item in items], {"equal_input": comparison})
     assert "| jev | jev-1.13.0 |" in markdown
     assert "| jev | 0 | 0.0000 | n/a [n/a, n/a] |" in markdown
     assert "| severe_toxic | n/a | n/a | n/a | n/a |" in markdown
+    assert "| severity |" in markdown
     assert "n/a (n=0)" in markdown
     assert "nan" not in markdown

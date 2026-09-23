@@ -30,7 +30,10 @@ simulation:                     # assumptions, not measurements
   high_risk_min_weight: 5       # threat (10), identity_hate (6), severe_toxic (5)
   primary:                      # near-capacity load the queue-clearing gates read, and the
     load_per_hour: 108          # router strategy compared against fifo on time-to-action
-    strategy: priority
+    # The primary ordering is what the queue-clearing gates read and what the
+    # record calls the router; the band-first (priority) ordering remains a
+    # compared alternative.
+    strategy: severity
   thesis_load_per_hour: 180     # overload where ordering changes harm handled per reviewer-hour
   headline:                     # the ONE time metric the protocol selects for reporting
     metric: wait                # wait = start of review - arrival; completion_latency = completion - arrival

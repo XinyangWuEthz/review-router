@@ -435,7 +435,8 @@ def test_four_category_gates_use_named_capacity_metric(priority_run: Path) -> No
         key: value for key, value in gates["routing"].items() if "precision_floor" not in key
     }
     gates["routing"] = {
-        "priority_review_precision_floor": None, "human_review_precision_floor": None
+        "priority_review_precision_floor": None,
+        "human_review_precision_floor": None,
     }
     gates["capacity"].update(completion_ratio_min=0.97, backlog_end_max=10, wait_p50_max_min=1.0)
     gates["classification"] = {
@@ -461,6 +462,93 @@ def test_four_category_gates_use_named_capacity_metric(priority_run: Path) -> No
     assert "(primary) | 0.800 | ≥ 1.000 | **red**" in text
 
 
+def test_ordering_gate_rows_follow_the_declared_alternatives(priority_run: Path) -> None:
+    path = priority_run / "policy.yaml"
+    gates = yaml.safe_load(path.read_text())["gates"]
+    gates["capacity"] = {
+        "ordering_vs_alternatives": {
+            # 'severity' is the primary here and 'priority' has no paired entry:
+            # neither may produce a row.
+            "alternatives": ["fifo", "prob", "priority", "severity"],
+            "high_risk_handled_tolerance": 1.0,
+            "harm_per_reviewer_hour_tolerance": 0.5,
+        }
+    }
+    report = json.loads((priority_run / "report.json").read_text())
+    sim = report["simulation"]
+    sim["primary"] = {"strategy": "severity", "load_per_hour": 108.0}
+    sim["thesis"] = {"strategy": "severity", "load_per_hour": 180.0}
+
+    def entry(diff: float) -> dict[str, Any]:
+        return {"mean_diff": diff, "n_seeds": 5, "n_seeds_first_better": 0}
+
+    sim["paired"] = {
+        "severity_vs_fifo@180": {
+            "high_risk_handled": entry(4.8),
+            "harm_per_reviewer_hour": entry(1.375),
+        },
+        "severity_vs_prob@180": {
+            "high_risk_handled": entry(-1.5),
+            "harm_per_reviewer_hour": entry(-0.5),
+        },
+    }
+    text = "\n".join(RENDERER._gate_lines(report, gates, path, "priority_review"))
+    assert (
+        "| ordering vs fifo at 180.000/h: high-risk completed mean diff | 4.800 | ≥ -1.000 "
+        "| green |" in text
+    )
+    assert (
+        "| ordering vs prob at 180.000/h: high-risk completed mean diff | -1.500 | ≥ -1.000 "
+        "| **red** |" in text
+    )
+    assert (
+        "| ordering vs prob at 180.000/h: harm per reviewer-hour mean diff | -0.500 | ≥ -0.500 "
+        "| green |" in text
+    )
+    assert "ordering vs priority" not in text and "ordering vs severity" not in text
+    # The completed-count rows name the configured primary ordering, not the band-first one.
+    assert "| high-risk completed, severity / FIFO at 108.000/h (primary) |" in text
+    assert "| high-risk completed, severity / FIFO at 180.000/h (thesis) |" in text
+    assert "high-risk completed, priority / FIFO" not in text
+    criteria = "\n".join(RENDERER._criteria_lines(report, gates, {}, path))
+    assert "The router is the configured primary ordering, severity" in criteria
+    # The primary ordering is not listed among the alternatives it is compared with.
+    assert "against each of fifo, prob, priority must be at least -1.000" in criteria
+    assert "priority, severity must be" not in criteria
+    assert not RENDERER._ordering_rows(sim, None)
+    assert not RENDERER._ordering_rows({"primary": {"strategy": "severity"}}, gates["capacity"])
+    # Without a thesis scenario there is nothing to read; the primary load is not a stand-in.
+    assert not RENDERER._ordering_rows(
+        {"primary": {"strategy": "severity", "load_per_hour": 180.0}, "paired": sim["paired"]},
+        gates["capacity"],
+    )
+
+
+@pytest.mark.parametrize(
+    "strategy,description",
+    [
+        ("priority", "serves priority_review before human_review"),
+        ("severity", "serves the combined review pool by predicted severity"),
+        ("prob", "serves the combined review pool by maximum calibrated label probability"),
+        ("fifo", "serves the combined review pool in arrival order"),
+    ],
+)
+def test_review_band_precedence_matches_the_saved_primary_ordering(
+    priority_run: Path, strategy: str, description: str
+) -> None:
+    path = priority_run / "report.json"
+    report = json.loads(path.read_text())
+    report["simulation"]["primary"]["strategy"] = strategy
+    path.write_text(json.dumps(report))
+    text = RENDERER.render(priority_run)
+    assert description in text
+    assert "priority_review schedules a human review earlier" not in text
+    if strategy == "priority":
+        assert "The band-first priority ordering is reported as an alternative" not in text
+    else:
+        assert "the review band does not change queue precedence" in text
+
+
 def test_record_time_tables_state_populations_and_sample_counts(priority_run: Path) -> None:
     import numpy as np
 
@@ -470,14 +558,19 @@ def test_record_time_tables_state_populations_and_sample_counts(priority_run: Pa
     sim = json.loads((priority_run / "report.json").read_text())["simulation"]
     scenario = Scenario(1, 108, np.array([0, 0]), np.array([0.0, 0.5]), np.array([2.0, 2.0]))
     _, records = simulate(
-        scenario, np.zeros(1), np.ones(1), np.ones(1, dtype=bool),
-        SimConfig(reviewers=1, horizon_hours=3 / 60), "fifo"
+        scenario,
+        np.zeros(1),
+        np.ones(1),
+        np.ones(1, dtype=bool),
+        SimConfig(reviewers=1, horizon_hours=3 / 60),
+        "fifo",
     )
     tm = time_metrics(records)
-    sim["time_metrics"] = {f"{s}@108": {"pooled_over_seeds": tm} for s in ("priority", "fifo")}
-    sim["headline"] = _headline(
-        sim["time_metrics"], load_config(ROOT / "configs" / "baseline.yaml")
-    )
+    config = load_config(ROOT / "configs" / "baseline.yaml")
+    sim["time_metrics"] = {
+        f"{s}@108": {"pooled_over_seeds": tm} for s in (config.primary_strategy, "fifo")
+    }
+    sim["headline"] = _headline(sim["time_metrics"], config)
     text = "\n".join(RENDERER._simulation_lines(sim, "priority_review"))
     assert "all jobs that started, including reviews still in progress" in text
     assert "completed items" not in text

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "artifact_dir": "../models/frozen-baseline",
+  "source_run_url": "https://github.com/XinyangWuEthz/review-router/actions/runs/35857528118",
+  "source_artifact": "evaluation-210d9857220b23d175d4aff5a54ab221ad86280b",
+  "files": {
+    "model.pkl": "ac31ea513bf55ebc2500edf88e68f69c4e49f5e4b73d1c9a6f1a84fc5b378eef",
+    "manifest.json": "d468260855d625fbda8048bffaa59c892394e2fe38b96b4d1009c7e6eb8dfc63",
+    "splits.csv": "9f86d2a17105abaeff7b3e15bbdf4d983a307a8246b342655558390abb31045c"
+  },
+  "model_code_sha256": "efcb9b4b8c9b61325d054ca17c175416ec3e7e80e8b7e0fe01fba402080a8253"
+}

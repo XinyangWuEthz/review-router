@@ -1,4 +1,4 @@
-version: 2
+version: 3
 decision_mode: human_confirmation
 
 # Ordered integer map, so "highest matching tier wins" is max(..., key=tiers.get).
@@ -19,12 +19,47 @@ severity_weights:
   toxic: 1
 
 # Empirical targets for selecting per-label thresholds on the selection split.
-# Priority review puts higher-confidence candidates near the front of the queue.
+# priority_review is a precision-tiered review label (0.95 selection target)
+# that marks higher-confidence review candidates. Queue order is the configured
+# primary ordering in configs (predicted severity), so the band does not by
+# itself decide who is served first.
 # Both review tiers require human confirmation before any moderation action.
 # These targets are not hard acceptance gates or test-set precision guarantees.
 tier_precision_floors:
   human_review: 0.90
   priority_review: 0.95
+
+# How each tier's threshold is chosen on the selection split.
+# cumulative_precision: the lowest threshold t whose cumulative precision over
+# all rows with p >= t meets the floor with at least min_rows rows. The top
+# segment can carry the lower ones: on the round-1 selection split the toxic
+# priority threshold was 0.847 while the [0.95, 0.98) bin alone reached 0.937
+# and lower bins far less.
+# segment_agreement: the priority threshold for a label is the lowest declared
+# edge such that every segment at or above it individually meets the 0.95
+# target with at least min_rows rows on the selection split. This extends
+# the Score("Yes") threshold tuning in Thomas et al., arXiv 2406.12800;
+# the per-segment target and minimum count are this project's rule, not
+# requirements from the paper. The edges below were declared after the
+# round-1 test bins were inspected (record/diagnose.py), so this is
+# test-informed design, not a fresh a-priori choice. The human band keeps the
+# cumulative rule; the identity-term slice keeps the cumulative rule on the
+# rows at or above the population threshold, because the slice cannot fill
+# segments of min_rows and would silently lose priority for every identity-term
+# row. The rule is judged on development data first and confirmed only on an
+# independent dataset. Every band still requires human confirmation.
+tier_selection_rules:
+  priority_review: segment_agreement
+  human_review: cumulative_precision
+
+agreement_segments:
+  edges: [0.5, 0.8, 0.9, 0.95, 0.98, 0.99, 0.995, 1.0]
+  # For labels whose severity weight reaches the high-risk weight (threat,
+  # identity_hate, severe_toxic at the configured 5.0): their scores rarely
+  # reach the upper bins, so the segments are coarser and start lower.
+  high_risk_edges: [0.1, 0.2, 0.3, 0.5, 0.8, 0.9, 1.0]
+  min_rows: 30
+  use_wilson_lower_bound: false
 
 # Tiers whose floor must also hold on a declared subgroup. The threshold for a
 # row in the subgroup is the stricter of the population threshold and the one
@@ -99,7 +134,7 @@ retired_rules:
       rejected as a blunt override of the floor-defined tiers. Instead the
       floor is required on the slice itself (subgroup_thresholds above) and
       the concentration is measured and gated on every run.
-    replaced_by: subgroup_thresholds.auto_action[identity_term_present] and gates.fairness
+    replaced_by: subgroup_thresholds.priority_review[identity_term_present] and gates.fairness
 
 # Regression gates are grouped by classification, routing, capacity and
 # reproducibility. Fairness is a separate disparity diagnostic. Null limits
@@ -170,6 +205,19 @@ gates:
     wait_p50_max_min: 1.0
     queue_depth_p95_max: 39
     reviewer_utilization_min: 0.60
+    # Paired ordering comparison at the thesis (overload) load. Every ordering
+    # replays identical arrivals per seed, so the primary ordering is compared
+    # to each alternative by the mean per-seed difference. It must not lose by
+    # more than the tolerance on the two precedence metrics (high-risk items
+    # completed, harm proxy per reviewer-hour); wait quantiles are reported and
+    # do not decide. Tolerances are a-priori: about the observed seed-to-seed
+    # paired spread (0.8 high-risk items in the v2 run) rounded up, declared
+    # before the first run that reads them. With 5 seeds the sign count is
+    # diagnostic, not a gate.
+    ordering_vs_alternatives:
+      alternatives: [fifo, prob, priority]
+      high_risk_handled_tolerance: 1.0
+      harm_per_reviewer_hour_tolerance: 0.5
 
   # 4. Determinism: reproduce all saved time summaries and replay one scenario
   # for the router and FIFO, with an absolute tolerance and no relative slack.

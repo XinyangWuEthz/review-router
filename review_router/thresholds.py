@@ -5,6 +5,12 @@ floor still holds on the threshold-selection split, subject to a minimum count
 of predicted positives. Lowest threshold means maximum coverage; coverage is
 the dependent variable. If no threshold qualifies the tier is disabled for
 that label (threshold None), which is the expected outcome for rare labels.
+
+Two selection rules exist. cumulative_precision reads the precision of all
+rows at or above a candidate threshold. segment_agreement reads each declared
+score segment on its own and requires every segment at or above the candidate
+edge to meet the floor with enough rows, so a strong top segment cannot carry
+weaker ones below it. The policy names the rule per tier.
 """
 
 from __future__ import annotations
@@ -14,11 +20,14 @@ from typing import Any
 
 import numpy as np
 
-from review_router.policy import Policy
+from review_router.metrics import wilson_interval
+from review_router.policy import AgreementSegments, Policy
 
 __all__ = [
     "TIER_ORDER",
     "choose_threshold",
+    "choose_threshold_by_segment",
+    "segment_masks",
     "TierThresholds",
     "select_thresholds",
     "model_tier",
@@ -69,6 +78,54 @@ def choose_threshold(
     return best
 
 
+def segment_masks(p: np.ndarray, edges: tuple[float, ...]) -> list[np.ndarray]:
+    """Boolean row masks for [edges[i], edges[i+1]); the last segment includes its upper edge."""
+    scores = np.asarray(p, dtype=float)
+    masks: list[np.ndarray] = []
+    for i in range(len(edges) - 1):
+        lo, hi = edges[i], edges[i + 1]
+        upper = scores <= hi if i == len(edges) - 2 else scores < hi
+        masks.append((scores >= lo) & upper)
+    return masks
+
+
+def choose_threshold_by_segment(
+    y_true: np.ndarray,
+    p: np.ndarray,
+    floor: float,
+    min_rows: int,
+    edges: tuple[float, ...],
+    use_wilson_lower_bound: bool = False,
+) -> float | None:
+    """Lowest edge such that every segment at or above it meets the floor on its own.
+
+    Segments are [edges[i], edges[i+1]) for consecutive edges, the last one
+    closed at edges[-1] (1.0). Segment j qualifies when it has at least
+    min_rows rows and its agreement, the mean of y in the segment (or the
+    Wilson 95% lower bound of that proportion when use_wilson_lower_bound),
+    is at least the floor. Candidate edges[i] is returned when every segment
+    j >= i qualifies; the lowest such edge wins, else None. Agreement here is
+    the observed proportion on the given rows, not a population bound.
+    """
+    if len(edges) < 2:
+        raise ValueError("edges must contain at least two values")
+    y = np.asarray(y_true).astype(int)
+    masks = segment_masks(p, edges)
+    qualifies: list[bool] = []
+    for mask in masks:
+        n = int(mask.sum())
+        if n < min_rows:
+            qualifies.append(False)
+            continue
+        positives = int(y[mask].sum())
+        agreement = wilson_interval(positives, n)[0] if use_wilson_lower_bound else positives / n
+        qualifies.append(agreement >= floor)
+    for i in range(len(masks)):
+        if all(qualifies[i:]):
+            return float(edges[i])
+    return None
+
+
 @dataclass(frozen=True)
 class TierThresholds:
     """thresholds[tier][label] -> probability threshold, or None when disabled.
@@ -99,14 +156,27 @@ def select_thresholds(
     labels: tuple[str, ...],
     policy: Policy,
     signals: dict[str, np.ndarray] | None = None,
+    *,
+    high_risk_min_weight: float = 5.0,
 ) -> TierThresholds:
     """Population thresholds per tier and label, plus the declared subgroup thresholds.
 
+    Each tier uses the rule named in policy.tier_selection_rules:
+    cumulative_precision (choose_threshold) or segment_agreement
+    (choose_threshold_by_segment on policy.agreement_segments; labels whose
+    severity weight reaches high_risk_min_weight use the high-risk edges).
+    A policy without the key uses cumulative_precision for both tiers, so old
+    policy files select exactly as before.
+
     A subgroup threshold is chosen on the subgroup rows at or above the
     population threshold, from the same floor and minimum count, so it is
-    never below the population threshold. A slice without a qualifying
-    empirical threshold gets no tier on that label. This selection criterion
-    does not certify a population precision bound.
+    never below the population threshold. Subgroup thresholds always use the
+    cumulative rule, whatever the tier's population rule: the slice is small
+    and cannot fill segments of min_rows rows, so the segment rule would
+    return None and silently remove the tier for every identity-term row.
+    A slice without a qualifying empirical threshold gets no tier on that
+    label. This selection criterion does not certify a population precision
+    bound.
 
     Targets are fitted independently for each label and subgroup. Combining
     labels or intersecting overlapping subgroups can change routed precision
@@ -117,8 +187,11 @@ def select_thresholds(
     order = TIER_ORDER if policy.decision_mode == "human_confirmation" else _LEGACY_TIER_ORDER
     for tier in order:
         floor = policy.tier_precision_floors[tier]
+        rule = policy.tier_selection_rules.get(tier, "cumulative_precision")
         thresholds[tier] = {
-            label: choose_threshold(y_true[:, j], proba[:, j], floor, min_pos)
+            label: _population_threshold(
+                y_true[:, j], proba[:, j], floor, min_pos, rule, label, policy, high_risk_min_weight
+            )
             for j, label in enumerate(labels)
         }
     subgroup: dict[str, dict[str, dict[str, float | None]]] = {}
@@ -140,6 +213,34 @@ def select_thresholds(
             )
         subgroup.setdefault(declared.tier, {})[declared.signal] = per_label
     return TierThresholds(thresholds=thresholds, labels=labels, subgroup=subgroup)
+
+
+def _population_threshold(
+    y: np.ndarray,
+    p: np.ndarray,
+    floor: float,
+    min_pos: int,
+    rule: str,
+    label: str,
+    policy: Policy,
+    high_risk_min_weight: float,
+) -> float | None:
+    if rule == "cumulative_precision":
+        return choose_threshold(y, p, floor, min_pos)
+    if rule == "segment_agreement":
+        segments: AgreementSegments | None = policy.agreement_segments
+        if segments is None:  # pragma: no cover - Policy fills the default
+            segments = AgreementSegments(min_rows=min_pos)
+        weight = policy.severity_weights.get(label, 0.0)
+        return choose_threshold_by_segment(
+            y,
+            p,
+            floor,
+            segments.min_rows,
+            segments.edges_for(weight, high_risk_min_weight),
+            segments.use_wilson_lower_bound,
+        )
+    raise ValueError(f"unknown selection rule {rule!r}")
 
 
 def model_tier(

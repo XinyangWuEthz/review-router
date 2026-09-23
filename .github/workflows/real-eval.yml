@@ -3,8 +3,8 @@ name: Real evaluation
 # Second layer of the two-layer CI. ci.yml is the code-check layer (lint, types,
 # unit tests, synthetic pipeline test; the gates skip there). This workflow
 # fetches the official Jigsaw files, verifies them against the pinned hashes,
-# runs the pipeline WITH THE CODE UNDER TEST, points the gates at the report it
-# just produced and archives the run. It never re-checks an old report, and it
+# evaluates the frozen scorer with the ROUTER CODE UNDER TEST, points the gates
+# at the report it just produced and archives the run. It never re-checks an old report, and it
 # fails when a configured gate is red. Precision of the human-review bands
 # remains diagnostic; every flagged case consumes human reviewer capacity.
 
@@ -12,8 +12,18 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      retrain:
+        description: "Run a separate full-training check instead of the frozen scorer"
+        required: false
+        type: boolean
+        default: false
   schedule:
     - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+  actions: read
 
 jobs:
   evaluate:
@@ -26,7 +36,23 @@ jobs:
       - name: Install
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev,ml]"
+          pip install -c configs/frozen-ml.txt -e ".[dev,ml]"
+      - name: Restore the pinned scorer cache
+        if: inputs.retrain != true
+        id: scorer
+        uses: actions/cache@v4
+        with:
+          path: models/frozen-baseline
+          key: frozen-scorer-${{ hashFiles('configs/frozen-baseline.json') }}
+      - name: Restore the pinned scorer from its original run
+        if: inputs.retrain != true && steps.scorer.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 35857528118 --repo XinyangWuEthz/review-router \
+            --name evaluation-210d9857220b23d175d4aff5a54ab221ad86280b \
+            --dir "$RUNNER_TEMP/frozen-source"
+          python scripts/restore_frozen_model.py --source-run "$RUNNER_TEMP/frozen-source"
       - name: Restore the corpus cache
         id: corpus
         uses: actions/cache@v4
@@ -43,10 +69,14 @@ jobs:
           done
       - name: Verify the corpus against the pinned hashes
         run: python scripts/verify_data.py data/jigsaw configs/jigsaw.sha256
-      - name: Run the evaluation with the code under test
+      - name: Run the router evaluation with the code under test
         id: run
+        env:
+          RETRAIN: ${{ inputs.retrain }}
         run: |
-          python scripts/run_pipeline.py --config configs/baseline.yaml > "$RUNNER_TEMP/review-router-eval.log"
+          EXTRA_ARGS=()
+          if [ "$RETRAIN" = "true" ]; then EXTRA_ARGS+=(--retrain); fi
+          python scripts/run_pipeline.py --config configs/baseline.yaml "${EXTRA_ARGS[@]}" > "$RUNNER_TEMP/review-router-eval.log"
           RUN_DIR=$(head -n 1 "$RUNNER_TEMP/review-router-eval.log")
           echo "run_dir=$RUN_DIR" >> "$GITHUB_OUTPUT"
           echo "report=$RUN_DIR/report.json" >> "$GITHUB_OUTPUT"

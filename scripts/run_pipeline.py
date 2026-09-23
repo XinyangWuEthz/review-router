@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Re-run the whole round-1 experiment from one config file.
+"""Evaluate the router using the config's frozen scorer, or explicitly retrain.
 
     python scripts/run_pipeline.py --config configs/baseline.yaml
 
@@ -21,8 +21,13 @@ from review_router.pipeline import run  # noqa: E402
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
+    parser.add_argument(
+        "--retrain",
+        action="store_true",
+        help="explicitly fit a new model and calibration; never replaces the frozen artifact",
+    )
     args = parser.parse_args()
-    run_dir = run(args.config.resolve())
+    run_dir = run(args.config.resolve(), retrain=args.retrain)
     print(run_dir)
     print((run_dir / "report.md").read_text(encoding="utf-8"))
 

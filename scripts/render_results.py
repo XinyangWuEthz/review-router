@@ -198,8 +198,10 @@ def _simulation_lines(sim: dict[str, Any], high_tier: str = AUTO) -> list[str]:
         "They are not incoming platform-comment rates. Every admitted item uses reviewer capacity. "
         if high_tier == PRIORITY else ""
     )
+    if high_tier == PRIORITY and a.get("primary_order"):
+        review_pool += f"Primary ordering ({sim.get('primary', {}).get('strategy', 'unavailable')}): {a['primary_order']}. "
     if high_tier == PRIORITY and a.get("priority_order"):
-        review_pool += f"Priority ordering: {a['priority_order']}. "
+        review_pool += f"Priority-band ordering: {a['priority_order']}. "
     wait_population = (
         "all jobs that started, including reviews still in progress at the horizon"
         if "time_metrics" in sim else "completed items"
@@ -357,8 +359,10 @@ def _gate_lines(
             values = sim.get("high_risk_handled", {}).get(scenario, {})
             value = ratio(values.get("router"), values.get("fifo"))
             limit = capacity.get("high_risk_handled_vs_fifo_min")
-            name = f"high-risk completed, priority / FIFO at {fmt(values.get('load_per_hour'))}/h ({scenario})"
+            strategy = (thesis if scenario == "thesis" else primary).get("strategy", "router")
+            name = f"high-risk completed, {strategy} / FIFO at {fmt(values.get('load_per_hour'))}/h ({scenario})"
             rows.append((name, fmt(value), f"≥ {fmt(limit)}", gate_status(value, limit)))
+    rows.extend(_ordering_rows(sim, capacity.get("ordering_vs_alternatives")))
     for metric, config_name, upper in (
         ("completion_ratio", "completion_ratio_min", False),
         ("backlog_end", "backlog_end_max", True),
@@ -417,26 +421,76 @@ def _gate_lines(
     return lines
 
 
+def _ordering_rows(
+    sim: dict[str, Any], ordering: dict[str, Any] | None
+) -> list[tuple[str, str, str, str]]:
+    """Primary ordering versus each declared alternative: mean per-seed difference at the thesis load.
+
+    Rows are skipped when the block is absent, the run has no thesis scenario, the alternative
+    is the primary ordering itself, or the run has no paired entry for it. The requirement is a
+    declared tolerance, not a ratio.
+    """
+    primary, thesis = sim.get("primary", {}), sim.get("thesis")
+    if not ordering or not thesis or not finite(thesis.get("load_per_hour")):
+        return []
+    load = thesis["load_per_hour"]
+    rows = []
+    for alt in ordering.get("alternatives", []):
+        entry = sim.get("paired", {}).get(f"{primary.get('strategy')}_vs_{alt}@{load:g}")
+        if alt == primary.get("strategy") or not entry:
+            continue
+        for field, label, config_name in (
+            ("high_risk_handled", "high-risk completed", "high_risk_handled_tolerance"),
+            ("harm_per_reviewer_hour", "harm per reviewer-hour", "harm_per_reviewer_hour_tolerance"),
+        ):
+            tolerance = ordering.get(config_name)
+            value = (entry.get(field) or {}).get("mean_diff")
+            limit = -tolerance if finite(tolerance) else None
+            rows.append((f"ordering vs {alt} at {fmt(load)}/h: {label} mean diff", fmt(value),
+                         f"≥ -{fmt(tolerance)}", gate_status(value, limit)))
+    return rows
+
+
 def _criteria_lines(
     report: dict[str, Any], gates: dict[str, Any], floors: dict[str, float], source: Path
 ) -> list[str]:
     routing = gates.get("capacity", gates.get("routing", {}))
     sim = report.get("simulation", {})
     primary, thesis = sim.get("primary", {}), sim.get("thesis", {})
+    strategy = primary.get("strategy")
+    ordering_description = {
+        "priority": "It serves priority_review before human_review, using predicted severity within each band. ",
+        "severity": "It serves the combined review pool by predicted severity; the review band does not change queue precedence. ",
+        "prob": "It serves the combined review pool by maximum calibrated label probability; the review band does not change queue precedence. ",
+        "fifo": "It serves the combined review pool in arrival order; the review band does not change queue precedence. ",
+    }.get(strategy, "")
+    if strategy in ("severity", "prob", "fifo"):
+        ordering_description += "The band-first priority ordering is reported as an alternative. "
+    ordering = routing.get("ordering_vs_alternatives") or {}
+    ordering_text = (
+        f"At {fmt(thesis.get('load_per_hour'))}/h the primary ordering's mean per-seed difference against each of "
+        f"{', '.join(str(alt) for alt in ordering.get('alternatives', []) if alt != primary.get('strategy'))} must be at least "
+        f"-{fmt(ordering.get('high_risk_handled_tolerance'))} high-risk completions and "
+        f"-{fmt(ordering.get('harm_per_reviewer_hour_tolerance'))} harm per reviewer-hour; wait quantiles are reported and do not decide. "
+        if ordering else ""
+    )
     return [
         "**Decision contract and evaluation criteria.** Every moderation action requires human confirmation. "
-        "The model routes comments to priority_review, human_review or allow; priority_review schedules a human review earlier "
-        "and does not authorize an automatic moderation action. Automatic actions must remain zero.", "",
+        "The model routes comments to priority_review, human_review or allow. Both review bands require human confirmation; "
+        "queue precedence is determined by the configured primary ordering. Automatic actions must remain zero.", "",
         f"The run's per-label selection targets are {fmt(floors.get(PRIORITY), 2)} for priority_review "
         f"and {fmt(floors.get(HUMAN), 2)} for human_review. These are empirical targets on the selection split, "
         "not guarantees of test precision. Per-tier test precision remains diagnostic when its gate is not set.", "",
-        f"Comparison gates come from `{source}`. At equal reviewer capacity, the router/FIFO harm-per-reviewer-hour ratio "
+        f"Comparison gates come from `{source}`. The router is the configured primary ordering, "
+        f"{fmt(strategy)}. " + ordering_description
+        + "At equal reviewer capacity, the router/FIFO harm-per-reviewer-hour ratio "
         f"at {fmt(thesis.get('load_per_hour'))}/h must be ≥ {fmt(routing.get('harm_per_reviewer_hour_vs_fifo_min'))}; "
         f"the high-risk wait p90 ratio at {fmt(primary.get('load_per_hour'))}/h must be ≤ "
         f"{fmt(routing.get('high_risk_wait_p90_vs_fifo_max'))}. The high-risk completed-count ratio must be ≥ "
         f"{fmt(routing.get('high_risk_handled_vs_fifo_min'))} at both named loads. "
         "These comparisons use ratios of seed means. They are descriptive checks that the measured result is no worse than FIFO, "
-        "not statistical non-inferiority tests. Historical automatic-enforcement results use a different contract.", "",
+        "not statistical non-inferiority tests. " + ordering_text
+        + "Historical automatic-enforcement results use a different contract.", "",
     ]
 
 
@@ -475,6 +529,8 @@ def _prevalence_lines(report: dict[str, Any]) -> list[str]:
 
 def render(run_dir: Path, policy_path: Path | None = None) -> str:
     report = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    if report.get("evaluate_test") is False:
+        raise ValueError(f"{run_dir} is a development run (evaluate_test: false): test rows not scored, so there is no results block to render")
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     snapshot_path = run_dir / "policy.yaml"
     snapshot = load_policy(snapshot_path)
@@ -560,7 +616,10 @@ def main() -> None:
     parser.add_argument("--policy", type=Path, default=None,
                         help="explicit comparison-gate override; defaults to run_dir/policy.yaml; tier targets always use the run snapshot")
     args = parser.parse_args()
-    block = render(args.run_dir, args.policy)
+    try:
+        block = render(args.run_dir, args.policy)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
     text = args.readme.read_text(encoding="utf-8")
     if START not in text or END not in text:
         raise SystemExit(f"{args.readme} has no {START} / {END} markers")
