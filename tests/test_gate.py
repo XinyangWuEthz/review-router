@@ -663,6 +663,9 @@ def test_report_made_with_another_config_fails(
         "config_path": str(config),
     }
     monkeypatch.setenv(REPORT_ENV, str(_write_run(tmp_path, {"tiers": {}}, manifest)))
+    # The evaluated config may be named in the environment (CI sets it); this case
+    # must resolve the config from its own manifest.
+    monkeypatch.delenv(CONFIG_ENV, raising=False)
     with pytest.raises(AssertionError, match="different baseline.yaml"):
         test_report_was_made_with_the_current_policy_and_config()
 

@@ -1,5 +1,11 @@
 """Round-1 model: word TF-IDF, six independent logistic heads, Platt calibration.
 
+Round 2 adds an `analyzer` switch: "word" (round 1), "char_wb" (character
+n-grams inside word boundaries, robust to spelling variants the word
+vocabulary never saw) or "word+char_wb" (both blocks side by side). Everything
+downstream of the feature matrix is unchanged, so the switch is judged under
+the same protocol.
+
 Deliberately simple so the whole path (data -> prediction -> routing ->
 evaluation) can be re-run in minutes. Embeddings and fusion are later rounds
 and must be judged under this same protocol.
@@ -15,13 +21,13 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 import numpy as np
-from scipy.sparse import spmatrix
+from scipy.sparse import hstack, spmatrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 
 from review_router.data import LABELS
 
-__all__ = ["ModelConfig", "PlattCalibrator", "ConstantHead", "TfidfLogitModel"]
+__all__ = ["ANALYZERS", "ModelConfig", "PlattCalibrator", "ConstantHead", "TfidfLogitModel"]
 
 
 @dataclass(frozen=True)
@@ -31,6 +37,27 @@ class ModelConfig:
     min_df: int = 3
     C: float = 4.0
     max_iter: int = 1000
+    analyzer: str = "word"  # "word" | "char_wb" | "word+char_wb"
+    char_ngram_min: int = 2
+    char_ngram_max: int = 5
+    char_max_features: int = 300_000
+
+    def __post_init__(self) -> None:
+        if self.analyzer not in ANALYZERS:
+            raise ValueError(f"model.analyzer must be one of {ANALYZERS}, got {self.analyzer!r}")
+        if not 1 <= self.char_ngram_min <= self.char_ngram_max:
+            raise ValueError("model.char_ngram_min/max must satisfy 1 <= min <= max")
+
+    @property
+    def uses_word(self) -> bool:
+        return "word" in self.analyzer
+
+    @property
+    def uses_char(self) -> bool:
+        return "char_wb" in self.analyzer
+
+
+ANALYZERS: tuple[str, ...] = ("word", "char_wb", "word+char_wb")
 
 
 @dataclass
@@ -76,20 +103,38 @@ class TfidfLogitModel:
     config: ModelConfig = field(default_factory=ModelConfig)
     labels: tuple[str, ...] = LABELS
     vectorizer: TfidfVectorizer | None = None
+    char_vectorizer: TfidfVectorizer | None = None
     heads: dict[str, LogisticRegression | ConstantHead] = field(default_factory=dict)
     calibrators: dict[str, PlattCalibrator] = field(default_factory=dict)
 
     def fit(self, texts: Iterable[str], y: np.ndarray, seed: int) -> TfidfLogitModel:
         """Fit the vocabulary and the six heads on the training split only."""
-        self.vectorizer = TfidfVectorizer(
-            ngram_range=(1, self.config.ngram_max),
-            min_df=self.config.min_df,
-            max_features=self.config.max_features,
-            sublinear_tf=True,
-            strip_accents="unicode",
-            lowercase=True,
-        )
-        x = self.vectorizer.fit_transform(texts)
+        texts = list(texts)
+        self.vectorizer = None
+        self.char_vectorizer = None
+        blocks: list[spmatrix] = []
+        if self.config.uses_word:
+            self.vectorizer = TfidfVectorizer(
+                ngram_range=(1, self.config.ngram_max),
+                min_df=self.config.min_df,
+                max_features=self.config.max_features,
+                sublinear_tf=True,
+                strip_accents="unicode",
+                lowercase=True,
+            )
+            blocks.append(self.vectorizer.fit_transform(texts))
+        if self.config.uses_char:
+            self.char_vectorizer = TfidfVectorizer(
+                analyzer="char_wb",
+                ngram_range=(self.config.char_ngram_min, self.config.char_ngram_max),
+                min_df=self.config.min_df,
+                max_features=self.config.char_max_features,
+                sublinear_tf=True,
+                strip_accents="unicode",
+                lowercase=True,
+            )
+            blocks.append(self.char_vectorizer.fit_transform(texts))
+        x = blocks[0] if len(blocks) == 1 else hstack(blocks).tocsr()
         self.heads = {}
         self.calibrators = {}
         for j, label in enumerate(self.labels):
@@ -109,9 +154,21 @@ class TfidfLogitModel:
         return self
 
     def _features(self, texts: Iterable[str]) -> spmatrix:
-        if self.vectorizer is None:
+        if self.vectorizer is None and self.char_vectorizer is None:
             raise RuntimeError("model is not fitted")
-        return self.vectorizer.transform(texts)
+        texts = list(texts)
+        blocks: list[spmatrix] = []
+        if self.vectorizer is not None:
+            blocks.append(self.vectorizer.transform(texts))
+        if self.char_vectorizer is not None:
+            blocks.append(self.char_vectorizer.transform(texts))
+        return blocks[0] if len(blocks) == 1 else hstack(blocks).tocsr()
+
+    @property
+    def n_features(self) -> int:
+        return sum(
+            len(v.vocabulary_) for v in (self.vectorizer, self.char_vectorizer) if v is not None
+        )
 
     def decision(self, texts: Iterable[str]) -> np.ndarray:
         """Uncalibrated margins, shape (n, n_labels)."""

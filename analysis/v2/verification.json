@@ -1,0 +1,152 @@
+{
+  "workflow_run": "wf_d0a55bf0-113",
+  "date": "2026-09-23",
+  "method_zh": "四个独立代理分别复核：一个不用对比脚本、直接从预测文件和报告重算所有数字；一个对同一批测试行做配对 bootstrap（5000 次）并评估模拟差异是否超出种子噪声；一个审查本分支的四个提交；一个逐条尝试推翻结论和建议。原始输出保存在 analysis/v2/verification_raw.json。",
+  "recompute_zh": "29 项检查中，所有计数和均值都与对比结果一致，包括两张模拟表的每一个格子。不一致的两项都是解读：真阳性“多数来自多标记”对高风险评论不成立；超载时 +3% 的危害处理量并不在噪声之内。",
+  "bootstrap_note_zh": "区间以两个训练好的模型为条件，没有估计重新训练带来的方差。toxic 门槛只差 0.001，约 0.17 个标准误，43% 的重抽样会通过；severe_toxic 的高估相对词模型更严重，这一点在全部重抽样中都成立。",
+  "bootstrap": [
+    {
+      "quantity": "相同标记量 k=6310：真阳性",
+      "point_estimate": 104,
+      "ci95_low": 55,
+      "ci95_high": 153,
+      "source_quantity": "C1(a) positives in top-k, k=6310, word+char minus word"
+    },
+    {
+      "quantity": "相同标记量 k=7093：真阳性",
+      "point_estimate": 113,
+      "ci95_low": 66,
+      "ci95_high": 160,
+      "source_quantity": "C1(a) positives in top-k, k=7093, word+char minus word"
+    },
+    {
+      "quantity": "相同标记量 k=6310：高风险",
+      "point_estimate": 25,
+      "ci95_low": 10,
+      "ci95_high": 40,
+      "source_quantity": "C1(b) high-risk rows in top-k, k=6310, word+char minus word"
+    },
+    {
+      "quantity": "相同标记量 k=7093：高风险",
+      "point_estimate": 22,
+      "ci95_low": 8,
+      "ci95_high": 36,
+      "source_quantity": "C1(b) high-risk rows in top-k, k=7093, word+char minus word"
+    },
+    {
+      "quantity": "各自阈值下标记的真阳性",
+      "point_estimate": 370,
+      "ci95_low": 320,
+      "ci95_high": 422,
+      "source_quantity": "C2/(c) positives flagged at each model's own tiers (final_tier != allow), wc minus word"
+    },
+    {
+      "quantity": "各自阈值下标记的高风险",
+      "point_estimate": 42,
+      "ci95_low": 26,
+      "ci95_high": 58,
+      "source_quantity": "(c) high-risk rows flagged at each model's own tiers, wc minus word"
+    },
+    {
+      "quantity": "队列精确率",
+      "point_estimate": -0.0219,
+      "ci95_low": -0.0288,
+      "ci95_high": -0.015,
+      "source_quantity": "(d) queue precision (share of flagged rows with any true label), wc minus word"
+    },
+    {
+      "quantity": "审核量相对增幅",
+      "point_estimate": 0.1241,
+      "ci95_low": 0.1099,
+      "ci95_high": 0.1385,
+      "source_quantity": "Extra review volume at the same comment stream (wc flagged / word flagged - 1)"
+    },
+    {
+      "quantity": "toxic 人工审核阈值处精确率",
+      "point_estimate": -0.0211,
+      "ci95_low": -0.0281,
+      "ci95_high": -0.0145,
+      "source_quantity": "C6 toxic precision at the human_review threshold, wc minus word"
+    },
+    {
+      "quantity": "severe_toxic 预测量高估",
+      "point_estimate": 0.16,
+      "ci95_low": 0.1251,
+      "ci95_high": 0.1977,
+      "source_quantity": "C6 severe_toxic volume overshoot, wc minus word"
+    },
+    {
+      "quantity": "同等审核量 priority@180 每人时危害（去掉种子噪声后的期望）",
+      "point_estimate": -2.543,
+      "ci95_low": -3.436,
+      "ci95_high": -1.65,
+      "source_quantity": "C3 expected harm_per_reviewer_hour difference, priority@180, with seeds averaged out and test-set variance included"
+    }
+  ],
+  "code_review": [
+    {
+      "summary_zh": "同等评论流量的模拟没有计入被留在放行层的高风险评论，而且两个模型用的是独立的到达流。已改为公共随机数设计：每个种子一条共享评论流，放行层漏掉的高风险计为未审核，差值按种子配对。",
+      "status": "fixed"
+    },
+    {
+      "summary_zh": "审核脚本在子组阈值为空时回退到总体阈值，与流水线“该标签不能在子组内触发”的规则不一致。已修正；误报集合不变（仍为 204 条），样本中 1 行的触发标签显示从 toxic+obscene 更正为 toxic。",
+      "status": "fixed"
+    },
+    {
+      "summary_zh": "对比脚本按配置名存结果，同名运行会互相覆盖。已改为同名时自动附加运行时间。",
+      "status": "fixed"
+    },
+    {
+      "summary_zh": "对比脚本不检查策略文件是否一致。现在记录每次运行的策略哈希，不一致时给出警告。",
+      "status": "fixed"
+    },
+    {
+      "summary_zh": "人工判定只填了一部分时，对比脚本会悄悄改用预读结果。现在直接报错。",
+      "status": "fixed"
+    },
+    {
+      "summary_zh": "重抽保护只检查人工判定列，会覆盖已有的预读。现在两列都检查。",
+      "status": "fixed"
+    },
+    {
+      "summary_zh": "达标所需行数用了整数误报上限，与连续的精确率推算公式不一致。已统一为同一公式；本例结果仍是 90 条。",
+      "status": "fixed"
+    },
+    {
+      "summary_zh": "其余小问题：标题里写死“5 个种子”、两张表的标准差口径未注明、分母为零时崩溃、对首轮运行使用 --equal-input 的报错不清楚、样本分层数记录的是计划值、阳性口径不一致。均已修正。",
+      "status": "fixed"
+    }
+  ],
+  "critic": [
+    {
+      "claim_id": "相同标记量的排序提升",
+      "verdict_zh": "成立",
+      "correction_zh": "从漏检角度更直观：相同标记量下高风险漏检少约 15%（k=6310 时 164 条降到 139 条），主要来自 identity_hate。"
+    },
+    {
+      "claim_id": "收益主要来自多标记",
+      "verdict_zh": "部分成立",
+      "correction_zh": "对真阳性总数成立（约 69%）；对高风险评论不成立，一半以上的提升来自排序本身。"
+    },
+    {
+      "claim_id": "同等审核量下差异在噪声内",
+      "verdict_zh": "部分成立",
+      "correction_zh": "5 个种子分不出，但 200 个种子下 word+char 每人时处理的危害系统性低 3% 到 5%，因为它的队列里每条评论的平均危害更低。这个口径下它看到的评论流也比词模型少约 11%，不能用来判断哪个模型更好。"
+    },
+    {
+      "claim_id": "同等评论流量下的收益",
+      "verdict_zh": "部分成立",
+      "correction_zh": "“容量允许时才更好”和“超载时在噪声内”都不对。同一条评论流、优先排序下，三个流量档位 word+char 都每小时多处理危害，每班次少漏约 3 到 5 条高风险评论；代价是近容量时积压多约 28 条。FIFO 排序在超载时结果相反。"
+    },
+    {
+      "claim_id": "两项门槛不通过",
+      "verdict_zh": "部分成立",
+      "correction_zh": "门槛是按词模型的实测值设的：toxic 的下限就是词模型 0.663 减 0.02。toxic 只差 0.001，在抽样误差内。severe_toxic 的高估相对词模型确实更严重，但它是校准诊断，不决定任何路由阈值。"
+    },
+    {
+      "claim_id": "建议：不采用，因为调低词模型阈值也能得到同样收益",
+      "verdict_zh": "论证被推翻",
+      "correction_zh": "把词模型的阈值调低到同样的标记量，高风险只多抓约 17 到 20 条（word+char 多 42 条）。按标签在相同条数下比较，词模型在 word+char 的条数上 toxic、obscene、insult 的精确率是 0.625、0.753、0.848，其中 toxic 和 insult 低于门槛；word+char 在词模型的条数上是 0.681、0.790、0.906，三项都高于词模型自己的 0.663、0.773、0.879。暂不采用只能以成本、以及阈值和门槛需要重新设定为理由。反驳代理用另一种缩放阈值的方法得到 0.625、0.734、0.819，方向一致。"
+    }
+  ]
+}

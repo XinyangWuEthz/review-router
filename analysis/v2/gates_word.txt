@@ -1,0 +1,5 @@
+# REVIEW_ROUTER_EVAL_REPORT=reports/20260923T074244236943Z-human-review-baseline/report.json REVIEW_ROUTER_EVAL_CONFIG=configs/baseline.yaml REVIEW_ROUTER_EVAL_REQUIRE_REAL=1 pytest tests/test_gate.py -rfs
+SKIPPED [1] tests/test_gate.py:125: $REVIEW_ROUTER_EVAL_REQUIRE_CLEAN unset; commit match not enforced outside CI
+SKIPPED [1] tests/test_gate.py:72: priority review precision has no fixed acceptance limit; reported as a diagnostic
+SKIPPED [1] tests/test_gate.py:72: human_review precision has no fixed acceptance limit; reported as a diagnostic
+47 passed, 3 skipped in 1.30s

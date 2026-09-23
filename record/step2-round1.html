@@ -62,7 +62,7 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
   nav.bottom { gap: 16px; flex-wrap: wrap; }
 }
 </style></head><body><main>
-<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html" aria-current="page">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><span>第 4 步：独立数据验证，待做</span></nav>
+<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html" aria-current="page">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><a href="step4-features.html">第 4 步：误报复核与字符 n-gram</a><span>第 5 步：独立数据验证，暂缓</span></nav>
 
 <span class="tag">第 2 步，历史实验</span><span class="tag red">原自动处置要求未达标</span><span class="tag">2026-09-22</span>
 <h1>首轮结果与诊断</h1>
@@ -192,7 +192,7 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
 </ul>
 
 <h2 id="next">6. 首轮提出的下一步</h2>
-<p>以下是首轮结束时的计划。其中保留自动处置权限和 99% 要求的决定，已由第三步的人工确认方案替代；其余验证建议仍适用。</p>
+<p>以下是首轮结束时的计划。其中保留自动处置权限和 99% 要求的决定，已由第三步的人工确认方案替代；其余条目保留为当时提出的验证建议，当前安排见目录和最新一步的决定。</p>
 <ol>
 <li>把 Wilson 下界规则作为候选，与当前点估计规则在相同协议下比较，同时报告精确率、覆盖数量和关闭的标签。</li>
 <li>准备新增留出数据，并预先区分模型训练、校准、阈值选择和最终评估的用途。已经反复查看过的官方测试行继续用于诊断，不能切两半后当作从未使用的数据。</li>

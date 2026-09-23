@@ -118,12 +118,33 @@ PENDING = (
     "第 3 步：验证改进方案",
     "待做。比较更保守的阈值选择方法和字符特征，核查标注分歧，并用新增留出数据评估改进",
 )
+PENDING_STATUS = "待做"
 if HUMAN_RUN is not None:
     STEPS.append((
         "step3-human-review.html", "第 3 步：优先人工审核",
         "取消自动处置权限，按全部人工工作量重新比较排序效果",
     ))
     PENDING = ("第 4 步：独立数据验证", "冻结候选方案后，用新增数据验证质量与工作量")
+FEATURES_PATH = HERE / "features_run.json"
+FEATURES = json.loads(FEATURES_PATH.read_text()) if FEATURES_PATH.is_file() else None
+if FEATURES is not None and HUMAN_RUN is not None:
+    STEPS.append((
+        "step4-features.html", "第 4 步：误报复核与字符 n-gram",
+        "人工复核自动处置误报，并在首轮和 v2 两种设计下比较词特征与词+字符特征",
+    ))
+    PENDING = (
+        "第 5 步：独立数据验证",
+        "仅保留为可选方向，尚未启动；待资源允许时再决定是否开展，不影响当前保留 word 的决定",
+    )
+    PENDING_STATUS = "暂缓"
+
+
+DEFERRED_REVIEW_EVALUATION = """
+<h2 id="future-review-evaluation">后续考虑：独立人工评估集，暂缓</h2>
+<p>2026-09-23 记录。当前用“任一真实标签为阳性”近似衡量审核价值。对有歧义、需要结合语境判断的评论，即使人工最后确认没有违规，送审也可能合理；但缺少语境时，人工也可能无法判断。</p>
+<p>后续可考虑建立独立评估集，覆盖优先审核、普通审核和放行，分别记录审核前是否值得送审、紧急程度与所需语境，以及审核后的结论、仍无法判断的情况和耗时。若开展，评估只提供实际可获得的语境，保留原始 Jigsaw 标签；已用于分析的审计样本作为开发案例，最终评估另用未参与调参的新样本。</p>
+<p><b>状态：暂缓，尚未启动。</b>新增抽样与独立人工标注的工作量较大，本次仅记录为后续可选方向，待资源允许时再决定是否开展。</p>
+"""
 
 
 def f(v: Any, d: int = 3) -> str:
@@ -161,7 +182,7 @@ def page(
     doc = f"""<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title><style>{CSS}</style></head><body><main>
-<nav class="top" aria-label="项目步骤">{navigation}<span>{PENDING[0]}，待做</span></nav>
+<nav class="top" aria-label="项目步骤">{navigation}<span>{PENDING[0]}，{PENDING_STATUS}</span></nav>
 {body}
 <nav class="bottom" aria-label="前后步骤"><span>{nav_prev}</span><span>{nav_next}</span></nav>
 </main></body></html>"""
@@ -661,7 +682,7 @@ def build_step2() -> None:
 </ul>
 
 <h2 id="next">6. 首轮提出的下一步</h2>
-{'<p>以下是首轮结束时的计划。其中保留自动处置权限和 99% 要求的决定，已由第三步的人工确认方案替代；其余验证建议仍适用。</p>' if HUMAN_RUN is not None else ''}
+{'<p>以下是首轮结束时的计划。其中保留自动处置权限和 99% 要求的决定，已由第三步的人工确认方案替代；其余条目保留为当时提出的验证建议，当前安排见目录和最新一步的决定。</p>' if HUMAN_RUN is not None else ''}
 <ol>
 <li>把 Wilson 下界规则作为候选，与当前点估计规则在相同协议下比较，同时报告精确率、覆盖数量和关闭的标签。</li>
 <li>准备新增留出数据，并预先区分模型训练、校准、阈值选择和最终评估的用途。已经反复查看过的官方测试行继续用于诊断，不能切两半后当作从未使用的数据。</li>
@@ -684,12 +705,14 @@ def build_current_index() -> None:
     body = f"""
 <span class="tag">项目记录</span><span class="tag">当前：人工确认</span>
 <h1>review-router 项目记录</h1>
-<p class="lede">按步骤记录实验设计、测量结果和决定。前两页保留自动处置实验；第三页记录改成人工确认后的新流程与评估。</p>
+<p class="lede">按步骤记录实验设计、测量结果和决定。前两页保留自动处置实验；第三页记录改成人工确认后的新流程与评估{'；第四页记录误报人工复核和字符特征探索' if len(STEPS) > 3 else ''}。</p>
 <h2>当前项目在做什么</h2>
 <p>系统将评论分为放行、普通人工审核、优先人工审核。高置信预测及规则标记的高风险评论进入优先档；任何处置都需要人工确认，两个人工档都占用审核容量。</p>
-<p>本轮共评估 {workload["n_total"]:,} 条评论，{workload["n_requires_human_review"]:,} 条进入人工审核，占 {100 * workload["review_fraction"]:.2f}%。下一步要验证的是有限人力下的审核质量与完成量。</p>
+<p>本轮共评估 {workload["n_total"]:,} 条评论，{workload["n_requires_human_review"]:,} 条进入人工审核，占 {100 * workload["review_fraction"]:.2f}%。这些数字描述保存的评估运行，实际人工审核质量仍待验证。</p>
+{'<p>当前决定是默认保持词特征 <code>word</code>。独立审核价值人工评估集仅记录为后续可选方向，因工作量较大而暂缓，尚未启动；本次不改变数据标签或验收门槛。</p>' if FEATURES is not None else ''}
 <div class="box">99% 是首轮自动处置实验的历史要求。当前 95% 与 90% 是选择集上的分档参数；测试精确率如实报告，项目不再以达到 99% 来判定人工辅助方案是否有效。</div>
-<h2>步骤</h2><ol class="steps">{steps}<li>{PENDING[0]}，待做。{PENDING[1]}。</li></ol>
+<h2>步骤</h2><ol class="steps">{steps}<li>{PENDING[0]}，{PENDING_STATUS}。{PENDING[1]}。</li></ol>
+{DEFERRED_REVIEW_EVALUATION}
 <h2>重新生成页面</h2>
 <pre><code>python -m pip install -e ".[ml,analysis]"
 python record/diagnose.py --render-only
@@ -859,7 +882,7 @@ def build_step3() -> None:
 <p>高置信不等于高危。先处理高置信评论可能挤占其他高危评论的审核时间，因此保留严重度排序作为对照，并直接检查高危完成数量。</p>
 <h2>本轮工作量与质量</h2>
 <table><tr><th>层级</th><th>评论数</th><th>占全部评论</th><th>测试精确率</th><th>95% 区间</th></tr>{tier_rows}</table>
-<p>总人工需求为 {workload["n_requires_human_review"]:,} / {workload["n_total"]:,} 条，占 {100 * workload["review_fraction"]:.2f}%；合并人工队列精确率为 {f(workload["precision"])}，95% 区间 {ci(workload["precision_ci95"])}。任一真实标签为阳性就计为有审核价值。</p>
+<p>总人工需求为 {workload["n_requires_human_review"]:,} / {workload["n_total"]:,} 条，占 {100 * workload["review_fraction"]:.2f}%；合并人工队列精确率为 {f(workload["precision"])}，95% 区间 {ci(workload["precision_ci95"])}。这里用任一真实标签为阳性作为审核价值的代理指标，并未独立测量一条评论是否值得人工审核。</p>
 <p>运行声明的自动处置数为 {run["decision_contract"]["automatic_actions"]}，所有待审评论均要求人工确认。这里评估的是路由建议，未模拟人工复核的正确率或实际处罚结果。</p>
 {time_section}
 <h2>新验收标准与结果</h2>
@@ -883,7 +906,313 @@ python record/collect_runs.py --human-review reports/&lt;run&gt;
 python record/render.py</code></pre>
 <p class="prov">运行 <code>{run["run_id"]}</code>，commit <code>{run["git_commit"][:12]}</code>{'，工作区含未提交改动' if run['git_dirty'] else '，工作区干净'}。本页读取保存的 <a href="human_review_run.json">运行数据与政策快照</a>。首轮 99% 目标及未达标结果保留在<a href="step2-round1.html">历史记录</a>，没有按新标准重算。</p>
 """
-    page(STEPS[2][0], STEPS[2][1], body, STEPS[1], None)
+    page(STEPS[2][0], STEPS[2][1], body, STEPS[1], STEPS[3] if len(STEPS) > 3 else None)
+
+
+# ============================================================================ step 4
+def capture_figure(v2: dict[str, Any]) -> str:
+    """Positives and high-risk rows captured against how many rows are flagged."""
+    name = "step4_capture_curve.png"
+    curves = v2["curves"]
+    labels = list(curves)
+    colors = {labels[0]: BLUE, labels[1]: ORANGE}
+    display = {labels[0]: "word", labels[1]: "word+char"}
+    fig, axes = plt.subplots(1, 2, figsize=(9.6, 3.9))
+    for ax, key, title in (
+        (axes[0], "positives", "Truly positive comments captured"),
+        (axes[1], "high_risk", "High-risk comments captured"),
+    ):
+        for label in labels:
+            c = curves[label]
+            ax.plot(c["k"], c[key], color=colors[label], lw=2, label=display[label])
+            op = c["operating_point"]
+            ax.plot(
+                op["flagged"], op[key], "o", ms=8, color=colors[label],
+                markeredgecolor="#fcfcfb", markeredgewidth=2, zorder=5,
+            )
+        total = curves[labels[0]]["total_" + key]
+        xmax = max(curves[labels[0]]["k"])
+        for label, (fx, fy) in zip(labels, ((0.50, 0.42), (0.70, 0.60))):
+            op = curves[label]["operating_point"]
+            ax.annotate(
+                f"{display[label]} flags {op['flagged']:,}\ncaptures {op[key]:,}",
+                (op["flagged"], op[key]),
+                xytext=(fx * xmax, fy * total),
+                fontsize=8, color="#52514e",
+                arrowprops={"arrowstyle": "-", "color": "#8a8983", "lw": 0.8},
+            )
+        ax.axhline(total, color=GRAY, lw=1, ls=":")
+        ax.text(200, total, f"all {total:,} in the test set", va="bottom", fontsize=8, color="#52514e")
+        ax.set_title(title, fontsize=10)
+        ax.set_xlabel("comments flagged (top k by max label probability)")
+        ax.grid(color="#e6e5e1", lw=0.6)
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+        ax.set_xlim(0, max(curves[labels[0]]["k"]))
+        ax.set_ylim(0, total * 1.08)
+    axes[0].legend(frameon=False, fontsize=8, loc="lower right")
+    fig.tight_layout()
+    fig.savefig(HERE / "figures" / name, dpi=150)
+    plt.close(fig)
+    return name
+
+
+def _pct(v: float, d: int = 1) -> str:
+    return f"{100 * v:.{d}f}%"
+
+
+def build_step4() -> None:
+    data = FEATURES
+    if data is None or len(STEPS) < 4:
+        return
+    r1, audit, v2 = data["round1"], data["audit"], data["v2"]
+    human = audit["human"]
+    word, wc = v2["runs"][0], v2["runs"][1]
+    lw, lwc = word["label"], wc["label"]
+
+    # ---- audit
+    implied = human["implied_precision"]
+    change_rows = "".join(
+        f"<tr><td>{escape(c['text'])}</td><td>{c['preread']}</td><td>{c['human']}</td><td>{escape(c['note'])}</td></tr>"
+        for c in audit["changed"]
+    )
+    strata_rows = "".join(
+        f"<tr><td>{escape(k)}</td><td class='n'>{v}</td><td class='n'>{audit['sample_strata'].get(k, 0)}</td></tr>"
+        for k, v in audit["population_strata"].items()
+    )
+
+    # ---- round 1
+    r1_rows = ""
+    for run in r1["runs"]:
+        a, h = run["tiers"]["auto_action"], run["tiers"]["human_review"]
+        r1_rows += (
+            f"<tr><td>{escape(run['label'])}</td><td>{escape(run['model'].get('analyzer', 'word'))}</td>"
+            f"<td class='n'>{f(a['test_precision'])}</td><td>{ci(a['test_precision_ci95'])}</td>"
+            f"<td class='n'>{a['test_n_predicted_positive']:,}</td><td class='n'>{f(a['selection_precision'])}</td>"
+            f"<td class='n'>{f(h['test_precision'])}</td><td class='n'>{h['test_n_predicted_positive']:,}</td></tr>"
+        )
+    ap_head = "".join(f"<th class='n'>{escape(r['label'])}</th>" for r in r1["runs"])
+    ap_rows = "".join(
+        f"<tr><td>{lb}</td>" + "".join(f"<td class='n'>{f(r['per_label'][lb]['average_precision'])}</td>" for r in r1["runs"]) + "</tr>"
+        for lb in LABELS
+    )
+    pf = r1["paired_false_positives"]["word-char"]
+    overlap = (r1.get("audit_overlap") or {}).get("word-char", {})
+
+    # ---- v2
+    tier_rows = ""
+    for run in (word, wc):
+        for tier in ("priority_review", HUMAN):
+            t = run["tiers"][tier]
+            tier_rows += (
+                f"<tr><td>{escape(run['model'].get('analyzer', 'word'))}</td><td>{tier}</td>"
+                f"<td class='n'>{t['test_n_predicted_positive']:,}</td><td class='n'>{f(t['test_precision'])}</td>"
+                f"<td>{ci(t['test_precision_ci95'])}</td><td class='n'>{f(t['selection_precision'])}</td></tr>"
+            )
+    ww, wwc = word["review_workload"], wc["review_workload"]
+    rw, rwc = word["recall"], wc["recall"]
+
+    def cell(e: dict[str, Any]) -> str:
+        return f"{e['k']:,} / {e['n']:,}（{_pct(e['share'])}）"
+
+    recall_rows = "".join(
+        f"<tr><td>{escape(run['model'].get('analyzer', 'word'))}</td><td class='n'>{run['recall']['flagged']['k']:,}</td>"
+        f"<td class='n'>{cell(run['recall']['positives_flagged'])}</td><td class='n'>{cell(run['recall']['high_risk_flagged'])}</td>"
+        f"<td class='n'>{cell(run['recall']['high_risk_in_top'])}</td><td class='n'>{run['recall']['high_risk_in_allow']['k']:,}</td></tr>"
+        for run in (word, wc)
+    )
+    mv = v2["matched_volume"]
+    mv_rows = ""
+    for i, k in enumerate(mv["k"]):
+        a, b = mv["runs"][lw][i], mv["runs"][lwc][i]
+        mv_rows += (
+            f"<tr><td class='n'>{k:,}</td><td class='n'>{a['positives']:,}</td><td class='n'>{b['positives']:,}</td>"
+            f"<td class='n'>{b['positives'] - a['positives']:+,}</td><td class='n'>{a['high_risk']:,}</td>"
+            f"<td class='n'>{b['high_risk']:,}</td><td class='n'>{b['high_risk'] - a['high_risk']:+,}</td></tr>"
+        )
+    k_word, k_wc = rw["flagged"]["k"], rwc["flagged"]["k"]
+    word_at_wc = mv["runs"][lw][mv["k"].index(k_wc)]
+    gain_total = rwc["positives_flagged"]["k"] - rw["positives_flagged"]["k"]
+    gain_volume = word_at_wc["positives"] - rw["positives_flagged"]["k"]
+
+    eqr_rows = ""
+    for run in (word, wc):
+        for key in ("priority@108", "priority@180"):
+            st = run["queue_equal_review_load"]["by_load"][key]
+            eqr_rows += (
+                f"<tr><td>{escape(run['model'].get('analyzer', 'word'))}</td><td>{key.split('@')[1]}</td>"
+                f"<td class='n'>{f(st['harm_per_reviewer_hour'], 2)}</td><td class='n'>{f(st['high_risk_handled'], 1)}</td>"
+                f"<td class='n'>{f(st['high_risk_unhandled'], 1)}</td><td class='n'>{f(st['high_risk_wait_p90'], 2)}</td></tr>"
+            )
+    eq = v2["equal_input"]
+    eqi_rows = ""
+    diff = eq["differences_vs_reference"][lwc]
+    for rate in eq["runs"][lw]["by_input"]:
+        for run in (word, wc):
+            pr = eq["runs"][run["label"]]["by_input"][rate]["priority"]
+            eqi_rows += (
+                f"<tr><td class='n'>{float(rate):,.0f}</td><td>{escape(run['model'].get('analyzer', 'word'))}</td>"
+                f"<td class='n'>{f(pr['review_arrivals'], 0)}</td><td class='n'>{f(pr['completion_ratio'], 2)}</td>"
+                f"<td class='n'>{f(pr['backlog_end'], 1)}</td><td class='n'>{f(pr['harm_handled_per_hour'], 1)}</td>"
+                f"<td class='n'>{f(pr['high_risk_left_in_allow'], 1)}</td><td class='n'>{f(pr['high_risk_unhandled_in_queue'], 1)}</td>"
+                f"<td class='n'>{f(pr['high_risk_not_reviewed'], 1)}</td></tr>"
+            )
+    diff_rows = ""
+    for rate, per in diff.items():
+        for strategy in ("priority", "fifo"):
+            d = per[strategy]
+            def pm(name: str, digits: int = 1, d: dict[str, Any] = d) -> str:
+                return f"{d[name]['mean']:+.{digits}f} ± {d[name]['se']:.{digits}f}"
+            diff_rows += (
+                f"<tr><td class='n'>{float(rate):,.0f}</td><td>{strategy}</td><td class='n'>{pm('review_arrivals', 0)}</td>"
+                f"<td class='n'>{pm('backlog_end')}</td><td class='n'>{pm('harm_handled_per_hour')}</td>"
+                f"<td class='n'>{pm('high_risk_not_reviewed')}</td></tr>"
+            )
+    rates = list(diff)
+    mid, top_rate = diff[rates[1]]["priority"], diff[rates[-1]]
+    ecp = v2["equal_count_precision"]
+    ecp_rows = ""
+    for label, (a, b) in ecp.items():
+        ka, kb = str(a["own_count"]), str(b["own_count"])
+        ecp_rows += (
+            f"<tr><td>{label}</td><td class='n'>{a['own_count']:,}</td><td class='n'>{b['own_count']:,}</td>"
+            f"<td class='n'>{f(a['precision_at_count'][ka])}</td><td class='n'>{f(b['precision_at_count'][ka])}</td>"
+            f"<td class='n'>{f(a['precision_at_count'][kb])}</td><td class='n'>{f(b['precision_at_count'][kb])}</td></tr>"
+        )
+    hr_miss_w = rw["high_risk_flagged"]["n"] - mv["runs"][lw][mv["k"].index(k_word)]["high_risk"]
+    hr_miss_wc = rw["high_risk_flagged"]["n"] - mv["runs"][lwc][mv["k"].index(k_word)]["high_risk"]
+    hr_volume = word_at_wc["high_risk"] - rw["high_risk_flagged"]["k"]
+    hr_total = rwc["high_risk_flagged"]["k"] - rw["high_risk_flagged"]["k"]
+    gates = v2["gates"]
+    gate_items = "".join(f"<li>{escape(m)}</li>" for m in gates.get("word_char", {}).get("messages", []))
+    costs = {c["analyzer"]: c for c in v2["costs"]}
+    cw, cwc = costs["word"], costs["word+char_wb"]
+    figure = capture_figure(v2)
+
+    # ---- verification (optional)
+    ver = data.get("verification")
+    ver_section = ""
+    if ver:
+        boot_rows = "".join(
+            f"<tr><td>{escape(b['quantity'])}</td><td class='n'>{b['point_estimate']:+.4g}</td>"
+            f"<td>[{b['ci95_low']:+.4g}, {b['ci95_high']:+.4g}]</td></tr>"
+            for b in ver.get("bootstrap", [])
+        )
+        critic_items = "".join(
+            f"<li><b>{escape(c['claim_id'])}：{escape(c['verdict_zh'])}。</b>{escape(c['correction_zh'])}</li>"
+            for c in ver.get("critic", []) if c.get("correction_zh")
+        )
+        review_items = "".join(
+            f"<li>{escape(r['summary_zh'])}</li>" for r in ver.get("code_review", [])
+        ) or "<li>没有发现可复现的缺陷。</li>"
+        ver_section = f"""
+<h2 id="verify">独立复核</h2>
+<p>{escape(ver['method_zh'])}</p>
+<p>这里的独立复核指另外的代理重算和审查同一批结果，没有新增独立评估数据。以下保留复核意见；当前采用方案和后续安排以本页“结论与决定”为准。</p>
+<h3>重算</h3>
+<p>{escape(ver['recompute_zh'])}</p>
+<h3>配对 bootstrap</h3>
+<p>两个模型给同一批测试行打分，所以按行做配对重抽样，比较 word+char 减去 word 的差值。{escape(ver['bootstrap_note_zh'])}</p>
+<table><tr><th>差值（word+char − word）</th><th class='n'>点估计</th><th>95% 区间</th></tr>{boot_rows}</table>
+<h3>代码审查</h3>
+<ul>{review_items}</ul>
+<h3>对结论的反驳</h3>
+<ul>{critic_items}</ul>"""
+
+    body = f"""
+<span class="tag">第 4 步</span><span class="tag">round 2</span><span class="tag">政策 v1 与 v2</span>
+<h1>误报人工复核与字符 n-gram</h1>
+<p class="lede">第二步发现自动处置在测试集上的精确率是 0.904，达不到 0.99。这一步调查标注口径和拼写变体两种可能的解释：人工复核部分误报，并比较字符 n-gram 特征。两项检查都不能单独确认首轮差距的原因。</p>
+<div class="toc"><a href="#why">为什么做这一步</a><a href="#audit">误报人工复核</a><a href="#what">字符 n-gram 改了什么</a><a href="#r1">首轮设计下的结果</a><a href="#v2">v2 设计下的结果</a>{'<a href="#verify">独立复核</a>' if ver else ''}<a href="#decision">结论与决定</a><a href="#repro">如何复现</a></div>
+
+<h2 id="why">为什么做这一步</h2>
+<p>第二步的诊断留下两个调查方向。词典命中后被标为 toxic 的比例，选择集是 0.76，测试集是 0.51；这可能涉及评论内容或标注口径差异，不能直接证明测试集标注更宽松。测试集的 OOV 比例约是选择集的两倍，提示可以尝试字符特征，但尚不能说明拼写变体造成了多少误报。</p>
+<p>这一步开始时项目仍采用首轮设计，自动处置层要求 0.99。做到一半，第三步把设计改成了全部人工确认，所以字符特征又在 v2 下重新比较了一次。两组结果都保留，读的时候要分清它们回答的是哪个设计下的问题。</p>
+
+<h2 id="audit">误报人工复核</h2>
+<p>从首轮自动处置的 {audit['n_false_positive']} 条误报里，按“是否命中固定词典”和“是否有其他标签为真”分层，按比例抽了 {human['n']} 条。误报的定义与门槛一致：进了自动处置层，但触发它的标签在测试集里是 0。</p>
+<table><tr><th>分层（词典命中 / 其他标签为真）</th><th class='n'>总体</th><th class='n'>样本</th></tr>{strata_rows}</table>
+<p>先由 Claude 按一条写明的规则预读，再由项目负责人逐条读完，只在不同意的地方改判。这是看过预读结果的单人复核，不是独立标注者之间的一致性检验。判定规则：</p>
+<ul><li><b>toxic</b>：攻击了某个人或群体，明说、讽刺、影射或针对读者的反问都算。</li>
+<li><b>borderline</b>：粗口或无礼，但没有人被攻击，自嘲和引用也算这一类。</li>
+<li><b>clean</b>：没有冒犯内容。</li></ul>
+<p>人工改判了 {len(audit['changed'])} 条，方向有两种：讽刺和影射被改成 toxic，只是喊名字或只是提到身份词被改成 clean。</p>
+<details><summary>改判的 {len(audit['changed'])} 条</summary>
+<table><tr><th>文本</th><th>预读</th><th>人工</th><th>备注</th></tr>{change_rows}</table></details>
+<p>最终结果：toxic {human['counts']['toxic']}，borderline {human['counts']['borderline']}，clean {human['counts']['clean']}。</p>
+<p>下面是条件敏感性估计，不是重标后的正式测试成绩：假定未复核的原真阳性仍然正确，把样本中的未加权比例外推到全部原误报。原始 Jigsaw 标签保持不变；这批历史自动处置误报也不是当前人工审核价值的独立评估集。</p>
+<table><tr><th>假设口径</th><th class='n'>条件估计的自动处置精确率</th><th>近似 95% 区间</th></tr>
+<tr><td>按测试集标签</td><td class='n'>{f(1 - audit['n_false_positive'] / audit['n_auto_action'])}</td><td></td></tr>
+<tr><td>假定判为 toxic 的原误报应算正确</td><td class='n'>{f(implied['toxic_only']['precision'])}</td><td>{ci(implied['toxic_only']['precision_ci95'])}</td></tr>
+<tr><td>假定 toxic 和 borderline 都应算正确</td><td class='n'>{f(implied['toxic_or_borderline']['precision'])}</td><td>{ci(implied['toxic_or_borderline']['precision_ci95'])}</td></tr></table>
+<p>在上述假设下，要达到 0.99，{audit['n_auto_action']:,} 条自动处置里最多只能有 {int(audit['n_auto_action'] * 0.01)} 条误报，换算到样本上至少要有 {human['rows_needed_toxic_for_floor']} 条被改计为正确。实际判为 toxic 的有 {human['counts']['toxic']} 条，合并 borderline 也只有 {human['counts']['toxic'] + human['counts']['borderline']} 条。区间由 Wilson 区间近似换算，未计入分层抽样、有限总体修正或人工判断的不确定性，不能视为完整的不确定性估计。</p>
+<div class="box">按本次人工复核口径，样本中仍有 {human['counts']['clean']} 条被判为 clean，不能把这些误报都解释为测试集漏标。攻击对象和语境是值得继续检查的因素；这次复核没有证明词袋特征必然无法识别它们，也没有量化各因素对总体缺口的贡献。</div>
+
+<h2 id="what">字符 n-gram 改了什么</h2>
+<p>模型配置新增 <code>model.analyzer</code>：<code>word</code> 是原来的词级 TF-IDF；<code>char_wb</code> 是词边界内的 2 到 5 字符片段；<code>word+char_wb</code> 把两组特征并排。下游的六个逻辑回归、Platt 校准、阈值选择和路由都不变。对比用的配置只在这几行上与 baseline 不同。</p>
+
+<h2 id="r1">首轮设计下的结果</h2>
+<p class="prov">这三次运行来自未提交的工作区（{', '.join(escape(c['run_id']) for c in r1['costs'])}），数字可以从保存的运行目录复算，但不能从某个提交完整重现。</p>
+<table><tr><th>运行</th><th>特征</th><th class='n'>自动处置精确率</th><th>95% 区间</th><th class='n'>条数</th><th class='n'>选择集精确率</th><th class='n'>人工层精确率</th><th class='n'>条数</th></tr>{r1_rows}</table>
+<table><tr><th>标签 AP</th>{ap_head}</tr>{ap_rows}</table>
+<p>排序在大部分标签上变好，identity_hate 提升最多，但自动处置的精确率区间互相重叠，没有一个接近 0.99。配对来看，word+char 去掉了基线 {pf['baseline_fp']} 条误报中的 {pf['baseline_fp_dropped']} 条，同时新放进 {pf['auto_rows_only_variant']} 条，其中 {pf['new_fp_added']} 条是新误报。人工复核里判为 clean 的行，word+char 仍送进自动处置的比例是 {escape(overlap.get('by_verdict', {}).get('clean', 'n/a'))}。</p>
+
+<h2 id="v2">v2 设计下的结果</h2>
+<p>两次运行都来自干净的提交 <code>{cw['git_commit'][:8]}</code>，配置只差特征。词特征这次运行与第三步那次运行的分层、队列精确率、各标签 AP 和模拟汇总完全相同；第三步那次来自未提交的工作区，这次说明它的结果可以从干净的提交复现。</p>
+<h3>分层与工作量</h3>
+<table><tr><th>特征</th><th>层级</th><th class='n'>条数</th><th class='n'>测试精确率</th><th>95% 区间</th><th class='n'>选择集精确率</th></tr>{tier_rows}</table>
+<p>需要人工审核的评论从 {ww['n_requires_human_review']:,} 条增加到 {wwc['n_requires_human_review']:,} 条（占全部评论 {_pct(ww['review_fraction'], 2)} 到 {_pct(wwc['review_fraction'], 2)}），队列精确率从 {f(ww['precision'])} 降到 {f(wwc['precision'])}。</p>
+<h3>召回：真阳性和高风险评论去了哪里</h3>
+<table><tr><th>特征</th><th class='n'>标记</th><th class='n'>真阳性被标记</th><th class='n'>高风险被标记</th><th class='n'>高风险进优先档</th><th class='n'>高风险留在放行</th></tr>{recall_rows}</table>
+<p>word+char 多抓到 {gain_total} 条真阳性，留在放行里的高风险评论从 {rw['high_risk_in_allow']['k']} 条降到 {rwc['high_risk_in_allow']['k']} 条。但它也多标记了 {k_wc - k_word:,} 条。</p>
+<h3>相同标记量下的排序</h3>
+<p>为了把“排序更好”和“标记更多”分开，两个模型都按最大标签概率排序，取前 k 条，看抓到多少。</p>
+<figure><img src="figures/{figure}" alt="两幅折线图：横轴为按最大标签概率排序后标记的评论数，纵轴分别为抓到的真阳性数和高风险评论数。两条线几乎重合，word+char 略高；圆点标出两个模型实际的标记量。"><figcaption>两条曲线几乎重合，word+char 略高一点。word+char 的工作点更靠右，主要是因为它标记得更多。</figcaption></figure>
+<table><tr><th class='n'>k</th><th class='n'>word 真阳性</th><th class='n'>word+char 真阳性</th><th class='n'>差</th><th class='n'>word 高风险</th><th class='n'>word+char 高风险</th><th class='n'>差</th></tr>{mv_rows}</table>
+<p>真阳性和高风险评论要分开看。word+char 多出的 {gain_total} 条真阳性中，约 {gain_volume} 条只要让词模型也标记 {k_wc:,} 条就能得到，剩下约 {gain_total - gain_volume} 条来自排序，所以真阳性的提升大约七成来自多标记。高风险评论不一样：多出的 {hr_total} 条里只有约 {hr_volume} 条来自多标记，一半以上来自排序。换成漏检的角度看，标记 {k_word:,} 条时，词模型漏掉 {hr_miss_w} 条高风险评论，word+char 漏掉 {hr_miss_wc} 条，少了约 {100 * (hr_miss_w - hr_miss_wc) / hr_miss_w:.0f}%，多出的主要是 identity_hate。按最大概率排序与路由实际使用的分标签阈值不完全相同，这里是近似的分解；复核用路由本身重做，结果相差不到 3 条。</p>
+<p>按标签看也是一样。在相同条数下，word+char 每个标签的精确率都更高：</p>
+<table><tr><th>标签</th><th class='n'>word 的条数</th><th class='n'>word+char 的条数</th><th class='n'>word 在 word 条数</th><th class='n'>word+char 在 word 条数</th><th class='n'>word 在 word+char 条数</th><th class='n'>word+char 在 word+char 条数</th></tr>{ecp_rows}</table>
+<p>word+char 在人工审核阈值处的条数更多，是因为同一条“选择集精确率 0.90”的规则，在排序更好的模型上会选出更多行。它不是一个可以随意调低的阈值：把词模型的阈值调到同样条数，toxic 和 insult 的精确率会跌破门槛。</p>
+<h3>队列：同等审核量</h3>
+<p>第三步报告里的模拟固定的是进入人工队列后的到达率，两个模型每小时收到同样多的审核任务。</p>
+<table><tr><th>特征</th><th class='n'>审核量/h</th><th class='n'>危害代理值/人时</th><th class='n'>高危完成</th><th class='n'>高危未完成</th><th class='n'>高危等待 p90，分钟</th></tr>{eqr_rows}</table>
+<p>这个口径下 word+char 略差。5 个种子分不出差别，但复核用 200 个种子重跑后，差距是系统性的，每人时处理的危害低 3% 到 5%：它的队列里每条评论的平均危害更低（1.79 对 1.88）。注意这个口径让 word+char 看到的评论流比词模型少约 11%，它回答的是“每个审核任务的价值”，不是“哪个模型在同样的评论上做得更好”。</p>
+<h3>队列：同等评论流量</h3>
+<p>更接近实际的比较是固定进来的评论流量。每个种子生成一条评论流，两个模型共用；每个模型只审核自己标记的评论，被它留在放行层的高风险评论算作未审核。流量取词模型在 60 / 108 / 180 条每小时审核量时对应的评论流量，{eq['n_seeds']} 个种子，按种子配对比较。下表是优先排序，均值 ± 样本标准差，数量按一个 8 小时班次计。</p>
+<table><tr><th class='n'>评论/h</th><th>特征</th><th class='n'>审核任务</th><th class='n'>完成率</th><th class='n'>结束积压</th><th class='n'>危害处理/h</th><th class='n'>高风险留在放行</th><th class='n'>高风险在队列未完成</th><th class='n'>高风险未审核合计</th></tr>{eqi_rows}</table>
+<table><tr><th class='n'>评论/h</th><th>排序</th><th class='n'>审核任务差</th><th class='n'>积压差</th><th class='n'>危害处理/h 差</th><th class='n'>高风险未审核差</th></tr>{diff_rows}</table>
+<p>差值是 word+char 减词模型，± 为配对标准误。优先排序下，三个流量档位 word+char 都每小时处理更多危害，每个班次少漏 {-diff[rates[0]]['priority']['high_risk_not_reviewed']['mean']:.1f} 到 {max(-diff[r]['priority']['high_risk_not_reviewed']['mean'] for r in rates):.1f} 条高风险评论，因为它留在放行层的高风险评论更少。代价是审核量多约 12%：中间档位时它越过了 120 条每小时的容量，结束积压多 {mid['backlog_end']['mean']:.0f} 条。FIFO 排序在超载时结果反过来，高风险未审核反而多 {top_rate['fifo']['high_risk_not_reviewed']['mean']:.1f} 条，所以这份收益依赖 v2 的优先排序。</p>
+<h3>回归门槛与成本</h3>
+<p>用 v2 的回归门槛检查两份报告：词特征 {escape(gates.get('word', {}).get('summary') or 'n/a')}；word+char {escape(gates.get('word_char', {}).get('summary') or 'n/a')}。未通过的两项：</p>
+<ul>{gate_items}</ul>
+<p>这些分类回归门槛参照词模型的实测值设定：toxic 的下限是词模型的 0.663 减 0.02。word+char 的 toxic 读数低约 0.001，复核的重抽样里有 43% 会通过，说明这一项对抽样敏感；它在原报告中仍未通过。相同条数下的精确率更高，提示不能仅凭这一项把结果概括为分类整体变差。</p>
+<p>severe_toxic 的预测量高估相对词模型更严重，复核的所有重抽样也都如此。这是本次数据上的聚合校准诊断，不能据此断言字符特征放大了训练集与测试集之间的阳性率差异。这两次运行中，该标签未通过自身阈值触发路由；现行回归门槛保持不变。</p>
+<table><tr><th>特征</th><th class='n'>完整运行耗时，秒</th><th class='n'>模型文件，MB</th></tr>
+<tr><td>word</td><td class='n'>{cw['seconds']}</td><td class='n'>{cw['model_mb']}</td></tr>
+<tr><td>word+char</td><td class='n'>{cwc['seconds']}</td><td class='n'>{cwc['model_mb']}</td></tr></table>
+{ver_section}
+<h2 id="decision">结论与决定</h2>
+<div class="box"><b>决定（2026-09-23，项目负责人）：暂不采用字符 n-gram，默认保持词特征。</b><code>model.analyzer</code> 开关留在代码里，默认值是 <code>word</code>。</div>
+<p><b>它有没有效果：</b>有，但很小，而且集中在高风险评论上。相同标记量下，高风险漏检少约 15%，真阳性多约 2.5%，区间都不含 0。同一条评论流上，优先排序下每个班次少漏 3 到 5 条高风险评论。它没有解决第二步的问题：首轮设计下，自动处置精确率仍然在 0.90 左右。</p>
+<p><b>为什么暂不采用：</b></p>
+<ul><li><b>成本高。</b>完整运行时间约为 {cwc['seconds'] / cw['seconds']:.0f} 倍，模型文件约为 {cwc['model_mb'] / cw['model_mb']:.1f} 倍。这是单次运行的端到端时间，没有单独测每条评论的推理延迟。</li>
+<li><b>审核量多约 12%。</b>在接近容量的评论流量下，队列会越过容量开始积压。要兑现它的收益，需要更多审核人力，或者重新选择阈值。</li>
+<li><b>还需要评估阈值与容量的取舍。</b>候选的额外审核量和未通过的回归项尚未解决。若以后重启比较，应在开发数据上选择候选方案，另留独立数据评估，不能为了让候选通过而调整当前测试门槛。</li>
+<li><b>证据只有一次训练、一份测试集。</b>区间以这两个训练好的模型为条件，没有估计重新训练带来的方差。</li></ul>
+<p><b>之前的说法哪里不对：</b>最初的判断是“收益主要来自多标记，把词模型阈值调低也能得到”。复核不支持把这句话用于高风险评论：相同标记量下仍有排序收益；把词模型阈值调到同样条数，高风险只多抓约 17 到 20 条，而且会让两项精确率门槛不通过。因此，本次保留 word 同时考虑了计算成本、审核容量和证据范围；字符特征在这些运行中的收益仍如实保留。</p>
+<p><b>后续安排：</b>当前继续使用 <code>word</code>，不启动新增采样或人工标注，也不修改现行门槛。第 5 步仅保留为可选方向，暂缓且尚未启动。若以后决定开展独立数据验证，可再考虑是否将 word+char 纳入候选，并事先确定比较方法和验收要求。</p>
+{DEFERRED_REVIEW_EVALUATION}
+<h2 id="repro">如何复现</h2>
+<pre><code>python scripts/audit_auto_action_fp.py --score analysis/auto_action_fp_audit
+python scripts/run_pipeline.py --config configs/baseline.yaml
+python scripts/run_pipeline.py --config configs/word_char.yaml
+python scripts/compare_runs.py reports/&lt;word run&gt; reports/&lt;word+char run&gt; --equal-input --out analysis/v2
+python record/collect_runs.py --features analysis
+python record/render.py</code></pre>
+<p class="prov">v2 运行 <code>{escape(cw['run_id'])}</code> 与 <code>{escape(cwc['run_id'])}</code>，commit <code>{cw['git_commit'][:12]}</code>，工作区干净。本页读取 <a href="features_run.json">features_run.json</a>，它由 <code>analysis/</code> 下的对比结果和人工复核结果汇总而来。</p>
+"""
+    page(STEPS[3][0], STEPS[3][1], body, STEPS[2], None)
 
 
 if __name__ == "__main__":
@@ -891,4 +1220,5 @@ if __name__ == "__main__":
     build_step1()
     build_step2()
     build_step3()
+    build_step4()
     print("written:", "index.html", *(s[0] for s in STEPS))

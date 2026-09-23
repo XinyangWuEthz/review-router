@@ -408,6 +408,7 @@ Built:
 - [x] Real-evaluation CI with pinned corpus hashes and archived runs
 - [x] Identity-mention FDR and FPR reported per review band; R103 retired, with subgroup threshold selection for the priority band
 - [x] Human confirmation required for both review bands, with all admitted comments counted against reviewer capacity
+- [x] Historical false-positive audit and character n-gram comparison, recorded in [step 4](record/step4-features.html). Under policy v2, word+char has about 15% fewer high-risk misses at matched volume. At its selected thresholds it needs about 12% more review work, with about 6x pipeline time. It remains an experimental option; the default stays `word`.
 
 The project record, one HTML page per step with what was done and why, lives
 under `record/` ([index](record/index.html)); the README keeps only the
@@ -419,6 +420,7 @@ Not done yet:
 - [ ] Hierarchy constraint (`severe_toxic` is an exact subset of `toxic`); today only the violation rate is reported
 - [ ] Sensitivity sweep over the severity-weight vector
 - [ ] Improve priority review using development-data calibration and ranking diagnostics, then validate frozen choices on new independent data
+- [ ] Optional independent human evaluation of review worthiness, deferred due to annotation workload. The [record](record/step4-features.html#future-review-evaluation) describes the possible scope; collection and annotation have not started.
 
 ## Honest scope and limitations
 
@@ -427,10 +429,14 @@ Not done yet:
   Classifier weights do not transfer to short, multilingual, emoji-heavy
   comments with video context. The routing, calibration and capacity methodology
   is the transferable part; that is the only part claimed.
-- **Labels are a perception signal, not a policy signal.** Annotators were asked
-  whether a comment was rude enough to make them leave a discussion. Inter-
-  annotator agreement puts a ceiling on measured performance that is label
-  noise, not model capacity.
+- **Label positivity is a proxy for review value.** Current evaluation uses the
+  original Jigsaw labels. An ambiguous comment may merit human review even if
+  no violation is confirmed; context may still be missing after review. The
+  historical audit judged 46 of 100 sampled false positives toxic, 23 borderline
+  and 31 clean. Its 0.948/0.970 precision estimates assume unaudited true positives
+  stay correct and extrapolate the sampled verdicts. They are sensitivity
+  estimates, not independent measurements of review value. Original labels and
+  current acceptance criteria remain unchanged.
 - **Exposure is simulated.** Jigsaw has no view counts. Any harm-weighted
   quantity is conditional on a stated exposure model and a stated severity
   weight vector. The current simulation counts weighted labels handled within

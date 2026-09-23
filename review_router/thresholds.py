@@ -30,9 +30,7 @@ TIER_ORDER: tuple[str, ...] = ("priority_review", "human_review")
 _LEGACY_TIER_ORDER: tuple[str, ...] = ("auto_action", "human_review")
 
 
-def _subgroup_mask(
-    signals: dict[str, np.ndarray] | None, signal: str, n: int
-) -> np.ndarray:
+def _subgroup_mask(signals: dict[str, np.ndarray] | None, signal: str, n: int) -> np.ndarray:
     if signals is None or signal not in signals:
         raise KeyError(f"subgroup threshold on {signal!r} declared but no such signal was given")
     values = np.asarray(signals[signal])

@@ -1,0 +1,9 @@
+# REVIEW_ROUTER_EVAL_REPORT=reports/20260923T074315427980Z-word-char/report.json REVIEW_ROUTER_EVAL_CONFIG=configs/word_char.yaml REVIEW_ROUTER_EVAL_REQUIRE_REAL=1 pytest tests/test_gate.py -rfs
+E           AssertionError: toxic precision at the operating point degraded: 0.6420 < 0.6430 (was 0.6631); stats={'threshold': 0.6297847741406516, 'n_predicted_positive': 7030, 'precision': 0.6419630156472261, 'recall': 0.7410509031198687}
+E           AssertionError: severe_toxic predicted volume overshoots the actual count by 107.6% (ceiling 100%, was 0.916); stats={'prevalence_train_file': 0.009995550569965721, 'prevalence_test': 0.0057363468692363, 'prevalence_ratio_train_over_test': 1.7424940990879207, 'actual_positives_test': 367, 'model_expected_positives_test': 761.7342919672908, 'train_prevalence_expected_positives_test': 639.4953343652669, 'volume_overshoot_model': 1.0755702778400296, 'volume_overshoot_train_prevalence': 0.7424940990879207}
+FAILED tests/test_gate.py::test_per_label_precision_at_the_operating_point - ...
+FAILED tests/test_gate.py::test_predicted_volume_overshoot - AssertionError: ...
+SKIPPED [1] tests/test_gate.py:125: $REVIEW_ROUTER_EVAL_REQUIRE_CLEAN unset; commit match not enforced outside CI
+SKIPPED [1] tests/test_gate.py:72: priority review precision has no fixed acceptance limit; reported as a diagnostic
+SKIPPED [1] tests/test_gate.py:72: human_review precision has no fixed acceptance limit; reported as a diagnostic
+2 failed, 45 passed, 3 skipped in 1.36s

@@ -1,0 +1,101 @@
+{
+  "run": "reports/20260922T131503586656Z-baseline",
+  "seed": 20260922,
+  "n_auto_action": 2125,
+  "n_false_positive": 204,
+  "precision": 0.904,
+  "population_strata": {
+    "lex/none": 133,
+    "nolex/none": 64,
+    "lex/other": 5,
+    "nolex/other": 2
+  },
+  "sample_strata": {
+    "lex/none": 65,
+    "nolex/none": 31,
+    "lex/other": 3,
+    "nolex/other": 1
+  },
+  "n_sample": 100,
+  "verdicts": [
+    "toxic",
+    "borderline",
+    "clean"
+  ],
+  "definition": "auto_action row whose triggering label(s) are 0 in test_labels.csv",
+  "preread": {
+    "by": "claude-fable-5-1 (LLM pre-read, NOT the human verdict)",
+    "rule": "toxic = abuse directed at a person or group; borderline = profanity, self-directed or undirected rudeness; clean = no abuse",
+    "counts": {
+      "toxic": 40,
+      "borderline": 33,
+      "clean": 27
+    },
+    "precision_if_toxic_only_relabelled": 0.9424,
+    "precision_if_toxic_plus_borderline_relabelled": 0.9741,
+    "by_stratum": {
+      "lex/none": {
+        "borderline": 20,
+        "clean": 15,
+        "toxic": 30
+      },
+      "lex/other": {
+        "borderline": 2,
+        "clean": 1,
+        "toxic": 0
+      },
+      "nolex/none": {
+        "borderline": 11,
+        "clean": 11,
+        "toxic": 9
+      },
+      "nolex/other": {
+        "borderline": 0,
+        "clean": 0,
+        "toxic": 1
+      }
+    }
+  },
+  "human": {
+    "n": 100,
+    "estimate_type": "conditional_sensitivity",
+    "assumptions": [
+      "Unaudited original true positives remain correct under the audit rubric.",
+      "The unweighted audited share is extrapolated to all original false positives."
+    ],
+    "interval_method": "Approximate mapped Wilson interval; no stratification, finite-population correction or annotation uncertainty.",
+    "evaluation_scope": "Historical auto-action false positives only; not an independent evaluation of review worthiness or current human-review precision.",
+    "counts": {
+      "toxic": 46,
+      "borderline": 23,
+      "clean": 31
+    },
+    "implied_precision": {
+      "toxic_only": {
+        "rows_counted_correct": 46,
+        "precision": 0.9482,
+        "precision_ci95": [
+          0.9391,
+          0.9575
+        ]
+      },
+      "toxic_or_borderline": {
+        "rows_counted_correct": 69,
+        "precision": 0.9702,
+        "precision_ci95": [
+          0.961,
+          0.9781
+        ]
+      }
+    },
+    "floor": 0.99,
+    "rows_needed_toxic_for_floor": 90,
+    "agreement_with_preread": 0.89,
+    "preread_to_human": {
+      "toxic->clean": 1,
+      "borderline->toxic": 7,
+      "borderline->clean": 3
+    },
+    "protocol": "One reviewer (the repository owner) read all 100 rows against the pre-read and wrote a verdict only where they disagreed; an unmarked row takes the pre-read verdict. Rule: toxic = attacks a person or group, explicitly or by sarcasm, insinuation or a rhetorical question; borderline = profanity or rudeness with nobody attacked, including self-directed and quoted; clean = nothing offensive. Entered in sample.numbers on 2026-09-23 and merged here by row position (text identical on every row)."
+  }
+}
