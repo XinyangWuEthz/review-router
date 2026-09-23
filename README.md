@@ -418,7 +418,7 @@ Not done yet:
 - [ ] Sentence-embedding signal and multi-model fusion, judged under the same protocol
 - [ ] Hierarchy constraint (`severe_toxic` is an exact subset of `toxic`); today only the violation rate is reported
 - [ ] Sensitivity sweep over the severity-weight vector
-- [x] Round 2, steps 1 and 2, run under the round-1 design that still had an auto-action tier: stratified audit sample of auto-action false positives (`scripts/audit_auto_action_fp.py`) and a character n-gram feature switch (`model.analyzer`), compared under the same protocol (`scripts/compare_runs.py`, findings in `analysis/README.md`). Neither closes the gap. The human audit judged 46 of 100 false positives toxic, 23 borderline and 31 clean, so relabelling alone would lift the tier to 0.948, or 0.970 counting borderline, still under 0.99
+- [x] Round 2, steps 1 and 2, run under the round-1 design that still had an auto-action tier: stratified audit sample of auto-action false positives (`scripts/audit_auto_action_fp.py`) and a character n-gram feature switch (`model.analyzer`), compared under the same protocol (`scripts/compare_runs.py`, findings in `analysis/README.md`). Neither closes the gap. The human audit judged 46 of 100 false positives toxic, 23 borderline and 31 clean, so relabelling alone would lift the tier to 0.948, or 0.970 counting borderline, still under 0.99. Under policy v2 word+char ranks slightly better, with about 15% fewer high-risk misses at matched volume, at about 6x pipeline time and 12% more review work; not adopted for now, default stays `word` (record step 4)
 - [ ] Improve priority review using development-data calibration and ranking diagnostics, then validate frozen choices on new independent data
 
 ## Honest scope and limitations

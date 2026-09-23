@@ -1,4 +1,4 @@
-# Round 2, steps 1 and 2: why auto-action precision is 0.904, and whether features fix it
+# Round 2: why auto-action precision is 0.904, and whether character n-grams help
 
 Question: the auto-action tier reaches 0.992 precision on the selection split
 and 0.904 on the scored test rows against a 0.99 floor. Is the gap model
@@ -94,20 +94,59 @@ admits 517 rows the baseline did not, and 87 of those are new false
 positives. Character n-grams fix the OOV cases and then buy coverage with
 the same non-directed lexical errors at a different set of rows.
 
-## Conclusion for the next step
+## Step 3: the same comparison under policy v2 (`v2/`)
 
-- The human audit puts the label-convention share of the gap between 46%
-  and 69% of the false positives. The rest, 31%, are real errors: abuse or
-  crude vocabulary with nobody attacked, which bag-of-n-grams features cannot
-  tell apart from an attack at any threshold. Even a full relabel under the
-  generous rule leaves the tier at 0.970.
-- Keep `word+char_wb` as the round-2 default for ranking quality; do not
-  expect it to satisfy the auto-action floor.
-- Reaching 0.99 needs either a feature that sees the target of the abuse
-  (a sentence encoder or a small transformer) or a narrower trigger
-  (several labels jointly high plus a directed-address cue). Both must be
-  judged under the same split and floors, with thresholds chosen on a
-  selection split drawn from the test distribution and reported on rows
-  that selection never touched.
-- Until then the protocol's own rule applies: the tier stays red or is
-  disabled, the floor is not lowered.
+Policy v2 removed the auto-action tier, so the feature question became: does
+word+char route comments to human review better? Two runs from clean commit
+01897e4 differ only in `model.analyzer` (`configs/baseline.yaml`,
+`configs/word_char.yaml`). `scripts/compare_runs.py ... --equal-input` wrote
+`v2/run_comparison.{md,json}`; `v2/gates_*.txt` holds the regression gates
+against each report; `v2/verification.json` summarises an independent
+four-agent check (raw output in `v2/verification_raw.json`).
+
+| | word | word+char |
+|---|---:|---:|
+| comments needing review | 6310 | 7093 |
+| queue precision | 0.671 | 0.649 |
+| positives flagged | 4233 | 4603 |
+| high-risk flagged (of 1080) | 916 | 958 |
+| high-risk missed at 6310 flagged (matched volume) | 164 | 139 |
+| full pipeline run, s | 29 | 170 |
+| model.pkl, MB | 17.6 | 42.4 |
+
+- **Ranking gain, small and real.** At matched volume word+char captures
+  about 2.5% more positives and about 15% fewer high-risk misses, mostly
+  identity_hate. Paired bootstrap intervals exclude zero.
+- **Positives versus high risk.** About 70% of the extra positives come from
+  flagging more rows; for high-risk rows more than half of the gain is
+  ranking. At equal per-label counts word+char has higher precision on
+  toxic, obscene and insult.
+- **Same comment stream.** Common-random-number simulation (200 seeds,
+  priority ordering): word+char handles 8 to 12 more harm units per hour
+  and leaves 3.3 to 5.4 fewer high-risk comments unreviewed per 8-hour
+  shift, because fewer stay in allow. It needs about 12% more review work;
+  at the middle input rate its queue passes capacity and the end backlog
+  grows by about 28. Under FIFO at overload the result reverses.
+- **Gates.** Word passes all 47 gates that ran. Word+char fails two whose
+  limits were set from the word run: toxic operating-point precision by
+  0.001, inside sampling error, and severe_toxic predicted-volume overshoot
+  (1.076 against 1.0), a robust calibration regression on a label that sets
+  no routing threshold.
+
+## Conclusion
+
+- The human audit puts the label-convention share of the round-1 gap
+  between 46% and 69% of the false positives. The rest, 31%, are real
+  errors: abuse or crude vocabulary with nobody attacked, which
+  bag-of-n-grams features cannot tell apart from an attack at any
+  threshold. Even a full relabel under the generous rule leaves the tier at
+  0.970, and character n-grams do not change auto-action precision.
+- Decision (2026-09-23, project owner): do not adopt character n-grams for
+  now; `model.analyzer` stays in the code with default `word`. The reason is
+  cost (about 6x pipeline time, 2.4x model size), about 12% more review
+  work, and thresholds and gate limits that would have to be re-derived on
+  independent data. It is not that the feature has no effect: the gain on
+  high-risk comments is small but real.
+- Reconsider word+char as a candidate in the independent-data validation
+  step, comparing high-risk misses at equal review volume with thresholds
+  and limits derived for it.

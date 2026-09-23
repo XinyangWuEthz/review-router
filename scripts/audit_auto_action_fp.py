@@ -102,9 +102,13 @@ def implied_precision(n_auto: int, n_fp: int, share_correct: float) -> float:
 
 
 def rows_needed_for_floor(n_auto: int, n_fp: int, n_sample: int, floor: float) -> int:
-    """Audited rows that must be judged toxic for the implied precision to reach floor."""
-    max_fp = math.floor(n_auto * (1.0 - floor) + 1e-9)
-    return math.ceil(n_sample * (1.0 - max_fp / n_fp) - 1e-9)
+    """Audited rows that must be judged toxic for the implied precision to reach floor.
+
+    The inverse of implied_precision: the smallest count whose share makes
+    1 - n_fp * (1 - share) / n_auto >= floor.
+    """
+    share_needed = 1.0 - n_auto * (1.0 - floor) / n_fp
+    return max(0, math.ceil(n_sample * share_needed - 1e-9))
 
 
 def score(sample: pd.DataFrame, n_auto: int, n_fp: int) -> dict[str, Any]:
@@ -155,6 +159,21 @@ def score_dir(out_dir: Path) -> dict[str, Any]:
     return human
 
 
+def auto_trigger(
+    p: np.ndarray, in_group: np.ndarray, threshold: float, subgroup_threshold: float | None
+) -> np.ndarray:
+    """Whether a label triggers auto_action, with round-1 model_tier semantics.
+
+    Outside the subgroup the population threshold applies. Inside it, a null
+    subgroup threshold means the label cannot trigger at all, and otherwise the
+    stricter of the two thresholds applies.
+    """
+    hit = p >= threshold
+    if subgroup_threshold is None:
+        return np.asarray(hit & ~in_group)
+    return np.asarray(hit & (~in_group | (p >= max(threshold, subgroup_threshold))))
+
+
 def false_positives(run: Path) -> pd.DataFrame:
     pred = pd.read_csv(run / "predictions.csv", dtype={"id": str})
     thresholds = json.loads((run / "thresholds.json").read_text())
@@ -167,18 +186,15 @@ def false_positives(run: Path) -> pd.DataFrame:
     sub = thresholds.get("subgroup", {}).get("auto_action", {}).get("identity_term_present", {})
     rows = pred[pred.final_tier == "auto_action"].copy()
     trig_cols = []
+    in_group = rows.identity_term_present.to_numpy() == 1
     for label in LABELS:
         t = auto.get(label)
-        t_sub = sub.get(label)
         if t is None:
             rows[f"trig_{label}"] = False
             continue
-        thr = np.where(
-            (rows.identity_term_present == 1) & (t_sub is not None),
-            t_sub if t_sub is not None else t,
-            t,
+        rows[f"trig_{label}"] = auto_trigger(
+            rows[f"p_{label}"].to_numpy(), in_group, t, sub.get(label)
         )
-        rows[f"trig_{label}"] = rows[f"p_{label}"].to_numpy() >= thr
         trig_cols.append(label)
     rows["trigger_labels"] = rows.apply(
         lambda r: "+".join(lb for lb in trig_cols if r[f"trig_{lb}"]), axis=1
@@ -212,9 +228,10 @@ def main() -> None:
 
     existing = args.out / "sample.csv"
     if existing.exists() and not args.force:
-        verdicts = pd.read_csv(existing, dtype=str, keep_default_na=False).get("human_verdict")
-        if verdicts is not None and (verdicts.str.strip() != "").any():
-            raise SystemExit(f"{existing} already has human verdicts; pass --force to redraw")
+        drawn = pd.read_csv(existing, dtype=str, keep_default_na=False)
+        for column in ("human_verdict", "preread_verdict"):
+            if column in drawn and (drawn[column].str.strip() != "").any():
+                raise SystemExit(f"{existing} already has {column} values; pass --force to redraw")
 
     fp, n_auto = false_positives(args.run)
     test = pd.read_csv(args.data / "test.csv", dtype={"id": str}).set_index("id")
@@ -263,7 +280,7 @@ def main() -> None:
         "n_false_positive": int(len(fp)),
         "precision": round(1 - len(fp) / n_auto, 4),
         "population_strata": {k: int(v) for k, v in pop.items()},
-        "sample_strata": {k: int(v) for k, v in alloc.items()},
+        "sample_strata": {k: int(v) for k, v in sample.stratum.value_counts().items()},
         "n_sample": int(len(sample)),
         "verdicts": list(VERDICTS),
         "definition": "auto_action row whose triggering label(s) are 0 in test_labels.csv",

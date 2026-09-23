@@ -40,7 +40,7 @@
 | word-char | 6934 | 4553 | 956 | 12627 |
 | word-char | 7093 | 4601 | 958 | 12707 |
 
-## Queue at equal review load (report simulation, 5 seeds, mean ± std)
+## Queue at equal review load (report simulation, 5 seeds, mean ± population SD)
 
 Arrival rates are review jobs per hour after admission, identical for every run.
 

@@ -1,0 +1,537 @@
+{
+ "recompute": {
+  "checks": [
+   {
+    "claim": "Tier sizes (priority_review / human_review)",
+    "reported": "word 4625 / 1685; word+char 5030 / 2063",
+    "recomputed": "word 4625 / 1685; word+char 5030 / 2063 (from final_tier in predictions.csv; both files have identical ids and y_ columns, 63,978 rows)",
+    "match": true,
+    "note": "Exact."
+   },
+   {
+    "claim": "Tier coverage",
+    "reported": "word 0.0723 / 0.0263; word+char 0.0786 / 0.0322",
+    "recomputed": "word 0.07229 / 0.02634; word+char 0.07862 / 0.03225",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "Test precision per tier with Wilson 95% CI",
+    "reported": "word PR 0.763 [0.750,0.775], HR 0.419 [0.396,0.443]; word+char PR 0.756 [0.744,0.768], HR 0.387 [0.366,0.408]",
+    "recomputed": "word PR 3527/4625=0.7626 [0.7501,0.7746], HR 706/1685=0.4190 [0.3956,0.4427]; word+char PR 3805/5030=0.7565 [0.7444,0.7681], HR 798/2063=0.3868 [0.3660,0.4080]",
+    "match": true,
+    "note": "A review-tier row counts as correct if any true label is 1."
+   },
+   {
+    "claim": "Selection precision (report.json threshold_selection.tiers)",
+    "reported": "word 0.972 / 0.797; word+char 0.972 / 0.794",
+    "recomputed": "word 0.97236 / 0.79736; word+char 0.97205 / 0.79365",
+    "match": true,
+    "note": "Read from report.json. It cannot be derived from predictions.csv (threshold split)."
+   },
+   {
+    "claim": "Review workload: flagged count, share, queue precision",
+    "reported": "word 6310, 0.0986, 0.671 [0.659,0.682]; word+char 7093, 0.1109, 0.649 [0.638,0.660]",
+    "recomputed": "word 6310, 0.098628, 4233/6310=0.67084 [0.65914,0.68233]; word+char 7093, 0.110866, 4603/7093=0.64895 [0.63776,0.65997]",
+    "match": true,
+    "note": "Matches report.json review_workload. requires_human_review agrees with final_tier on every row."
+   },
+   {
+    "claim": "Positives flagged / in priority_review",
+    "reported": "word 4233/6243 (0.678), 3527 (0.565); word+char 4603/6243 (0.737), 3805 (0.609)",
+    "recomputed": "word 4233 (0.6780), 3527 (0.5650); word+char 4603 (0.7373), 3805 (0.6095); total positives 6243",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "High-risk flagged / in priority_review / left in allow",
+    "reported": "word 916, 838, 164 of 1080; word+char 958, 874, 122 of 1080",
+    "recomputed": "word 916, 838, 164; word+char 958, 874, 122; total high-risk (harm >= 5) 1080",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "Per-label AP and AUC table (6 labels x 2 runs)",
+    "reported": "e.g. toxic AP 0.752/0.780, identity_hate AP 0.480/0.562, threat AUC 0.992/0.993",
+    "recomputed": "All 24 values match to 3 d.p. with sklearn average_precision_score / roc_auc_score on predictions.csv (toxic 0.7522/0.7797, identity_hate 0.4800/0.5618, threat AUC 0.9917/0.9930)",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "C1 matched volume, k=6310",
+    "reported": "word 4234 pos, 916 HR, harm 11879; word+char 4338 pos, 941 HR, harm 12209",
+    "recomputed": "word 4234, 916, 11879; word+char 4338, 941, 12209",
+    "match": true,
+    "note": "Top k by max p over the six labels, stable argsort. No tie at either k boundary, so the tie rule has no effect."
+   },
+   {
+    "claim": "C1 matched volume, k=7093",
+    "reported": "word 4488 pos, 936 HR, harm 12390; word+char 4601 pos, 958 HR, harm 12707",
+    "recomputed": "word 4488, 936, 12390; word+char 4601, 958, 12707",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "C1 ranking gain of about 2.5%",
+    "reported": "~2.5%",
+    "recomputed": "positives +2.46% (k=6310), +2.52% (k=7093); high-risk +2.73%, +2.35%; harm proxy +2.78%, +2.56%",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "C2 flagged rows and positives",
+    "reported": "7093 vs 6310 rows; 4603 vs 4233 positives; +370",
+    "recomputed": "7093 vs 6310; 4603 vs 4233; +370",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "C2 decomposition of +370 positives",
+    "reported": "~254 (69%) from volume, ~115 from ranking",
+    "recomputed": "volume = word top-7093 minus word top-6310 = 4488-4234 = 254 (68.6%), or 4488-4233 = 255 using the routed set; ranking = 4603-4488 = 115",
+    "match": true,
+    "note": "254+115 = 369, not 370: the volume term uses the top-k count (4234) and the total uses the routed count (4233). Reversing the order gives ranking 104 (4338-4234) and volume 263 (71%). The 69-71% volume share holds either way."
+   },
+   {
+    "claim": "RECOMMENDATION: most of the recall gain comes from flagging more comments (checked for high-risk rows and harm)",
+    "reported": "implied for recall in general (positives: 69%)",
+    "recomputed": "high-risk: +42 (958 vs 916); volume 936-916 = 20 (48%), ranking 958-936 = 22 (52%); reversed order: ranking 941-916 = 25 (60%). Harm proxy on flagged pools: +825 (12711 vs 11886); volume 12390-11886 = 504 (61%), ranking 321 (39%)",
+    "match": false,
+    "note": "True for positives and harm proxy, not for high-risk rows (threat, identity_hate, severe_toxic), where ranking gives about half or more of the gain. The recommendation should limit this statement to positives."
+   },
+   {
+    "claim": "C3 priority@180 harm_per_reviewer_hour (report simulation, 5 seeds)",
+    "reported": "word+char 67.62 +/- 4.01 vs word 70.24 +/- 1.71",
+    "recomputed": "word+char 67.62 +/- 4.01; word 70.24 +/- 1.71 (own driver; seeds 1-5; population std)",
+    "match": true,
+    "note": "All 12 rows x 6 columns of the equal-load table also reproduce exactly. The std is population std (ddof=0)."
+   },
+   {
+    "claim": "C3 lower harm per reviewer-hour because queue precision is lower; differences within seed noise",
+    "reported": "queue precision 0.649 vs 0.671; within noise",
+    "recomputed": "queue precision 0.6490 vs 0.6708 (-3.3%); mean harm per queued job 1.792 vs 1.884 (-4.9%), which combines precision and harm per flagged positive (2.762 vs 2.808). Welch t (5 seeds): -0.91 at 60, -1.07 at 108, -1.20 at 180 (p 0.28-0.41)",
+    "match": true,
+    "note": "At 5 seeds the gap is within seed noise. It points the same way at every load, though, and below capacity the expected gap is fixed by the pool's mean harm (about -5%), so it is a real, small difference."
+   },
+   {
+    "claim": "Equal-input input rates and review loads",
+    "reported": "inputs 608/1095/1825; word loads 60.0/108.0/180.0; word+char loads 67.4/121.4/202.3",
+    "recomputed": "inputs 608.35/1095.03/1825.05 (= load / 0.098628); word+char loads 67.445/121.402/202.336 (= input x 0.110866)",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "C4 input 608/h harm_handled_per_hour (priority)",
+    "reported": "word+char 117.96 vs word 112.33",
+    "recomputed": "117.96 +/- 6.10 vs 112.33 +/- 10.28 (sample std); Welch t = 2.11, p = 0.043",
+    "match": true,
+    "note": "FIFO is identical at this load."
+   },
+   {
+    "claim": "C4 input 1095/h priority row, word",
+    "reported": "review_arrivals 868.55 +/- 33.06, backlog_end 3.15 +/- 3.27, high_risk_unhandled 0.50 +/- 0.83, harm/h 202.49 +/- 11.88, completion 0.99",
+    "recomputed": "868.55 +/- 33.06, 3.15 +/- 3.27, 0.50 +/- 0.83, 202.49 +/- 11.88, 0.99 (own driver; draw_scenario/simulate; seeds 1-20; load 108.0; sample std)",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "C4 input 1095/h priority row, word+char",
+    "reported": "review_arrivals 973.85 +/- 40.77, backlog_end 34.05 +/- 24.39, high_risk_unhandled 1.50 +/- 0.95, harm/h 216.63 +/- 13.43, completion 0.96; review load 121.4 > capacity 120",
+    "recomputed": "973.85 +/- 40.77, 34.05 +/- 24.39, 1.50 +/- 0.95, 216.63 +/- 13.43, 0.96; load 121.40 > 120",
+    "match": true,
+    "note": "harm/h difference +14.14 (+7.0%), Welch t = 3.53. Word+char still handles more harm per hour at this slightly over-capacity load. 'While capacity allows' in the claim understates this."
+   },
+   {
+    "claim": "C5 input 1825/h priority harm_handled_per_hour",
+    "reported": "word+char 291.93 vs word 283.02 (+3%)",
+    "recomputed": "291.93 +/- 12.59 vs 283.02 +/- 9.09; +8.91 (+3.15%)",
+    "match": true,
+    "note": "Numbers match."
+   },
+   {
+    "claim": "C5 +3% is within noise",
+    "reported": "within noise",
+    "recomputed": "SE of the 20-seed mean difference 3.47; Welch t = 2.56, p = 0.015",
+    "match": false,
+    "note": "The difference is smaller than one per-seed std, but about 2.6 standard errors of the 20-seed mean. It is small, not within simulation noise. The 608/h difference (t = 2.11) is presented as a real gain, so noise is treated inconsistently between C4 and C5."
+   },
+   {
+    "claim": "Full equal-input table (12 rows x 9 metrics)",
+    "reported": "run_comparison.md equal-input table",
+    "recomputed": "Every mean reproduces exactly. Every std reproduces with sample std (ddof=1)",
+    "match": true,
+    "note": "Presentation issue: this table uses sample std (ddof=1), while the equal-load table uses population std (ddof=0, pipeline._summarise). Both are labelled only 'mean +/- std'."
+   },
+   {
+    "claim": "C6 word passes every v2 regression gate",
+    "reported": "47 passed, 3 skipped",
+    "recomputed": "Recomputed from predictions.csv: all AP values >= floors; precision at the human_review threshold toxic 0.6631 >= 0.643, obscene 0.7731 >= 0.753, insult 0.8788 >= 0.858; severe_toxic overshoot 0.9155 <= 1.0. Rerun of tests/test_gate.py (no cache): 47 passed, 3 skipped",
+    "match": true,
+    "note": "The 3 skips are the clean-commit check (REQUIRE_CLEAN unset; the manifest shows git_dirty=false at 01897e4) and two tier-precision diagnostics with null floors."
+   },
+   {
+    "claim": "C6 word+char toxic precision at the human-review operating point",
+    "reported": "0.642 < floor 0.643",
+    "recomputed": "threshold 0.62978, n_pred 7030, precision 0.64196 < 0.643 (recall 0.741)",
+    "match": true,
+    "note": "Fails by 0.001, at a lower threshold than word (0.6576)."
+   },
+   {
+    "claim": "C6 word+char severe_toxic volume overshoot",
+    "reported": "1.076 > ceiling 1.0",
+    "recomputed": "sum p = 761.73 vs 367 actual; overshoot = 761.73/367 - 1 = 1.0756 > 1.0. Rerun of pytest: 45 passed, 2 failed (these two), 3 skipped",
+    "match": true,
+    "note": ""
+   },
+   {
+    "claim": "C7 run time",
+    "reported": "170 s vs 29 s",
+    "recomputed": "word 07:42:44 -> 07:43:13 = 29 s; word+char 07:43:15 -> 07:46:05 = 170 s (manifest started_utc/finished_utc)",
+    "match": true,
+    "note": "Whole pipeline wall time including simulation, at 1 s resolution. Not training time alone."
+   },
+   {
+    "claim": "C7 model.pkl size",
+    "reported": "40 MB vs 17 MB",
+    "recomputed": "42,374,141 B vs 17,645,112 B = 40.4 MiB vs 16.8 MiB (42.4 MB vs 17.6 MB decimal); ratio 2.40",
+    "match": true,
+    "note": "Matches in MiB, as ls -h prints. In decimal MB it would be 42 vs 18."
+   },
+   {
+    "claim": "RECOMMENDATION: about 12% more reviewer capacity at the same comment stream",
+    "reported": "~12%",
+    "recomputed": "7093/6310 = 1.1241 (+12.4%); same ratio as the queue fractions",
+    "match": true,
+    "note": ""
+   }
+  ],
+  "summary": "I rebuilt every number in the claims and in analysis/v2/run_comparison.md from the two run directories, without importing or running scripts/compare_runs.py. All counts and means match. Two interpretive statements do not hold.\n\n- **Static numbers match.** Tier sizes, coverage, test precision with Wilson CIs, and selection precision (from report.json) all match. So do review workload (6310 vs 7093 flagged, queue precision 0.671 vs 0.649), positives and high-risk rows by tier, and all 24 AP/AUC values. The matched-volume table matches exactly: 4234/916/11879 and 4488/936/12390 for word; 4338/941/12209 and 4601/958/12707 for word+char. No ties fall at k = 6310 or 7093, so the stable-sort rule has no effect.\n- **Simulations match.** My own driver (calls only draw_scenario, simulate and queue_inputs) reproduces the whole equal-load table (5 seeds) and the whole equal-input table (20 seeds) exactly. That includes the 1095/h priority rows for both runs and priority@180 (70.24 ± 1.71 vs 67.62 ± 4.01).\n- **Std conventions differ between the two tables.** The equal-load table uses population std (ddof=0); the equal-input table uses sample std (ddof=1). Both are labelled only \"mean ± std\".\n- **Gates match.** The classification gate inputs recomputed from predictions.csv agree with the gate files: toxic 0.64196 < 0.643, and severe_toxic overshoot 1.0756 > 1.0. A rerun of tests/test_gate.py (no cache written) gives word 47 passed / 3 skipped and word+char 45 passed / 2 failed / 3 skipped.\n- **C7 matches.** Run times are 29 s vs 170 s, and cover the whole pipeline, not training alone. model.pkl sizes are 16.8 MiB vs 40.4 MiB (17.6 vs 42.4 MB decimal).\n\nWhere I disagree:\n1. **C5 \"within noise\" does not hold.** The +8.91/h (+3.1%) at 1825/h is about 2.6 standard errors of the 20-seed mean (Welch t = 2.56, p ≈ 0.015). It is small but not noise. C4 treats a weaker 608/h gap (t = 2.11) as a real gain, so noise is judged inconsistently.\n2. **The recommendation's \"most of the recall gain comes from flagging more comments\" holds for positives (69–71%) and the harm proxy (61%), but not for high-risk rows.** Of +42 high-risk rows, volume gives 20 and ranking gives 22 (52%), or 25 (60%) if the steps are taken in the other order.\n\nMinor points:\n- C2's split adds to 369, not 370, because the volume term uses word's top-k count (4234) while the total uses its routed count (4233).\n- In C3, the equal-load gap is within 5-seed noise (t between −0.9 and −1.2), but it points the same way at every load. Below capacity it follows from the pool's lower mean harm per queued job (1.792 vs 1.884).\n- In C4, word+char still handles more harm at 1095/h even though that load is just over capacity, so \"while capacity allows\" understates it.\n\nI changed no tracked files. My scripts and outputs are in /private/tmp/claude-501/-Users-xinyangwu-projects-review-router/d371950c-1fe1-426c-9b6d-951d7c53113c/scratchpad/wf/recompute/ (static.py, gates.py, sim_driver.py, extra.py, sim_out.json, gate_*.log). During the session, git status showed record/*.html, record/render.py and record/collect_runs.py modified, plus new record/step4-features.html, record/features_run.json and record/figures/step4_capture_curve.png. I did not make those changes; another process wrote them."
+ },
+ "stats": {
+  "results": [
+   {
+    "quantity": "C1(a) positives in top-k, k=6310, word+char minus word",
+    "point_estimate": 104,
+    "ci95_low": 55,
+    "ci95_high": 153,
+    "method": "Paired row bootstrap, B=5000, seed 20260923. Each replicate resamples the 63,978 row indices once, as multiplicities, and applies them to both models. Variant A (primary, as requested): each model's stable-argsort ranking and top-k set are fixed on the full test set, and the replicate counts resampled rows that fall in each set. 95% percentile interval.",
+    "note": "4338 vs 4234. SE 24.9, P(diff<=0)=0.0002. Variant B (re-take the top k resampled rows inside each replicate, fractional at the cut) gives [63, 140]. Real."
+   },
+   {
+    "quantity": "C1(a) positives in top-k, k=7093, word+char minus word",
+    "point_estimate": 113,
+    "ci95_low": 66,
+    "ci95_high": 160,
+    "method": "Paired row bootstrap, B=5000, variant A (fixed top-k sets), percentile interval",
+    "note": "4601 vs 4488. SE 23.9, P(<=0)<0.0002. Variant B: [77, 153]. Real."
+   },
+   {
+    "quantity": "C1 relative ranking gain in positives at k=6310 (wc/word - 1)",
+    "point_estimate": 0.0246,
+    "ci95_low": 0.0129,
+    "ci95_high": 0.0362,
+    "method": "Paired row bootstrap, B=5000, variant A, ratio computed within each replicate",
+    "note": "At k=7093: 0.0252 [0.0146, 0.0359]. The claimed ranking gain of about 2.5% holds, but it could be anywhere from about 1.3% to 3.6%. The interval is conditional on the two trained models; retraining variance is not included."
+   },
+   {
+    "quantity": "C1(b) high-risk rows in top-k, k=6310, word+char minus word",
+    "point_estimate": 25,
+    "ci95_low": 10,
+    "ci95_high": 40,
+    "method": "Paired row bootstrap, B=5000, variant A, percentile interval",
+    "note": "941 vs 916. SE 7.7, P(<=0)=0.0008. Relative +2.73% [1.08%, 4.45%]. Variant B: [10, 41]. The harm-proxy difference is +330 [195, 466]. Real."
+   },
+   {
+    "quantity": "C1(b) high-risk rows in top-k, k=7093, word+char minus word",
+    "point_estimate": 22,
+    "ci95_low": 8,
+    "ci95_high": 36,
+    "method": "Paired row bootstrap, B=5000, variant A, percentile interval",
+    "note": "958 vs 936. SE 7.2, P(<=0)=0.0014. Relative +2.35% [0.86%, 3.89%]. Variant B: [10, 38]. The harm-proxy difference is +317 [191, 444]. Real."
+   },
+   {
+    "quantity": "C2/(c) positives flagged at each model's own tiers (final_tier != allow), wc minus word",
+    "point_estimate": 370,
+    "ci95_low": 320,
+    "ci95_high": 422,
+    "method": "Paired row bootstrap, B=5000, flagged sets fixed, percentile interval",
+    "note": "4603 vs 4233. Positive recall rises by 5.93 points [5.13, 6.73]. Real."
+   },
+   {
+    "quantity": "(c) high-risk rows flagged at each model's own tiers, wc minus word",
+    "point_estimate": 42,
+    "ci95_low": 26,
+    "ci95_high": 58,
+    "method": "Paired row bootstrap, B=5000, percentile interval",
+    "note": "958 vs 916 out of 1080 high-risk rows. High-risk recall rises by 3.89 points [2.46, 5.39]. Real."
+   },
+   {
+    "quantity": "C2 volume component: word positives at k=7093 minus at k=6310",
+    "point_estimate": 254,
+    "ci95_low": 224,
+    "ci95_high": 285,
+    "method": "Paired row bootstrap, B=5000, fixed word ranking",
+    "note": "Volume share of the +370 is 0.686 [0.596, 0.791], so the claimed 69% is supported."
+   },
+   {
+    "quantity": "C2 ranking component: wc top-7093 minus word top-7093 positives",
+    "point_estimate": 113,
+    "ci95_low": 66,
+    "ci95_high": 160,
+    "method": "Paired row bootstrap, B=5000, variant A",
+    "note": "The claimed 115 is this 113 plus a 2-row residual (wc flagged tiers vs wc top-7093; residual CI [-3, 8]). 115 has CI [68, 162]. Real."
+   },
+   {
+    "quantity": "(d) queue precision (share of flagged rows with any true label), wc minus word",
+    "point_estimate": -0.0219,
+    "ci95_low": -0.0288,
+    "ci95_high": -0.015,
+    "method": "Paired row bootstrap, B=5000, ratio of weighted sums per replicate",
+    "note": "0.6489 [0.6375, 0.6602] vs 0.6708 [0.6590, 0.6825]. The report's unpaired intervals almost touch, but the paired interval clearly excludes 0. Mean harm per queued job is 1.792 vs 1.884, a difference of -0.0916 [-0.1142, -0.0695]; this is what lowers harm per reviewer-hour in C3. Real."
+   },
+   {
+    "quantity": "Extra review volume at the same comment stream (wc flagged / word flagged - 1)",
+    "point_estimate": 0.1241,
+    "ci95_low": 0.1099,
+    "ci95_high": 0.1385,
+    "method": "Paired row bootstrap, B=5000",
+    "note": "783 more rows [698, 868]. Supports the recommendation's 'about 12% more reviewer capacity'. The wc review load at input 1095/h is 121.4/h. The test-set SE of its queue fraction is 0.00124, so that load has a 95% range of about [118.7, 124.1], which straddles capacity 120. 'Above capacity' is a point estimate, not an established fact."
+   },
+   {
+    "quantity": "C6 toxic precision at the human_review threshold, wc minus word",
+    "point_estimate": -0.0211,
+    "ci95_low": -0.0281,
+    "ci95_high": -0.0145,
+    "method": "Paired row bootstrap, B=5000; each model's frozen threshold, p >= thr",
+    "note": "The drop relative to word is real. The gate failure is not robust: wc is 0.642 [0.630, 0.653] against a floor of 0.643, a miss of 0.001, about 0.17 SE. In 43% of resamples wc passes. The floor equals measured minus 0.020, and P(drop > 0.0201) = 0.61, so this gate result is close to a coin flip."
+   },
+   {
+    "quantity": "C6 severe_toxic volume overshoot, wc minus word",
+    "point_estimate": 0.16,
+    "ci95_low": 0.1251,
+    "ci95_high": 0.1977,
+    "method": "Paired row bootstrap, B=5000; overshoot = sum p / actual - 1 per replicate",
+    "note": "The difference exceeds the ceiling's headroom over word (0.084) in 100% of replicates, so this gate failure is robust relative to word. The absolute overshoot is noisy because the actual count is only 367: wc is 1.076 [0.901, 1.284], and word itself exceeds 1.0 in 19% of resamples."
+   },
+   {
+    "quantity": "C3 harm_per_reviewer_hour, priority@180, report simulation (5 seeds), wc minus word",
+    "point_estimate": -2.625,
+    "ci95_low": -8.264,
+    "ci95_high": 3.014,
+    "method": "Per-seed paired differences from report.json simulation.table; paired-t interval with 4 df. At the same load and seed both runs share N and arrival times.",
+    "note": "Paired SE 2.03 (unpaired 2.18), t=-1.29, p=0.27; wc is higher on 2 of 5 seeds. The 5-seed table cannot separate this from seed noise. The report's ± values are ddof=0 SDs, not SEs. At @60: -1.62, SE 1.47, CI [-5.70, 2.46]. At @108: -2.21, SE 1.68, CI [-6.87, 2.46]. All three are within seed noise at 5 seeds."
+   },
+   {
+    "quantity": "C3 expected harm_per_reviewer_hour difference, priority@180, with seeds averaged out and test-set variance included",
+    "point_estimate": -2.543,
+    "ci95_low": -3.436,
+    "ci95_high": -1.65,
+    "method": "Expected value from 2000 seeds on the original pools (MC SE 0.075). Test-set SE 0.45 [0.39, 0.50] from a nested paired bootstrap: 2000 row resamples, pools rebuilt with queue_inputs, 20 fresh seeds each, one-way variance decomposition var_test = var_b(seed-mean) - mean var_seed/S. Normal interval.",
+    "note": "@60: -1.32 [-1.63, -1.01]. @108: -2.59 [-3.32, -1.86]. The analytic check at 60 (load x delta mean harm / 4 = -1.37) agrees. C3's direction is real; the report's 'within seed noise' reflects only that 5 seeds are too few. At @180, wc leaves 2.6 fewer high-risk jobs unhandled, but the test-set SE is 2.0, so that is noise."
+   },
+   {
+    "quantity": "C4 harm_handled_per_hour, equal input 608/h, priority, 20 seeds, wc minus word",
+    "point_estimate": 5.631,
+    "ci95_low": 0.178,
+    "ci95_high": 11.084,
+    "method": "Recomputed per-seed values (they match the JSON means and SDs exactly). Welch SE sqrt(s1^2/20 + s2^2/20); the arrival streams are independent because draw_scenario keys its RNG on the load, which differs between runs.",
+    "note": "SE 2.67, t=2.11, p=0.043: borderline against seed noise. The seed-averaged expected difference is +7.69 [6.33, 9.05] (MC SE 0.25, test-set SE 0.65). The analytic check, rate x delta harm_flagged / N = 7.84, agrees. The gain is real in expectation."
+   },
+   {
+    "quantity": "C4 harm_handled_per_hour, equal input 1095/h, priority, 20 seeds, wc minus word",
+    "point_estimate": 14.137,
+    "ci95_low": 6.019,
+    "ci95_high": 22.256,
+    "method": "Welch on 20 independent seeds per run",
+    "note": "SE 4.01, t=3.53, p=0.001: distinguishable from seed noise. The seed-averaged expected difference is +12.23 [9.47, 14.98] (test-set SE 1.37). Real."
+   },
+   {
+    "quantity": "C4 backlog_end at input 1095/h, priority, wc minus word",
+    "point_estimate": 30.9,
+    "ci95_low": 19.41,
+    "ci95_high": 42.39,
+    "method": "Welch, 20 seeds; expectation from 2000 seeds plus test-set SE from the nested bootstrap",
+    "note": "Seed SE 5.50, t=5.6. The expected difference is +26.9 [14.0, 39.8]. The test-set SE (6.6) exceeds the seed SE here because the wc load sits at capacity. Completion ratio: -0.030 [-0.041, -0.019] by seed; expected -0.026 [-0.039, -0.014]. Both are real."
+   },
+   {
+    "quantity": "C4 high_risk_unhandled at input 1095/h, priority, wc minus word",
+    "point_estimate": 1,
+    "ci95_low": 0.431,
+    "ci95_high": 1.569,
+    "method": "Welch, 20 seeds; expectation from 2000 seeds plus test-set SE",
+    "note": "Seed SE 0.28, t=3.56. The direction is real, but the 20-seed draw overstates the size: the seed-averaged values are 1.18 vs 0.69, a difference of +0.49 [0.13, 0.85] (test-set SE 0.18), not 1.50 vs 0.50."
+   },
+   {
+    "quantity": "C5 harm_handled_per_hour, equal input 1825/h, priority, 20 seeds, wc minus word",
+    "point_estimate": 8.906,
+    "ci95_low": 1.853,
+    "ci95_high": 15.959,
+    "method": "Welch, 20 independent seeds per run",
+    "note": "SE 3.47, t=2.56, p=0.015, so this is not within seed noise and the claim is wrong. The seed-averaged expected difference is +8.90 [5.84, 11.96] (MC SE 0.33, test-set SE 1.52). The gain is real, but it comes with backlog +202 by seed (expected +178 [158, 198]) and high-risk unhandled +4.35, seed SE 1.44 (expected +4.18 [-0.06, 8.42], marginal once test-set variance is included). Under fifo the sign reverses: -12.8 [-18.6, -6.9]."
+   },
+   {
+    "quantity": "Test-set SE of the harm_handled_per_hour difference at input 1825/h (missing from the seed spread)",
+    "point_estimate": 1.523,
+    "ci95_low": 1.238,
+    "ci95_high": 1.771,
+    "method": "Nested paired bootstrap: 2000 row resamples x 20 fresh seeds, priority ordering, pools and queue fraction rebuilt per resample; variance decomposition; CI from resampling the 2000 replicates",
+    "note": "For the difference, the test-set SE is 0.65 [0, 0.90], 1.37 [1.06, 1.64] and 1.52 at inputs 608/1095/1825. The 20-seed seed SE is 2.67/4.01/3.47, so test-set variance is only 6%, 15% and 17% of the total, because the two pools overlap heavily. For each model's own level it matters much more: test-set SE 2.2/4.0/5.0 per hour vs 20-seed MC SE 1.8/2.4/2.4, which is 60-82% of total variance. The report's ± values therefore understate the uncertainty of absolute harm/h substantially. For C3 differences the test-set SE is 0.15/0.37/0.45 at loads 60/108/180."
+   }
+  ],
+  "summary": "Setup: paired row bootstrap (B=5000, seed 20260923) over the 63,978 shared test rows. Variant A was used as primary: each model's ranking and top-k set stay fixed and each replicate counts resampled rows in those sets. Variant B, which re-takes the top k inside each replicate, was run as a check and gave similar intervals. The simulations got three analyses: per-seed paired and Welch SEs; a 2000-seed run on the original pools to average seed noise out; and a nested bootstrap (2000 row resamples x 20 seeds, pools rebuilt with queue_inputs) to add test-set variance. All intervals are conditional on the two trained models; retraining variance was not estimated.\n\nReal (intervals exclude 0):\n- C1: all four matched-volume gains hold. Positives: +104 [55, 153] at k=6310 and +113 [66, 160] at k=7093. High-risk: +25 [10, 40] and +22 [8, 36]. The relative ranking gain is about 2.5%, with CI about [1.3%, 3.6%].\n- C2: positives flagged +370 [320, 422]. The volume share is 69% [60%, 79%]. The ranking component is 113 [66, 160], plus a 2-row tier residual.\n- Queue precision: -0.022 [-0.029, -0.015]. Extra review volume: +12.4% [11.0%, 13.9%].\n\nC3 (equal review load): the claim is literally correct but misleading. The 5-seed table cannot distinguish the differences (|t| <= 1.3; the ± values are ddof=0 SDs). With seeds averaged out, word+char handles less harm per reviewer-hour at every load, and the test-set-inclusive intervals exclude 0: -1.32 at 60, -2.59 at 108, -2.54 at 180 [-3.44, -1.65]. The mechanism is also real: mean harm per queued job is 1.792 vs 1.884.\n\nC4 (equal input):\n- Harm handled per hour at 608/h: borderline in the 20 seeds (+5.6, SE 2.7, p=0.04), but real in expectation (+7.7 [6.3, 9.0]).\n- At 1095/h: harm +14.1 (SE 4.0; expected +12.2 [9.5, 15.0]), backlog +31 (expected +27 [14, 40]) and completion ratio -0.03 are all real.\n- High-risk unhandled at 1095/h rises in direction, but seed-averaged it is 1.18 vs 0.69 (+0.49 [0.13, 0.85]), not 1.50 vs 0.50.\n- The wc review load of 121.4/h is within test-set noise of capacity 120 (95% range about 118.7-124.1).\n\nC5 is wrong about noise. The +8.9 harm per hour at 1825/h has seed SE 3.5 (t=2.56, p=0.015), and its seed-averaged expectation is +8.9 [5.8, 12.0]. The difference is real. It comes with backlog +178 [158, 198] and high-risk unhandled +4.2 [-0.1, 8.4] (marginal), and it reverses under fifo (-12.8).\n\nC6:\n- The toxic-precision gate failure is fragile: 0.642 vs floor 0.643 is 0.17 SE, and wc passes in 43% of resamples. The drop relative to word (-0.021 [-0.028, -0.015]) is real.\n- The severe_toxic overshoot failure is robust relative to word: +0.160 [0.125, 0.198] against headroom of 0.084. The absolute overshoot is noisy because only 367 rows are severe_toxic positives.\n\nC7 compares single runs with no replication, so no statistical assessment is possible.\n\nTest-set variance: for differences it adds little, because the two review pools overlap heavily. For harm/h differences its SE is 0.65/1.37/1.52 at inputs 608/1095/1825, which is 6-17% of the variance of a 20-seed difference. For each model's absolute harm/h level it is large: SE 2.2/4.0/5.0, which is 60-82% of total variance. So the report's ± values understate level uncertainty.\n\nDesign notes:\n- The equal-input simulation gives the two models independent arrival streams, because the RNG is keyed on load. Common random numbers, e.g. simulating one comment stream and admitting jobs per model, would cut the seed SE of differences.\n- The report simulation does share N and arrival times at equal load.\n\nRecommendation: the claims about volume share, the 2.5% ranking gain and the 12% extra capacity are statistically supported. 'Breaks two gates' should say one robust failure (severe_toxic overshoot) and one coin-flip failure (toxic precision). C5's 'within noise' and C4's '1.50 vs 0.50' need correcting.\n\nScratch code and outputs are in /private/tmp/claude-501/-Users-xinyangwu-projects-review-router/d371950c-1fe1-426c-9b6d-951d7c53113c/scratchpad/wf/statistician/:\n- paired_bootstrap.py and .json\n- sim_seed.py and .json\n- nested_bootstrap.py and nested_B2000_S20.npy\n- analyze_nested.py and nested_summary.json\n- many_seeds.py and .json\n- gate_probs.py\n\nNo tracked files were modified."
+ },
+ "review": {
+  "findings": [
+   {
+    "file": "scripts/compare_runs.py",
+    "line": 260,
+    "severity": "medium",
+    "reproduced": true,
+    "summary": "In the --equal-input section, high_risk_unhandled only counts queued arrivals. High-risk comments that the same input stream sends to allow are left out, even though the docstring (lines 21-26) says every harm-carrying comment left in allow is lost. As a result the high-risk comparison favours the model that flags fewer comments.",
+    "failure_scenario": "I took the committed analysis/v2/run_comparison.json and added the expected high-risk rows routed to allow per 8-hour shift: rate x 8 x high_risk_in_allow/63978, which is 164 rows for word and 122 for word-char. At 1825 comments/h under the priority strategy the table shows word 22.75 vs word-char 27.10 unhandled, so word looks better. Including the allow losses, the totals are word 60.18 vs word-char 54.94. At 1095/h the table shows 0.50 vs 1.50, but the totals are 22.96 vs 18.20. So the ranking reverses at both loads, and the section never shows the allow share on the same per-shift scale."
+   },
+   {
+    "file": "scripts/audit_auto_action_fp.py",
+    "line": 176,
+    "severity": "medium",
+    "reproduced": true,
+    "summary": "false_positives mishandles a null subgroup threshold. It falls back to the population threshold (`t_sub if t_sub is not None else t`), but round-1 model_tier treats null as 'this label cannot trigger auto_action on identity rows' (`hit &= ~in_group`). The trigger labels, and so the false-positive set, can therefore be wrong.",
+    "failure_scenario": "Synthetic run with 1 auto_action row: identity_term_present=1, p_toxic=0.999 (population 0.989, subgroup 0.997), y_toxic=0, p_obscene=0.999 >= population 0.998, subgroup obscene=null, y_obscene=1. The pipeline triggers on toxic only, so the row is a false positive. The script returns n_fp=0. On the real round-1 run 20260922T131503586656Z-baseline, 84 obscene and 11 insult trigger flags on identity rows disagree with the pipeline. Committed sample row e8a92143f8217c98 shows trigger_labels 'toxic+obscene' to the human auditor, but only toxic fired. The FP count (204) happens to be unchanged on this data."
+   },
+   {
+    "file": "scripts/compare_runs.py",
+    "line": 202,
+    "severity": "medium",
+    "reproduced": true,
+    "summary": "matched_volume (line 202), audit_overlap (line 282) and equal_input (line 458) store runs by config label. Two runs with the same label, such as a baseline and its rerun, silently overwrite each other.",
+    "failure_scenario": "`compare_runs.py reports/20260922T100649877069Z-baseline reports/20260922T131503586656Z-baseline --audit analysis/auto_action_fp_audit`: both runs are labelled 'baseline'. matched_volume.runs contains one key, and the markdown lists only the second run's rankings at k=6310 and k=10421; the reference run's rankings are gone. The audit-overlap table prints the second run's numbers on both rows. Exit code is 0 and there is no warning."
+   },
+   {
+    "file": "scripts/compare_runs.py",
+    "line": 444,
+    "severity": "low",
+    "reproduced": true,
+    "summary": "The compatibility check covers only data hashes and split fractions, not the policy (policy_sha256 / version). The docstring says 'any difference comes from the config', but runs made under different policies are compared side by side without warning.",
+    "failure_scenario": "`compare_runs.py reports/20260923T074244236943Z-human-review-baseline reports/20260922T131503586656Z-baseline` (a v2 run and a round-1 run) exits 0. 'flagged' then means priority+human for one run and auto_action+human for the other, and the top tier is priority_review vs auto_action. The same happens for runs 100649 (policy d7a2f56a, R103 active) vs 131503 (policy 052cdf86)."
+   },
+   {
+    "file": "scripts/compare_runs.py",
+    "line": 272,
+    "severity": "low",
+    "reproduced": true,
+    "summary": "If even one human_verdict is blank, audit_overlap silently switches the whole breakdown to the LLM preread_verdict column. The only sign is the column name in the heading.",
+    "failure_scenario": "I copied analysis/auto_action_fp_audit/sample.csv and blanked row 0's human_verdict. For word-char, the breakdown changes from 'borderline 18/23, clean 14/31, toxic 36/46' (human) to 'borderline 26/33, clean 11/27, toxic 31/40' (LLM pre-read), under the same 'Audited false positives' table."
+   },
+   {
+    "file": "scripts/audit_auto_action_fp.py",
+    "line": 216,
+    "severity": "low",
+    "reproduced": true,
+    "summary": "The overwrite guard only checks human_verdict. Redrawing a sample that has pre-read verdicts but no human verdicts yet wipes the preread_verdict column and the 'preread' section of sample_meta.json, even though the docstring says drawing refuses to overwrite a sample that carries verdicts.",
+    "failure_scenario": "I built a fake sample.csv with preread_verdict filled and human_verdict blank, plus a meta 'preread' section, then ran `--run fakerun --out fakeaudit` without --force. It exited 0. The new sample.csv header has no preread_verdict column and sample_meta.json has no 'preread' key."
+   },
+   {
+    "file": "scripts/compare_runs.py",
+    "line": 375,
+    "severity": "low",
+    "reproduced": true,
+    "summary": "The 'Queue at equal review load' heading hard-codes '5 seeds'. The two sim tables also compute 'mean ± std' differently: the report summary uses np.std with ddof=0, while _mean_std (line 213) uses ddof=1.",
+    "failure_scenario": "The smoke run reports/20260922T095408639084Z-smoke-synthetic has sim_seeds [1,2,3], but the output says '5 seeds'. On the word run, the same five seeds (1-5) at load 60 give priority high_risk_handled 66.6 ± 13.53 in the report table and 66.6 ± 15.13 through resimulate."
+   },
+   {
+    "file": "scripts/audit_auto_action_fp.py",
+    "line": 106,
+    "severity": "low",
+    "reproduced": true,
+    "summary": "rows_needed_for_floor floors the allowed false-positive count to an integer, but implied_precision (the value score() reports) is continuous. The two disagree whenever n_auto*(1-floor) is not an integer.",
+    "failure_scenario": "rows_needed_for_floor(150, 10, 100, 0.99) returns 90, but implied_precision(150, 10, 0.85) = 0.99, so 85 toxic rows already reach the floor. (250, 10, 100) returns 80 where 75 is enough. The committed case (2125, 204, 100) gives 90 both ways."
+   },
+   {
+    "file": "scripts/compare_runs.py",
+    "line": 454,
+    "severity": "low",
+    "reproduced": true,
+    "summary": "--equal-input assumes the reference report has simulation.assumptions.queue_fraction, which round-1 reports lack, so it crashes with no message saying the section is v2-only.",
+    "failure_scenario": "`compare_runs.py reports/20260922T131503586656Z-baseline reports/20260922T145018681873Z-word-char --equal-input` fails with KeyError: 'queue_fraction'."
+   },
+   {
+    "file": "scripts/audit_auto_action_fp.py",
+    "line": 266,
+    "severity": "low",
+    "reproduced": true,
+    "summary": "sample_strata records the planned allocation, not the number of rows actually drawn. When a stratum pool is smaller than its allocation, sample_strata overstates the sample.",
+    "failure_scenario": "Fake run with 3 false positives (nolex/none 2, lex/none 1) and --n 10: meta shows sample_strata {nolex/none: 7, lex/none: 3} while n_sample is 3 and the population is {2, 1}."
+   },
+   {
+    "file": "scripts/compare_runs.py",
+    "line": 337,
+    "severity": "low",
+    "reproduced": true,
+    "summary": "to_markdown formats entry['share'] with :.3f, but recall_table sets share to None when a denominator is 0, so the markdown step crashes when a run has no positive or no high-risk test rows.",
+    "failure_scenario": "Calling recall_table with y that has only a toxic-positive row (no threat/identity_hate/severe_toxic) gives high_risk_flagged.share=None. Passing that to to_markdown raises TypeError: unsupported format string passed to NoneType.__format__."
+   },
+   {
+    "file": "scripts/compare_runs.py",
+    "line": 254,
+    "severity": "low",
+    "reproduced": false,
+    "summary": "resimulate treats a row as positive when harm > 0 (and as clean when harm == 0), but recall_table treats a row as positive when any true label is 1. The two definitions split as soon as a label's severity weight is 0 or missing from policy.severity_weights (.get(lb, 0.0), and load_policy does not validate weights).",
+    "failure_scenario": "With a policy whose severity_weights omit toxic (or set toxic: 0), a completed toxic-only job has harm 0. It then drops out of positives_completed_per_hour and counts toward clean_share_of_completed, while recall_table still counts it as a positive. The shipped policy gives every label weight > 0, so current results are unaffected."
+   }
+  ],
+  "summary": "I reviewed 7d989ee..ee96774 (commits 7e0e0a6, 154c84c, 01897e4, ee96774). The default test suite passes: 209 passed, 22 skipped, where the skips are real-evaluation gate tests that need REVIEW_ROUTER_EVAL_* set. With the CI environment pointed at the word run, the whole suite passes. For the word-char run, tests/test_gate.py reproduces exactly the two gate failures recorded in analysis/v2/gates_word_char.txt: toxic precision 0.6420 < 0.6430, and severe_toxic volume overshoot 107.6%.\n\nWhat I checked and found correct:\n- **Committed outputs reproduce exactly.** Re-running scripts/compare_runs.py on the two v2 runs with --equal-input gives files identical to analysis/v2/run_comparison.{md,json}. Re-running it on the three round-1 runs with --audit gives a file identical to analysis/run_comparison.md.\n- **The two v2 runs differ only where they should.** Their manifest configs differ only in model.analyzer and label, both come from clean commit 01897e4 with the same policy, and predictions.csv row order is identical, so tie-breaking matches.\n- **Definitions match the pipeline.** positives = any true label, which gives 4233 and matches report.review_workload. High risk = harm >= 5, and flagged = queued for v2.\n- **The equal-input reference is consistent.** The reference run reproduces its own report simulation means at seeds 1-5, and word-char's review loads come out as 67.4, 121.4 and 202.3 jobs/h.\n- **The model change is correct.** In review_router/model.py the word-only path is unchanged, the analyzer flags and hstack/_features/n_features are correct, and older pickles still load because the char_vectorizer default is a class attribute. The one-line test_gate.py change correctly isolates the test from a CI-set REVIEW_ROUTER_EVAL_CONFIG.\n\nMain problems:\n1. **The equal-input high-risk comparison can point the wrong way.** Its high_risk_unhandled leaves out high-risk comments routed to allow. Adding them reverses the word vs word+char ranking at 1095/h and 1825/h under the priority strategy.\n2. **The audit script mishandles null subgroup thresholds.** It falls back to the population threshold instead of disabling the label on identity rows, which is what the round-1 pipeline does. The 204 FP count happens to be unaffected, but committed sample row e8a92143f8217c98 shows the auditor trigger labels 'toxic+obscene' when only toxic fired.\n3. **Runs with the same label silently overwrite each other** in the matched-volume, audit-overlap and equal-input sections.\n\nThe remaining findings are lower-severity fallbacks, crashes and edge cases, listed with reproductions.\n\nOutside the code:\n- analysis/paired_false_positives.json reproduces exactly with the audit FP definition, but no script in scripts/ writes it, although analysis/README.md says everything is computed by the two scripts.\n- The README's '14 of 31' clean rows without a lexicon hit counts only the nolex/none stratum; across all rows without a lexicon hit it is 15 of 32.\n\nAbout the relayed request 'records里面的html': record/ has uncommitted changes (render.py, collect_runs.py and the step*.html pages modified; step4-features.html, features_run.json and figures/step4_capture_curve.png untracked). They are outside this commit range and I did not review them. Scratch scripts are in /private/tmp/claude-501/-Users-xinyangwu-projects-review-router/d371950c-1fe1-426c-9b6d-951d7c53113c/scratchpad/wf/code-reviewer/. No tracked files were modified."
+ },
+ "refute": {
+  "verdicts": [
+   {
+    "claim_id": "C1",
+    "verdict": "supported",
+    "evidence": "Recomputed from both predictions.csv files (scratch a1_static.py). Top-k by max calibrated label probability, stable sort: k=6310 word 4234 pos / 916 high-risk / harm 11879, word+char 4338 / 941 / 12209; k=7093 word 4488 / 936 / 12390, word+char 4601 / 958 / 12707. Every number matches. Ratios: positives 1.025 at both k; high-risk 1.027 and 1.024; harm 1.028 and 1.026. A paired row bootstrap (400 resamples) excludes zero at both k: positives +63 to +136 at k=6310 and +72 to +153 at k=7093; high-risk +11 to +41 and +9 to +38. The max-probability proxy agrees with the real router to within 3 rows. Raising word+char's human_review thresholds (x1.147) to flag exactly 6310 rows gives 4340 pos / 941 HR. Lowering word's (x0.846) to 7093 gives 4486 / 933, and a grid of per-label toxic/obscene/insult thresholds at 7093 gives 4485-4501 pos and 933-934 HR.",
+    "correction": "Keep the numbers, but say the gain is statistically clear and describe it from the miss side too. At matched volume word+char misses about 15% fewer high-risk rows: 164 to 139 at k=6310 and 144 to 122 at k=7093. Most of that gain is identity_hate (router at 6310 rows: 572 to 594); threat is roughly flat (187 to 188). The phrase \"about 2.5%\" alone understates it."
+   },
+   {
+    "claim_id": "C2",
+    "verdict": "supported",
+    "evidence": "Flagged 7093 vs 6310 rows and 4603 vs 4233 positives are exact (the router rebuilt from thresholds.json plus R101/R102 reproduces final_tier exactly for both runs). Volume first: 4488-4233=255 (the claim's 254 uses the max-prob 4234), then 4603-4488=115 for ranking. Ranking first gives 104 ranking and 265 volume, so volume is 69-72% of the positive gain in either order. The router counterfactual (word thresholds lowered to 7093 rows, 4486 positives) gives 253, or 68%. For positives the max-probability proxy is valid. The split does not carry over to high-risk rows: of +42 high-risk, volume explains 17-20 (40-48%) and ranking 22-25 (52-60%). For harm, volume explains 59-61% (+486 to +504 of +825).",
+    "correction": "Keep the claim for positives. Add that for high-risk rows, which the routing policy exists for, ranking explains more than half of the gain (router counterfactual: word at 7093 rows gets 933 HR vs word+char 958; volume adds only +17 of +42). Also add that the extra volume comes from applying the same per-label 0.90/0.95 selection-precision rule to a better-ranked model. It is not a free threshold choice."
+   },
+   {
+    "claim_id": "C3",
+    "verdict": "partially_supported",
+    "evidence": "The numbers match report.json: priority@180 67.62 +/- 4.01 vs 70.24 +/- 1.71; queue precision 0.649 vs 0.671. With 5 seeds a Welch test gives t=-1.20, p=0.28, so the gap is inside 5-seed noise. It is not noise in expectation, though. Re-running the same equal-review-load simulation with 200 seeds gives word+char -4.3% at 60/h (-1.21, SE 0.15), -5.4% at 108/h (-2.72, SE 0.17) and -3.3% at 180/h (-2.33, SE 0.24). Below capacity every job is handled, so the gap follows directly from mean harm per queued job, 1.792 vs 1.884 (-4.9%), with a high-risk share of 13.5% vs 14.5%. Any-label queue precision is only part of the cause. At equal review load word+char also covers about 11% fewer incoming comments (180/0.1109 = 1624/h vs 1825/h), so this is not a same-stream comparison.",
+    "correction": "At equal review load word+char handles about 3-5% less harm per reviewer-hour. The gap is systematic (200 seeds: -1.21 / -2.72 / -2.33, SE <= 0.24); 5 seeds are too few to resolve it. It comes from lower mean harm per queued job (1.79 vs 1.88; high-risk share 13.5% vs 14.5%). This view gives word+char a roughly 11% smaller incoming stream, so it says nothing about which model is better on the same comments."
+   },
+   {
+    "claim_id": "C4",
+    "verdict": "partially_supported",
+    "evidence": "Every quoted number reproduces exactly from compare_runs' equal-input loop (608/h: 117.96 vs 112.33; 1095/h: 216.63 vs 202.49; review load 121.4; backlog 34.05 vs 3.15; completion 0.96 vs 0.99; HR unhandled 1.50 vs 0.50). Three problems. (1) \"While capacity allows\" is wrong. At 1095/h word+char is already above capacity and still handles +7% harm/h (Welch p=0.001), and at 1825/h under priority it is still +3% (p=0.015). The advantage reverses only under FIFO at 1825/h (212.91 vs 225.68). (2) The table leaves out high-risk comments left in allow, even though the script docstring says such comments are lost. I routed one incoming stream through both models (common random numbers, 200 seeds). At 1095/h word leaves 22.3 high-risk in allow vs 16.4, so high-risk not reviewed by shift end (allow + unhandled) is 23.0 vs 17.6 (paired diff -5.4, SE 0.23). (3) The design is unpaired. draw_scenario seeds its RNG with round(load*1000), so the two runs (60.0 vs 67.4 jobs/h) get independent arrival streams, and job draws come from different pools. Thinning makes the with-replacement sampling valid in distribution, but the variance is inflated: at 608/h the unpaired gap is +5.63, while both the analytic value and the CRN value are +7.8 (CRN SE 0.16).",
+    "correction": "At the same comment stream word+char handles more harm per hour at every input rate under priority ordering: +7.8 at 608/h, +12.3 at 1095/h and +8.6 at 1825/h (CRN, 200 seeds). This holds even when it runs slightly over capacity. At 1095/h it ends with a larger backlog (about 28-34 vs 3) and completion 0.96-0.97 vs 0.99. But counting comments left in allow, it leaves fewer high-risk comments unreviewed: 17.6 vs 23.0 per 8-hour shift. Report allow-tier misses, and use one shared incoming stream for both models."
+   },
+   {
+    "claim_id": "C5",
+    "verdict": "partially_supported",
+    "evidence": "The numbers are right: 291.93 +/- 12.59 vs 283.02 +/- 9.09, +3.1%. \"Within noise\" is contradicted by the section's own 20 seeds (Welch t=2.56, p=0.015). With a paired common-random-numbers stream (200 seeds) the gap is +8.57 harm/h, SE 0.25. At this load word+char also leaves more high-risk jobs unhandled in the queue (27.10 vs 22.75) but fewer in allow, for a total not reviewed of 53.5 vs 58.6 (CRN, SE 0.27). Under FIFO at the same load it does worse: -5.7%, 212.91 vs 225.68, p<0.001.",
+    "correction": "At overload (1825/h, priority ordering) word+char handles about 3% more harm per hour (+8.6/h), and the difference is not seed noise. It still leaves about 5 fewer high-risk comments unreviewed per shift when allow-tier misses are counted. The advantage depends on priority ordering; under FIFO it is 5.7% worse."
+   },
+   {
+    "claim_id": "C6",
+    "verdict": "partially_supported",
+    "evidence": "gates_word_char.txt shows exactly those two failures: toxic 0.6420 < 0.6430 and severe_toxic overshoot 1.0756 > 1.0. gates_word.txt shows 47 passed and 3 skipped. The skips include the clean-checkout gate, left off because REQUIRE_CLEAN was unset; it would fail for both runs now, since the manifests record 01897e4 and HEAD is ee96774. The floors come from the word model itself. policy.yaml sets toxic floor = measured 0.6631 - 0.02, and the current word run measures 0.6631. The severe_toxic ceiling = word's 0.916 rounded up to 1.0. So word passes by construction. Word+char's toxic miss is 0.0010, inside its own 95% Wilson interval [0.631, 0.653]. It comes from a lower frozen threshold (0.630 vs 0.658; 7030 vs 6248 predicted; recall 0.741 vs 0.680). At the same 6248 predictions word+char's toxic precision is 0.681 vs word 0.663; at 7030, word's would be 0.625. severe_toxic has no routing threshold in either tier for either model; it enters only the in-tier severity order and R102, which has 0 violations in both runs. Both models over-predict severe_toxic about 2x (expected 703 and 762 vs 367 actual). Word+char passes every AP floor with higher AP on all six labels.",
+    "correction": "Word passes all 47 gates that ran (3 skipped, including the clean-checkout gate). Word+char fails two gates whose limits were set from the word model's own measurements. The toxic miss (0.642 vs 0.643) is within sampling error and reflects a lower threshold chosen by the same rule: at the word model's volume word+char's toxic precision is 0.681. The severe_toxic overshoot is a calibration diagnostic on a label that does not set any routing threshold. These are reasons to re-derive or re-check the limits, not evidence of a worse classifier."
+   },
+   {
+    "claim_id": "C7",
+    "verdict": "supported",
+    "evidence": "Manifest timestamps: word 07:42:44 to 07:43:13 (29 s); word+char 07:43:15 to 07:46:05 (170 s). model.pkl is 17,645,112 vs 42,374,141 bytes (16.8 vs 40.4 MiB; 17.6 vs 42.4 MB), a ratio of 2.4x.",
+    "correction": "State that these are single end-to-end pipeline wall-clock times (fit, calibration, scoring, simulation and reporting, n=1 run each) and MiB sizes. Per-comment inference latency was not measured."
+   },
+   {
+    "claim_id": "RECOMMENDATION",
+    "verdict": "refuted",
+    "evidence": "The central reasons are contradicted by the data. (1) Lowering word's thresholds does recover about 68% of the positive gain, but only 40% of the high-risk gain (router at 7093 rows: word 4486 pos / 933 HR / harm 12372 vs word+char 4603 / 958 / 12711). It would also push word's toxic/obscene/insult operating-point precision to 0.625 / 0.734 / 0.819, below the gate floors 0.643 / 0.753 / 0.858. That fails three gates, where word+char misses one by 0.001. (2) The argument is asymmetric: it lets word move its thresholds but not word+char. Raising word+char's thresholds to word's 6310 rows (0% extra capacity) gives 4340 pos / 941 HR / harm 12217 vs 4233 / 916 / 11886, with bootstrap CIs excluding zero. The +12% review load (queue fraction 0.1109/0.0986 = 1.124) is therefore an operating-point result, not a cost the model forces. (3) At the same comment stream and fixed capacity, word+char leaves fewer high-risk comments unreviewed (allow + unhandled) at every load simulated with common random numbers: 608/h 9.3 vs 12.5; 1082/h 17.8 vs 23.4; 1095/h 17.6 vs 23.0; 1217/h (word's saturation point) 21.6 vs 26.6; 1825/h 53.5 vs 58.6. All have paired SE < 0.3. The equal-input table hides this because it ignores the allow tier. (4) The 2.5% ranking gain is significant and equals about 15% fewer high-risk misses at matched volume. (5) The two gate failures are marginal, against limits taken from the word run (see C6). The costs are real: about 6x wall-clock and 2.4x model size.",
+    "correction": "Replace with: \"Word+char ranks better at every matched volume: +2.5% positives and about 15% fewer high-risk misses, with CIs excluding zero. On the same comment stream it leaves about 5 fewer high-risk comments unreviewed per 8-hour shift at every load simulated. Its extra 12% review load comes from its thresholds: at the word model's review volume it still finds +107 positives and +25 high-risk rows. Lowering the word model's thresholds to the same volume gives fewer high-risk rows (933 vs 958) and would break three operating-point precision gates. The two gate failures are against limits derived from the word model (toxic misses by 0.001, inside the CI; severe_toxic is a calibration diagnostic on a label with no routing threshold). Before changing the default, re-select word+char thresholds at the reviewer capacity actually available, re-derive the gate limits for the new model, and decide whether the benefit is worth about 6x pipeline time and a 2.4x larger model. Keeping default=word until then is defensible on cost and process grounds. The claim that the word model can match the gain by lowering its thresholds is not.\""
+   }
+  ],
+  "summary": "I tested every claim and the recommendation against both predictions.csv files, both report.json files, and a re-run of the simulator. I changed no tracked files; the scratch scripts are a1_static.py, a2_sim.py and a3_more.py in /private/tmp/claude-501/-Users-xinyangwu-projects-review-router/d371950c-1fe1-426c-9b6d-951d7c53113c/scratchpad/wf/critic/. All quoted numbers reproduce exactly.\n\n- C1, C2 and C7 are supported. The max-probability ranking agrees with the real router to within 3 rows: word with thresholds lowered to 7093 rows gets 4486 positives and 933 high-risk rows.\n- C3, C4, C5 and C6 are partially supported. The numbers are right, but the conclusions are wrong in places:\n  - The \"within noise\" statements in C3 and C5 don't hold. With 200 seeds the equal-review-load gap is a real 3-5%, and the overload harm gain has p=0.015 on the section's own 20 seeds.\n  - The equal-input section uses independent arrival streams for the two runs (the random seed includes the load) and leaves out high-risk comments left in allow. With one shared comment stream, word+char leaves about 5 fewer high-risk comments unreviewed per 8-hour shift at every load, including overload.\n  - The gate limits come from the word model itself: toxic floor = word's 0.6631 - 0.02, and the severe_toxic ceiling is word's 0.916 rounded up. The toxic miss is 0.001, inside the confidence interval.\n- The recommendation is refuted as argued:\n  - Volume explains about 68% of the positive gain, but only 40% of the high-risk gain.\n  - Lowering the word model's thresholds to the same volume would fail three precision gates (0.625 / 0.734 / 0.819).\n  - At the word model's volume, word+char still finds +107 positives and +25 high-risk rows. The +12% capacity is a threshold choice, not a cost the model forces.\n  - Keeping word as the default is defensible only on cost (about 6x pipeline time, 2.4x model size), and only while word+char's thresholds and the gate limits are re-derived."
+ }
+}

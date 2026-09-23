@@ -39,7 +39,7 @@
 | word-char | 6310 | 4338 | 941 | 12209 |
 | word-char | 7093 | 4601 | 958 | 12707 |
 
-## Queue at equal review load (report simulation, 5 seeds, mean ± std)
+## Queue at equal review load (report simulation, 5 seeds, mean ± population SD)
 
 Arrival rates are review jobs per hour after admission, identical for every run.
 
@@ -58,22 +58,33 @@ Arrival rates are review jobs per hour after admission, identical for every run.
 | word-char | fifo@180 | 53.92 ± 3.36 | 128.40 ± 17.11 | 63.40 ± 6.09 | 139.47 ± 6.66 | 0.67 ± 0.02 | 464.80 ± 41.50 |
 | word-char | priority@180 | 67.62 ± 4.01 | 172.20 ± 22.46 | 19.60 ± 2.06 | 1.55 ± 0.59 | 0.67 ± 0.02 | 464.80 ± 41.50 |
 
-## Queue at equal comment input (20 seeds, mean ± std)
+## Queue at equal comment input (common random numbers, 200 seeds)
 
-Input rates are the reference run's equivalent incoming-comment loads; each run's
-review load is input rate x its own queue fraction.
+One incoming comment stream per seed, shared by every run. Each run reviews what it
+flags; high-risk comments it leaves in allow count as not reviewed. Mean ± sample SD.
 
-| run | input/h | review load/h | strategy | review_arrivals | completion_ratio | backlog_end | positives_completed_per_hour | clean_share_of_completed | high_risk_handled | high_risk_unhandled | harm_handled_per_hour |
-|---|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| human-review-baseline | 608 | 60.0 | priority | 480.25 ± 22.35 | 1.00 ± 0.00 | 0.25 ± 0.64 | 39.83 ± 2.62 | 0.33 ± 0.03 | 69.40 ± 10.22 | 0.25 ± 0.55 | 112.33 ± 10.28 |
-| human-review-baseline | 608 | 60.0 | fifo | 480.25 ± 22.35 | 1.00 ± 0.00 | 0.25 ± 0.64 | 39.83 ± 2.62 | 0.33 ± 0.03 | 69.40 ± 10.22 | 0.25 ± 0.55 | 112.33 ± 10.28 |
-| human-review-baseline | 1095 | 108.0 | priority | 868.55 ± 33.06 | 0.99 ± 0.00 | 3.15 ± 3.27 | 71.80 ± 3.19 | 0.33 ± 0.01 | 126.10 ± 13.93 | 0.50 ± 0.83 | 202.49 ± 11.88 |
-| human-review-baseline | 1095 | 108.0 | fifo | 868.55 ± 33.06 | 0.99 ± 0.00 | 3.15 ± 3.27 | 71.72 ± 3.19 | 0.33 ± 0.01 | 125.75 ± 13.87 | 0.85 ± 0.88 | 202.14 ± 11.89 |
-| human-review-baseline | 1825 | 180.0 | priority | 1422.90 ± 30.99 | 0.67 ± 0.01 | 463.65 ± 30.04 | 93.92 ± 1.91 | 0.21 ± 0.02 | 187.00 ± 10.46 | 22.75 ± 4.29 | 283.02 ± 9.09 |
-| human-review-baseline | 1825 | 180.0 | fifo | 1422.90 ± 30.99 | 0.67 ± 0.01 | 463.65 ± 30.04 | 80.61 ± 1.83 | 0.32 ± 0.02 | 138.60 ± 7.88 | 71.15 ± 9.69 | 225.68 ± 6.58 |
-| word-char | 608 | 67.4 | priority | 532.15 ± 20.56 | 1.00 ± 0.00 | 0.05 ± 0.22 | 42.81 ± 1.99 | 0.35 ± 0.02 | 70.90 ± 7.20 | 0.20 ± 0.41 | 117.96 ± 6.10 |
-| word-char | 608 | 67.4 | fifo | 532.15 ± 20.56 | 1.00 ± 0.00 | 0.05 ± 0.22 | 42.81 ± 1.99 | 0.35 ± 0.02 | 70.90 ± 7.20 | 0.20 ± 0.41 | 117.96 ± 6.10 |
-| word-char | 1095 | 121.4 | priority | 973.85 ± 40.77 | 0.96 ± 0.02 | 34.05 ± 24.39 | 77.30 ± 2.41 | 0.34 ± 0.01 | 132.30 ± 13.08 | 1.50 ± 0.95 | 216.63 ± 13.43 |
-| word-char | 1095 | 121.4 | fifo | 973.85 ± 40.77 | 0.96 ± 0.02 | 34.05 ± 24.39 | 75.92 ± 1.88 | 0.35 ± 0.01 | 128.45 ± 11.85 | 5.35 ± 4.31 | 211.47 ± 11.65 |
-| word-char | 1825 | 202.3 | priority | 1626.00 ± 37.01 | 0.59 ± 0.01 | 666.05 ± 37.02 | 96.41 ± 1.66 | 0.19 ± 0.01 | 191.35 ± 16.79 | 27.10 ± 4.82 | 291.93 ± 12.59 |
-| word-char | 1825 | 202.3 | fifo | 1626.00 ± 37.01 | 0.59 ± 0.01 | 666.05 ± 37.02 | 77.12 ± 1.88 | 0.35 ± 0.02 | 127.40 ± 14.32 | 91.05 ± 11.56 | 212.91 ± 11.05 |
+| run | input/h | strategy | review_arrivals | completion_ratio | backlog_end | positives_completed_per_hour | harm_handled_per_hour | high_risk_in_stream | high_risk_left_in_allow | high_risk_unhandled_in_queue | high_risk_not_reviewed |
+|---|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| human-review-baseline | 608 | priority | 481.13 ± 20.72 | 1.00 ± 0.00 | 0.07 ± 0.33 | 40.21 ± 2.08 | 113.00 ± 7.28 | 82.69 ± 9.06 | 12.71 ± 3.57 | 0.24 ± 0.49 | 12.96 ± 3.60 |
+| human-review-baseline | 608 | fifo | 481.13 ± 20.72 | 1.00 ± 0.00 | 0.07 ± 0.33 | 40.21 ± 2.08 | 112.99 ± 7.28 | 82.69 ± 9.06 | 12.71 ± 3.57 | 0.25 ± 0.50 | 12.96 ± 3.60 |
+| human-review-baseline | 1095 | priority | 864.95 ± 31.23 | 0.99 ± 0.01 | 4.00 ± 4.94 | 72.00 ± 3.03 | 202.86 ± 10.79 | 149.19 ± 12.21 | 22.50 ± 4.74 | 0.73 ± 0.83 | 23.23 ± 4.76 |
+| human-review-baseline | 1095 | fifo | 864.95 ± 31.23 | 0.99 ± 0.01 | 4.00 ± 4.94 | 71.89 ± 2.99 | 202.47 ± 10.64 | 149.19 ± 12.21 | 22.50 ± 4.74 | 1.04 ± 1.17 | 23.54 ± 4.76 |
+| human-review-baseline | 1825 | priority | 1440.21 ± 34.41 | 0.66 ± 0.02 | 480.64 ± 34.39 | 94.33 ± 1.79 | 283.79 ± 9.87 | 246.01 ± 14.91 | 36.73 ± 5.91 | 21.65 ± 4.73 | 58.38 ± 7.27 |
+| human-review-baseline | 1825 | fifo | 1440.21 ± 34.41 | 0.66 ± 0.02 | 480.64 ± 34.39 | 80.18 ± 1.83 | 225.59 ± 8.42 | 246.01 ± 14.91 | 36.73 ± 5.91 | 69.52 ± 8.97 | 106.25 ± 10.92 |
+| word-char | 608 | priority | 540.34 ± 22.19 | 1.00 ± 0.00 | 0.20 ± 0.74 | 43.74 ± 2.17 | 120.92 ± 7.45 | 82.69 ± 9.06 | 9.38 ± 3.12 | 0.24 ± 0.47 | 9.62 ± 3.14 |
+| word-char | 608 | fifo | 540.34 ± 22.19 | 1.00 ± 0.00 | 0.20 ± 0.74 | 43.74 ± 2.17 | 120.91 ± 7.46 | 82.69 ± 9.06 | 9.38 ± 3.12 | 0.25 ± 0.49 | 9.63 ± 3.12 |
+| word-char | 1095 | priority | 973.36 ± 32.04 | 0.96 ± 0.02 | 32.10 ± 22.44 | 77.25 ± 2.66 | 215.05 ± 10.35 | 149.19 ± 12.21 | 16.66 ± 3.92 | 1.23 ± 1.09 | 17.89 ± 4.05 |
+| word-char | 1095 | fifo | 973.36 ± 32.04 | 0.96 ± 0.02 | 32.10 ± 22.44 | 75.97 ± 2.20 | 210.32 ± 8.75 | 149.19 ± 12.21 | 16.66 ± 3.92 | 4.88 ± 3.65 | 21.54 ± 5.27 |
+| word-char | 1825 | priority | 1617.84 ± 35.59 | 0.59 ± 0.01 | 658.04 ± 35.59 | 96.55 ± 1.59 | 292.70 ± 9.33 | 246.01 ± 14.91 | 27.56 ± 4.93 | 25.46 ± 5.04 | 53.02 ± 6.83 |
+| word-char | 1825 | fifo | 1617.84 ± 35.59 | 0.59 ± 0.01 | 658.04 ± 35.59 | 77.57 ± 1.81 | 214.79 ± 8.11 | 246.01 ± 14.91 | 27.56 ± 4.93 | 88.38 ± 9.19 | 115.94 ± 10.77 |
+
+Paired difference, word-char minus human-review-baseline (mean ± SE):
+
+| input/h | strategy | review_arrivals | completion_ratio | backlog_end | positives_completed_per_hour | harm_handled_per_hour | high_risk_in_stream | high_risk_left_in_allow | high_risk_unhandled_in_queue | high_risk_not_reviewed |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 608 | priority | +59.20 ± 0.78 | -0.00 ± 0.00 | +0.13 ± 0.04 | +3.53 ± 0.06 | +7.92 ± 0.16 | +0.00 ± 0.00 | -3.33 ± 0.16 | -0.01 ± 0.01 | -3.33 ± 0.16 |
+| 608 | fifo | +59.20 ± 0.78 | -0.00 ± 0.00 | +0.13 ± 0.04 | +3.53 ± 0.06 | +7.91 ± 0.16 | +0.00 ± 0.00 | -3.33 ± 0.16 | +0.00 ± 0.01 | -3.33 ± 0.16 |
+| 1095 | priority | +108.41 ± 1.17 | -0.03 ± 0.00 | +28.11 ± 1.46 | +5.25 ± 0.08 | +12.20 ± 0.22 | +0.00 ± 0.00 | -5.83 ± 0.22 | +0.49 ± 0.06 | -5.34 ± 0.22 |
+| 1095 | fifo | +108.41 ± 1.17 | -0.03 ± 0.00 | +28.11 ± 1.46 | +4.07 ± 0.12 | +7.85 ± 0.35 | +0.00 ± 0.00 | -5.83 ± 0.22 | +3.84 ± 0.23 | -2.00 ± 0.30 |
+| 1825 | priority | +177.62 ± 1.43 | -0.07 ± 0.00 | +177.40 ± 1.43 | +2.22 ± 0.07 | +8.91 ± 0.25 | +0.00 ± 0.00 | -9.18 ± 0.28 | +3.81 ± 0.32 | -5.36 ± 0.27 |
+| 1825 | fifo | +177.62 ± 1.43 | -0.07 ± 0.00 | +177.40 ± 1.43 | -2.61 ± 0.08 | -10.80 ± 0.32 | +0.00 ± 0.00 | -9.18 ± 0.28 | +18.86 ± 0.33 | +9.69 ± 0.35 |

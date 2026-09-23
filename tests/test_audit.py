@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 from types import ModuleType
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -41,6 +42,19 @@ def test_rows_needed_for_the_floor() -> None:
     assert AUDIT.rows_needed_for_floor(100, 10, 10, 0.99) == 9
     # The round-1 case: 2125 rows allow 21 false positives of 204 -> 90 of 100.
     assert AUDIT.rows_needed_for_floor(2125, 204, 100, 0.99) == 90
+    # The count must agree with implied_precision when n_auto * (1 - floor) is fractional.
+    assert AUDIT.rows_needed_for_floor(150, 10, 100, 0.99) == 85
+    assert AUDIT.implied_precision(150, 10, 0.85) == pytest.approx(0.99)
+
+
+def test_auto_trigger_follows_round1_subgroup_semantics() -> None:
+    p = np.array([0.995, 0.995, 0.999])
+    in_group = np.array([False, True, True])
+    # Null subgroup threshold: the label cannot trigger inside the subgroup at all.
+    assert AUDIT.auto_trigger(p, in_group, 0.99, None).tolist() == [True, False, False]
+    # Otherwise the stricter of the two thresholds applies inside the subgroup.
+    assert AUDIT.auto_trigger(p, in_group, 0.99, 0.997).tolist() == [True, False, True]
+    assert AUDIT.auto_trigger(p, in_group, 0.99, 0.5).tolist() == [True, True, True]
 
 
 def test_score_counts_both_rules_and_agreement() -> None:

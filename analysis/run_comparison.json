@@ -100,6 +100,7 @@
         "router_strategy": "severity",
         "assumption": null,
         "queue_fraction": null,
+        "n_seeds": 5,
         "by_load": {
           "fifo@60": {
             "harm_per_reviewer_hour": {
@@ -391,6 +392,7 @@
         "router_strategy": "severity",
         "assumption": null,
         "queue_fraction": null,
+        "n_seeds": 5,
         "by_load": {
           "fifo@60": {
             "harm_per_reviewer_hour": {
@@ -682,6 +684,7 @@
         "router_strategy": "severity",
         "assumption": null,
         "queue_fraction": null,
+        "n_seeds": 5,
         "by_load": {
           "fifo@60": {
             "harm_per_reviewer_hour": {
@@ -870,6 +873,11 @@
       }
     }
   ],
+  "policy_sha256": {
+    "baseline": "052cdf861deb683ab8024c1e26abf4baca465f89941538b4cec5d0b433e4c962",
+    "char-ngram": "052cdf861deb683ab8024c1e26abf4baca465f89941538b4cec5d0b433e4c962",
+    "word-char": "052cdf861deb683ab8024c1e26abf4baca465f89941538b4cec5d0b433e4c962"
+  },
   "matched_volume": {
     "score": "max calibrated label probability",
     "k": [

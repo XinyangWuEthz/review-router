@@ -2,6 +2,8 @@
 """Collect the numbers the record quotes from finished runs into runs.json.
 
     python record/collect_runs.py --with-r103 reports/<a> --without-r103 reports/<b> --final reports/<c>
+    python record/collect_runs.py --human-review reports/<v2 run>
+    python record/collect_runs.py --features analysis
 
 Each run directory is a pipeline output (report.json, manifest.json). Only the
 fields the record pages quote are copied, so the record stays readable and the
@@ -144,6 +146,154 @@ def identity_summary(idt: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
+# ---------------------------------------------------------------- step 4: features
+FEATURE_LABELS = ("toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate")
+
+
+def _cost(run_dir: Path) -> dict[str, Any]:
+    from datetime import datetime
+
+    m = json.loads((run_dir / "manifest.json").read_text())
+    started = datetime.fromisoformat(m["started_utc"].replace("Z", "+00:00"))
+    finished = datetime.fromisoformat(m["finished_utc"].replace("Z", "+00:00"))
+    return {
+        "run_id": m["run_id"],
+        "git_commit": m["git_commit"],
+        "git_dirty": m["git_dirty"],
+        "analyzer": (m.get("config") or {}).get("model", {}).get("analyzer", "word"),
+        "seconds": round((finished - started).total_seconds()),
+        "model_mb": round((run_dir / "model.pkl").stat().st_size / 1e6, 1),
+    }
+
+
+def _capture_curve(run_dir: Path, ks: list[int]) -> dict[str, Any]:
+    """Positives and high-risk rows among the top k by max calibrated label probability."""
+    import numpy as np
+    import pandas as pd
+
+    pred = pd.read_csv(run_dir / "predictions.csv", dtype={"id": str})
+    policy = yaml.safe_load((run_dir / "policy.yaml").read_text())
+    config = yaml.safe_load((run_dir / "config.yaml").read_text())
+    hr_min = float((config.get("simulation") or {}).get("high_risk_min_weight", 5))
+    weights = np.array([float(policy["severity_weights"].get(lb, 0)) for lb in FEATURE_LABELS])
+    y = pred[[f"y_{lb}" for lb in FEATURE_LABELS]].to_numpy(dtype=int)
+    proba = pred[[f"p_{lb}" for lb in FEATURE_LABELS]].to_numpy(dtype=float)
+    order = np.argsort(-proba.max(axis=1), kind="stable")
+    pos = np.cumsum(y[order].any(axis=1))
+    high = np.cumsum(((y * weights).max(axis=1) >= hr_min)[order])
+    flagged = pred["final_tier"] != "allow"
+    harm = (y * weights).max(axis=1)
+    return {
+        "k": ks,
+        "positives": [int(pos[k - 1]) if k else 0 for k in ks],
+        "high_risk": [int(high[k - 1]) if k else 0 for k in ks],
+        "operating_point": {
+            "flagged": int(flagged.sum()),
+            "positives": int((flagged & y.any(axis=1)).sum()),
+            "high_risk": int((flagged & (harm >= hr_min)).sum()),
+        },
+        "total_positives": int(y.any(axis=1).sum()),
+        "total_high_risk": int((harm >= hr_min).sum()),
+    }
+
+
+def _equal_count_precision(dirs: list[Path]) -> dict[str, Any]:
+    """Per-label precision of each run at its own human-review count and at the other run's."""
+    import numpy as np
+    import pandas as pd
+
+    preds = [pd.read_csv(d / "predictions.csv", dtype={"id": str}) for d in dirs]
+    reports = [json.loads((d / "report.json").read_text()) for d in dirs]
+    if not all((p["id"] == preds[0]["id"]).all() for p in preds):
+        raise SystemExit("runs do not share predictions.csv row order")
+    out: dict[str, Any] = {}
+    for label in FEATURE_LABELS:
+        counts = [r["per_label"][label]["at_human_review"]["n_predicted_positive"] for r in reports]
+        if not all(counts):
+            continue
+        y = preds[0][f"y_{label}"].to_numpy()
+        entry = []
+        for i, pred in enumerate(preds):
+            order = np.argsort(-pred[f"p_{label}"].to_numpy(), kind="stable")
+            entry.append({
+                "own_count": counts[i],
+                "precision_at_count": {str(k): float(y[order[:k]].mean()) for k in counts},
+            })
+        out[label] = entry
+    return out
+
+
+def _gates(path: Path) -> dict[str, Any]:
+    lines = path.read_text().splitlines()
+    return {
+        "command": lines[0].lstrip("# ").strip() if lines and lines[0].startswith("#") else None,
+        "failed": [ln.split("::")[1].split(" ")[0] for ln in lines if ln.startswith("FAILED")],
+        "messages": [ln.split("AssertionError: ", 1)[1].split("; stats=")[0]
+                     for ln in lines if "AssertionError: " in ln],
+        "summary": lines[-1] if lines else None,
+    }
+
+
+def pick_features(analysis: Path, reports: Path) -> dict[str, Any]:
+    import pandas as pd
+
+    r1 = json.loads((analysis / "run_comparison.json").read_text())
+    v2 = json.loads((analysis / "v2" / "run_comparison.json").read_text())
+    audit_dir = analysis / "auto_action_fp_audit"
+    meta = json.loads((audit_dir / "sample_meta.json").read_text())
+    sample = pd.read_csv(audit_dir / "sample.csv", dtype=str, keep_default_na=False)
+
+    def excerpt(text: str, n: int = 110) -> str:
+        t = " ".join(text.split())
+        return t if len(t) <= n else t[: n - 1] + "…"
+
+    changed = [
+        {"text": excerpt(r.text), "preread": r.preread_verdict, "human": r.human_verdict,
+         "note": r.human_note}
+        for r in sample.itertuples() if r.human_changed == "True"
+    ]
+    v2_dirs = [reports / r["run"] for r in v2["runs"]]
+    r1_dirs = [reports / r["run"] for r in r1["runs"]]
+    n_rows = int(v2["runs"][0]["recall"]["flagged"]["n"])
+    ks = sorted({*range(0, 12001, 250), *(int(r["recall"]["flagged"]["k"]) for r in v2["runs"])})
+    ks = [k for k in ks if k <= n_rows]
+    verification = analysis / "v2" / "verification.json"
+    return {
+        "collected": date.today().isoformat(),
+        "round1": {
+            "runs": r1["runs"],
+            "audit_overlap": r1.get("audit_overlap"),
+            "paired_false_positives": json.loads(
+                (analysis / "paired_false_positives.json").read_text()
+            ),
+            "costs": [_cost(d) for d in r1_dirs if d.is_dir()],
+        },
+        "audit": {
+            "n_auto_action": meta["n_auto_action"],
+            "n_false_positive": meta["n_false_positive"],
+            "population_strata": meta["population_strata"],
+            "sample_strata": meta["sample_strata"],
+            "preread": meta.get("preread"),
+            "human": meta.get("human"),
+            "changed": changed,
+        },
+        "v2": {
+            "runs": v2["runs"],
+            "matched_volume": v2.get("matched_volume"),
+            "equal_input": v2.get("equal_input"),
+            "gates": {
+                name: _gates(analysis / "v2" / f"gates_{name}.txt")
+                for name in ("word", "word_char")
+                if (analysis / "v2" / f"gates_{name}.txt").is_file()
+            },
+            "costs": [_cost(d) for d in v2_dirs],
+            "curves": {r["label"]: _capture_curve(d, ks) for r, d in zip(v2["runs"], v2_dirs)},
+            "equal_count_precision": _equal_count_precision(v2_dirs),
+        },
+        "verification": json.loads(verification.read_text()) if verification.is_file() else None,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -161,7 +311,20 @@ def main() -> None:
     parser.add_argument(
         "--final", type=Path, help="final round-1 run (subgroup thresholds active)"
     )
+    parser.add_argument(
+        "--features", type=Path,
+        help="collect the step-4 feature comparison from this analysis directory",
+    )
+    parser.add_argument("--reports", type=Path, default=HERE.parent / "reports")
     args = parser.parse_args()
+    if args.features:
+        destination = HERE / "features_run.json"
+        destination.write_text(
+            json.dumps(pick_features(args.features.resolve(), args.reports.resolve()), indent=2,
+                       ensure_ascii=False)
+        )
+        print(destination)
+        return
     if args.human_review:
         if args.with_r103 or args.without_r103 or args.final:
             parser.error("--human-review cannot be combined with historical run arguments")
