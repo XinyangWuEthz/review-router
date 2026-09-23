@@ -27,6 +27,7 @@ HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 sys.path.insert(0, str(ROOT))
 
+from record.priority_page import build_body as priority_body  # noqa: E402
 from review_router.ceilings import SCORED_TEST_COUNTS, ceiling_table  # noqa: E402
 from scripts.render_results import fairness_gate_status, gate_status  # noqa: E402
 
@@ -154,6 +155,25 @@ if JEV is not None and FEATURES is not None and HUMAN_RUN is not None:
         "继续暂缓；本轮沿用原始标签，尚不能证明实际送审价值改善",
     )
 
+PRIORITY_PATH = HERE / "priority_run.json"
+PRIORITY_RUN = json.loads(PRIORITY_PATH.read_text()) if PRIORITY_PATH.is_file() else None
+if PRIORITY_RUN is not None and len(STEPS) == 5:
+    STEPS.append((
+        "step6-priority.html", "Step 6: severity ordering and confidence segments",
+        "Real-data evaluation of queue ordering, development diagnostics and priority-band precision",
+    ))
+    PENDING = ("后续：独立人工评估", "继续暂缓，尚未启动；原始 Jigsaw 标签保持不变")
+
+ENGLISH_STEP_TITLES = {
+    "index.html": "Index",
+    "step1-baseline.html": "Step 1: baseline",
+    "step2-round1.html": "Step 2: first results",
+    "step3-human-review.html": "Step 3: human confirmation",
+    "step4-features.html": "Step 4: feature comparison",
+    "step5-jev.html": "Step 5: Jev pilot",
+    "step6-priority.html": "Step 6: severity and confidence segments",
+}
+
 
 DEFERRED_REVIEW_EVALUATION = """
 <h2 id="future-review-evaluation">后续考虑：独立人工评估集，暂缓</h2>
@@ -178,29 +198,37 @@ def ci(v: list[float] | None, d: int = 3) -> str:
 
 
 def page(
-    name: str, title: str, body: str, prev_: tuple[str, str] | None, next_: tuple[str, str] | None
+    name: str, title: str, body: str, prev_: tuple[str, str] | None, next_: tuple[str, str] | None,
+    *, language: str = "zh-CN",
 ) -> None:
+    english = language == "en"
+    table_label = "Data table, scroll horizontally" if english else "数据表，可横向滚动"
+
+    def navigation_title(path: str, label: str) -> str:
+        return ENGLISH_STEP_TITLES.get(path, label) if english else label
+
     def accessible_table(match: re.Match[str]) -> str:
         header = re.sub(r"<th(?=[ >])", '<th scope="col"', match[1])
-        return '<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr>' + header + '</tr></thead><tbody>'
+        return f'<div class="table-scroll" role="region" aria-label="{table_label}" tabindex="0"><table><thead><tr>' + header + '</tr></thead><tbody>'
 
     body = re.sub(r"<table><tr>(.*?)</tr>", accessible_table, body, flags=re.S)
     body = body.replace("</table>", "</tbody></table></div>")
     nav_prev = (
-        f'<a href="{prev_[0]}">← {prev_[1]}</a>' if prev_ else '<a href="index.html">← 目录</a>'
+        f'<a href="{prev_[0]}">← {navigation_title(prev_[0], prev_[1])}</a>' if prev_
+        else f'<a href="index.html">← {navigation_title("index.html", "目录")}</a>'
     )
-    nav_next = f'<a href="{next_[0]}">{next_[1]} →</a>' if next_ else ""
+    nav_next = f'<a href="{next_[0]}">{navigation_title(next_[0], next_[1])} →</a>' if next_ else ""
     navigation = ''.join(
         f'<a href="{path}"' + (' aria-current="page"' if path == name else '')
-        + f'>{label}</a>'
+        + f'>{navigation_title(path, label)}</a>'
         for path, label in [("index.html", "目录"), *((s[0], s[1]) for s in STEPS)]
     )
     doc = f"""<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="{language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title}</title><style>{CSS}</style></head><body><main>
-<nav class="top" aria-label="项目步骤">{navigation}<span>{PENDING[0]}，{PENDING_STATUS}</span></nav>
+<nav class="top" aria-label="{'Project steps' if english else '项目步骤'}">{navigation}<span>{'Independent human evaluation: deferred' if english else PENDING[0] + '，' + PENDING_STATUS}</span></nav>
 {body}
-<nav class="bottom" aria-label="前后步骤"><span>{nav_prev}</span><span>{nav_next}</span></nav>
+<nav class="bottom" aria-label="{'Previous and next steps' if english else '前后步骤'}"><span>{nav_prev}</span><span>{nav_next}</span></nav>
 </main></body></html>"""
     (HERE / name).write_text(doc, encoding="utf-8")
 
@@ -712,7 +740,23 @@ def build_step2() -> None:
 
 
 def build_current_index() -> None:
-    run = HUMAN_RUN
+    run = PRIORITY_RUN["run"] if PRIORITY_RUN is not None else HUMAN_RUN
+    source_name = "priority_run.json" if PRIORITY_RUN is not None else "human_review_run.json"
+    if PRIORITY_RUN is not None:
+        ci_run_id = str(PRIORITY_RUN["ci"]["url"]).rstrip("/").rsplit("/", 1)[-1]
+        download_dir = f"reports/ci-{ci_run_id}"
+        update_commands = (
+            f"gh run download {ci_run_id} --name evaluation-{run['git_commit']} --dir {download_dir}\n"
+            f"gh run view {ci_run_id} --json headSha,status,conclusion,url,jobs >{download_dir}-ci.json\n"
+            f"PYTHONPATH=. python record/collect_priority.py {download_dir} --ci-metadata {download_dir}-ci.json\n"
+            "python record/render.py"
+        )
+    else:
+        update_commands = (
+            "python scripts/run_pipeline.py --config configs/baseline.yaml\n"
+            "python record/collect_runs.py --human-review reports/<new run>\n"
+            "python record/render.py"
+        )
     workload = run["review_workload"]
     steps = "".join(
         f'<li><a href="{path}">{title}</a><div class="one">{description}。</div></li>'
@@ -721,11 +765,12 @@ def build_current_index() -> None:
     body = f"""
 <span class="tag">项目记录</span><span class="tag">当前：人工确认</span>
 <h1>review-router 项目记录</h1>
-<p class="lede">按步骤记录实验设计、测量结果和决定。前两页保留自动处置实验；第三页记录改成人工确认后的新流程与评估{'；第四页记录误报人工复核和字符特征探索' if len(STEPS) > 3 else ''}{'；第五页记录 Jev 对照的进展与结果' if len(STEPS) > 4 else ''}。</p>
+<p class="lede">按步骤记录实验设计、测量结果和决定。前两页保留自动处置实验；第三页记录改成人工确认后的新流程与评估{'；第四页记录误报人工复核和字符特征探索' if len(STEPS) > 3 else ''}{'；第五页记录 Jev 对照的进展与结果' if len(STEPS) > 4 else ''}{'；第六页记录严重度排序、开发集诊断和分段阈值的新评估' if len(STEPS) > 5 else ''}。</p>
 <h2>当前项目在做什么</h2>
 <p>系统将评论分为放行、普通人工审核、优先人工审核。高置信预测及规则标记的高风险评论进入优先档；任何处置都需要人工确认，两个人工档都占用审核容量。</p>
+{'<p>当前队列按预测严重度排序，优先档标签不再直接决定先后。第 6 步用同一组模型分数比较累计阈值与分段阈值，历史页面保留原来的数值与结论。</p>' if PRIORITY_RUN is not None else ''}
 <p>本轮共评估 {workload["n_total"]:,} 条评论，{workload["n_requires_human_review"]:,} 条进入人工审核，占 {100 * workload["review_fraction"]:.2f}%。这些数字描述保存的评估运行，实际人工审核质量仍待验证。</p>
-{'<p>当前决定是默认保持词特征 <code>word</code>。独立审核价值人工评估集仅记录为后续可选方向，因工作量较大而暂缓，尚未启动；本次不改变数据标签或验收门槛。</p>' if FEATURES is not None else ''}
+{'<p>当前决定是默认保持词特征 <code>word</code>。独立审核价值人工评估集仅记录为后续可选方向，因工作量较大而暂缓，尚未启动；原始数据标签保持不变。</p>' if FEATURES is not None else ''}
 <div class="box">99% 是首轮自动处置实验的历史要求。当前 95% 与 90% 是选择集上的分档参数；测试精确率如实报告，项目不再以达到 99% 来判定人工辅助方案是否有效。</div>
 <h2>步骤</h2><ol class="steps">{steps}<li>{PENDING[0]}，{PENDING_STATUS}。{PENDING[1]}。</li></ol>
 {'<p>补充研究依据：<a href="step4-features.html#label-quality-reference">Jigsaw 的非预期偏差指标与标签可靠性前提</a>。记录为何需要复核标签质量，以及论文不能替本项目证明的部分。</p>' if FEATURES is not None else ''}
@@ -734,11 +779,9 @@ def build_current_index() -> None:
 <pre><code>python -m pip install -e ".[ml,analysis]"
 python record/diagnose.py --render-only
 python record/render.py</code></pre>
-<p>以上命令读取保存的数据生成页面和图表。更新当前人工审核实验时：</p>
-<pre><code>python scripts/run_pipeline.py --config configs/baseline.yaml
-python record/collect_runs.py --human-review reports/&lt;new run&gt;
-python record/render.py</code></pre>
-<p class="prov">当前运行 <code>{run["run_id"]}</code>。源数据与策略快照保存在 <a href="human_review_run.json">human_review_run.json</a>；历史运行保存在 <a href="runs.json">runs.json</a>。</p>
+<p>以上命令读取保存的数据生成页面和图表。{'从已完成的 CI 运行重新收集当前实验记录：' if PRIORITY_RUN is not None else '更新当前人工审核实验时：'}</p>
+<pre><code>{escape(update_commands)}</code></pre>
+<p class="prov">当前运行 <code>{run["run_id"]}</code>。源数据与策略快照保存在 <a href="{source_name}">{source_name}</a>；历史运行保存在 <a href="runs.json">runs.json</a>。</p>
 """
     page("index.html", "review-router 项目记录", body, None, STEPS[0])
 
@@ -1440,7 +1483,13 @@ python record/render.py</code></pre>
 <p class="prov">协议 SHA-256：<code>{escape(data['protocol_sha256'])}</code>。本页读取 <a href="jev_run.json">jev_run.json</a>，原始比较汇总保存在 <code>analysis/jev/</code>。</p>
 <p>接口与版本依据：<a href="https://docs.typesafe.ai/primitives/noul">Noul</a>、<a href="https://docs.typesafe.ai/models">模型版本</a>、<a href="https://docs.typesafe.ai/model-jaggedness/jev-1.13">已知限制</a>。厂商关于性能和校准的描述不能替代本项目测量。</p>
 """
-    page(STEPS[4][0], STEPS[4][1], body, STEPS[3], None)
+    page(STEPS[4][0], STEPS[4][1], body, STEPS[3], STEPS[5] if len(STEPS) > 5 else None)
+
+
+def build_step6() -> None:
+    if PRIORITY_RUN is None or len(STEPS) < 6:
+        return
+    page(STEPS[5][0], STEPS[5][1], priority_body(PRIORITY_RUN), STEPS[4], None, language="en")
 
 
 if __name__ == "__main__":
@@ -1450,4 +1499,5 @@ if __name__ == "__main__":
     build_step3()
     build_step4()
     build_step5()
+    build_step6()
     print("written:", "index.html", *(s[0] for s in STEPS))

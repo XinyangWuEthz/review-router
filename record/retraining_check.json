@@ -1,0 +1,357 @@
+{
+  "runs": [
+    {
+      "ci_run_id": 35856953771,
+      "ci_url": "https://github.com/XinyangWuEthz/review-router/actions/runs/35856953771",
+      "run_id": "20260923T115155088481Z-human-review-baseline",
+      "git_commit": "124b63fe9c8dd1ae7e7e287e87c5f88061e1a8df",
+      "git_dirty": false,
+      "data_sha256": {
+        "train": "bd4084611bd27c939ba98e5e63bc3e5a2c1a4e99477dcba46c829e4c986c429d",
+        "test": "c2513ce4abb98c4d1d216e3ca0d4377d57589a0989aa8c06a840509a16c786e8",
+        "test_labels": "2a56dcbeba5c05f965a636f56cb5ae972bad60c3b952c239b49be18d7ab70f49"
+      },
+      "config_sha256": "801efb58457b838a7316359cc89b91670d762379269720fe6d548611f137162d",
+      "policy_sha256": "2f8f186c4a0a48213759a2592467bcc73b1995e3902f488abaaa1dcf1fe2fa5a",
+      "splits_sha256": "9f86d2a17105abaeff7b3e15bbdf4d983a307a8246b342655558390abb31045c",
+      "model_sha256": "63820de571ee75dfe310c1a54c2e8669e573249efeaededd5b451698964a5d34",
+      "predictions_sha256": "f9e8d73a52c666083e22f33cb343d02a45ef462c86450198f0ab40fd582a0373",
+      "training_source_sha256": {
+        "review_router/model.py": "efcb9b4b8c9b61325d054ca17c175416ec3e7e80e8b7e0fe01fba402080a8253",
+        "review_router/data.py": "932257ac72a007d6fb31f2bfd400b9504494d46f488fd0562e66142d87431334"
+      },
+      "seed": 20260922,
+      "dependencies": {
+        "python": "3.12.14",
+        "review_router": "0.1.0",
+        "numpy": "2.5.3",
+        "pandas": "3.0.6",
+        "scikit-learn": "1.9.1",
+        "scipy": "1.18.1",
+        "pyyaml": "6.0.3"
+      },
+      "model_config": {
+        "max_features": 200000,
+        "ngram_max": 2,
+        "min_df": 3,
+        "C": 4.0,
+        "max_iter": 1000,
+        "analyzer": "word",
+        "char_ngram_min": 2,
+        "char_ngram_max": 5,
+        "char_max_features": 300000
+      },
+      "review_workload": {
+        "n_total": 63978,
+        "n_requires_human_review": 6312,
+        "n_priority_review": 2823,
+        "n_human_review": 3489,
+        "review_fraction": 0.09865891400168808,
+        "n_truly_positive": 4234,
+        "precision": 0.6707858048162231,
+        "precision_ci95": [
+          0.6590919898124957,
+          0.6822718670918358
+        ],
+        "high_risk_by_band": {
+          "priority_review": {
+            "n": 2823,
+            "n_high_risk": 714,
+            "high_risk_share": 0.25292242295430395
+          },
+          "human_review": {
+            "n": 3489,
+            "n_high_risk": 202,
+            "high_risk_share": 0.057896245342505016
+          },
+          "allow": {
+            "n": 57666,
+            "n_high_risk": 164,
+            "high_risk_share": 0.002843963514029064
+          }
+        },
+        "n_high_risk_total": 1080,
+        "high_risk_recall_into_queue": 0.8481481481481481,
+        "high_risk_recall_into_priority": 0.6611111111111111
+      },
+      "overload": {
+        "severity": {
+          "high_risk_arrived": {
+            "mean": 217.4,
+            "std": 14.235167719419396
+          },
+          "high_risk_handled": {
+            "mean": 196.0,
+            "std": 11.40175425099138
+          },
+          "harm_per_reviewer_hour": {
+            "mean": 72.61875,
+            "std": 1.5718967443824037
+          }
+        },
+        "priority": {
+          "high_risk_arrived": {
+            "mean": 217.4,
+            "std": 14.235167719419396
+          },
+          "high_risk_handled": {
+            "mean": 196.0,
+            "std": 11.40175425099138
+          },
+          "harm_per_reviewer_hour": {
+            "mean": 72.56875,
+            "std": 1.567417262569224
+          }
+        }
+      }
+    },
+    {
+      "ci_run_id": 35857528118,
+      "ci_url": "https://github.com/XinyangWuEthz/review-router/actions/runs/35857528118",
+      "run_id": "20260923T115815829404Z-human-review-baseline",
+      "git_commit": "210d9857220b23d175d4aff5a54ab221ad86280b",
+      "git_dirty": false,
+      "data_sha256": {
+        "train": "bd4084611bd27c939ba98e5e63bc3e5a2c1a4e99477dcba46c829e4c986c429d",
+        "test": "c2513ce4abb98c4d1d216e3ca0d4377d57589a0989aa8c06a840509a16c786e8",
+        "test_labels": "2a56dcbeba5c05f965a636f56cb5ae972bad60c3b952c239b49be18d7ab70f49"
+      },
+      "config_sha256": "801efb58457b838a7316359cc89b91670d762379269720fe6d548611f137162d",
+      "policy_sha256": "3df259614b78297f94c1465c767c8386ef9ca13ea43242e2f72c7c47ded27b2e",
+      "splits_sha256": "9f86d2a17105abaeff7b3e15bbdf4d983a307a8246b342655558390abb31045c",
+      "model_sha256": "ac31ea513bf55ebc2500edf88e68f69c4e49f5e4b73d1c9a6f1a84fc5b378eef",
+      "predictions_sha256": "438029e7d44f3b333240b3c536e97d5ecdb1349009851abf85e7c18a3e111f09",
+      "training_source_sha256": {
+        "review_router/model.py": "efcb9b4b8c9b61325d054ca17c175416ec3e7e80e8b7e0fe01fba402080a8253",
+        "review_router/data.py": "932257ac72a007d6fb31f2bfd400b9504494d46f488fd0562e66142d87431334"
+      },
+      "seed": 20260922,
+      "dependencies": {
+        "python": "3.12.14",
+        "review_router": "0.1.0",
+        "numpy": "2.5.3",
+        "pandas": "3.0.6",
+        "scikit-learn": "1.9.1",
+        "scipy": "1.18.1",
+        "pyyaml": "6.0.3"
+      },
+      "model_config": {
+        "max_features": 200000,
+        "ngram_max": 2,
+        "min_df": 3,
+        "C": 4.0,
+        "max_iter": 1000,
+        "analyzer": "word",
+        "char_ngram_min": 2,
+        "char_ngram_max": 5,
+        "char_max_features": 300000
+      },
+      "review_workload": {
+        "n_total": 63978,
+        "n_requires_human_review": 6312,
+        "n_priority_review": 2823,
+        "n_human_review": 3489,
+        "review_fraction": 0.09865891400168808,
+        "n_truly_positive": 4235,
+        "precision": 0.6709442332065906,
+        "precision_ci95": [
+          0.6592517416596075,
+          0.6824287793049322
+        ],
+        "high_risk_by_band": {
+          "priority_review": {
+            "n": 2823,
+            "n_high_risk": 714,
+            "high_risk_share": 0.25292242295430395
+          },
+          "human_review": {
+            "n": 3489,
+            "n_high_risk": 202,
+            "high_risk_share": 0.057896245342505016
+          },
+          "allow": {
+            "n": 57666,
+            "n_high_risk": 164,
+            "high_risk_share": 0.002843963514029064
+          }
+        },
+        "n_high_risk_total": 1080,
+        "high_risk_recall_into_queue": 0.8481481481481481,
+        "high_risk_recall_into_priority": 0.6611111111111111
+      },
+      "overload": {
+        "severity": {
+          "high_risk_arrived": {
+            "mean": 200.8,
+            "std": 14.372195378577345
+          },
+          "high_risk_handled": {
+            "mean": 184.6,
+            "std": 10.011992808627062
+          },
+          "harm_per_reviewer_hour": {
+            "mean": 71.04375,
+            "std": 2.089276938321007
+          }
+        },
+        "priority": {
+          "high_risk_arrived": {
+            "mean": 200.8,
+            "std": 14.372195378577345
+          },
+          "high_risk_handled": {
+            "mean": 184.2,
+            "std": 10.087616170334794
+          },
+          "harm_per_reviewer_hour": {
+            "mean": 70.9,
+            "std": 2.1447064193031173
+          }
+        }
+      }
+    }
+  ],
+  "same_inputs": {
+    "data_sha256": true,
+    "config_sha256": true,
+    "splits_sha256": true,
+    "seed": true,
+    "dependencies": true,
+    "model_config": true,
+    "training_source_sha256": true
+  },
+  "vocabulary": {
+    "sizes": [
+      200000,
+      200000
+    ],
+    "common_terms": 199961,
+    "exclusive_counts": [
+      39,
+      39
+    ],
+    "exclusive_terms": [
+      [
+        "00 04",
+        "00 50",
+        "be bully",
+        "community school",
+        "community ve",
+        "community your",
+        "compacted",
+        "companies as",
+        "companies but",
+        "companies not",
+        "ga was",
+        "ga1 ve",
+        "gaba",
+        "gabrielf",
+        "gadaffi",
+        "gaddafi is",
+        "gaelic and",
+        "mathematical model",
+        "only tangentially",
+        "only term",
+        "only third",
+        "only times",
+        "only tool",
+        "only tried",
+        "only unsourced",
+        "only visual",
+        "only warned",
+        "slit up",
+        "slit your",
+        "slop",
+        "slope arrests",
+        "slope of",
+        "zoran",
+        "zuck have",
+        "zuck just",
+        "zuck people",
+        "\u03b5\u03bc\u03c0\u03c1\u03bf\u03c2",
+        "\u03ba\u03c5\u03c0\u03b1\u03c4\u03b6\u03b7\u03b4\u03b5\u03c2",
+        "\u03ba\u03c5\u03c0\u03b1\u03c4\u03b6\u03b7\u03b4\u03b5\u03c2 and"
+      ],
+      [
+        "and byzantine",
+        "and calculate",
+        "and callous",
+        "and cameron",
+        "be hip",
+        "be historian",
+        "be honored",
+        "be hope",
+        "connections if",
+        "guatemalans",
+        "gud",
+        "guerre",
+        "guess all",
+        "guess could",
+        "guess from",
+        "guess how",
+        "mark which",
+        "markedly different",
+        "markers in",
+        "market as",
+        "market research",
+        "market share",
+        "marketing speak",
+        "slog through",
+        "sloppy ill",
+        "slovenia which",
+        "slow so",
+        "slowed and",
+        "slower than",
+        "slowly being",
+        "slowly but",
+        "slowly working",
+        "slung",
+        "slur is",
+        "slur on",
+        "slur somewhat",
+        "smack ya",
+        "smackbot has",
+        "smackbot problem"
+      ]
+    ],
+    "common_terms_max_abs_idf_difference": 4.440892098500626e-16,
+    "training_rows_inspected": 95743,
+    "swapped_term_frequency_counts": {
+      "3": 78
+    },
+    "swapped_document_frequency_counts": {
+      "3": 78
+    }
+  },
+  "test_prediction_changes": {
+    "n_rows": 63978,
+    "max_abs_probability_difference": 0.10877756391996685,
+    "mean_abs_probability_difference": 1.2697284693307496e-05,
+    "n_rows_with_any_exact_score_difference": 63978,
+    "n_rows_changing_final_band": 2,
+    "n_rows_changing_admission": 2,
+    "admission_changes": [
+      {
+        "id": "0eda54b0169500d1",
+        "first_tier": "allow",
+        "second_tier": "human_review"
+      },
+      {
+        "id": "e1f4cc855f011b71",
+        "first_tier": "human_review",
+        "second_tier": "allow"
+      }
+    ]
+  },
+  "inspection_environment": {
+    "python": "3.13.7",
+    "dependencies": {
+      "numpy": "2.5.3",
+      "scikit-learn": "1.9.1",
+      "pandas": "3.0.6"
+    },
+    "pickle_version_warnings": [],
+    "note": "Only trusted project CI pickles were loaded. Saved vocabularies/IDFs were inspected; classifiers were not invoked. Cross-version estimator loading is unsupported by sklearn; all numerical score comparisons use saved CSV predictions."
+  },
+  "conclusion": "All checked data, split, seed, model-setting, dependency and training-source inputs match. The vocabularies share 199961 terms and have 39 and 39 exclusive terms. Every swapped term has raw term frequency 3 and document frequency 3, supporting tied-term selection at the feature cap. Platform-dependent ordering of ties is a suspected mechanism; the specific CPU or library cause has not been established. Retraining did not reproduce exact saved probability values. Because the training implementation is unchanged, this exposes a pre-existing reproducibility limitation. Changes in admitted row identities can also change which comments index-based simulation sampling draws. Compare orderings and cumulative/segment bands within the same saved run; cross-run metric differences alone do not isolate a policy effect."
+}

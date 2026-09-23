@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Step 6: severity ordering and confidence segments</title><style>
+:root { --ink: #0b0b0b; --ink2: #52514e; --line: #e6e5e1; --surface: #fcfcfb; --accent: #185ea8; --warn: #a73816; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
+nav.top { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); margin-bottom: 24px; flex-wrap: wrap; }
+nav.top a, a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+nav.top a[aria-current="page"] { font-weight: 700; color: var(--ink); }
+h1 { font-size: 26px; line-height: 1.3; margin: 0 0 8px; }
+h2 { font-size: 20px; margin: 40px 0 10px; border-top: 1px solid var(--line); padding-top: 20px; }
+h3 { font-size: 17px; margin: 26px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; color: var(--ink2); }
+p { margin: 12px 0; max-width: 78ch; }
+li { margin: 8px 0; }
+h2, h3 { scroll-margin-top: 16px; }
+.lede { color: var(--ink2); font-size: 15px; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink2); margin-right: 6px; }
+.tag.red { border-color: var(--warn); color: var(--warn); }
+.table-scroll { overflow-x: auto; margin: 12px 0 18px; }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+figure { margin: 18px 0; }
+figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+figcaption { font-size: 14px; color: var(--ink2); margin-top: 8px; max-width: 78ch; }
+.box { border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; margin: 14px 0; border-radius: 4px; background: #fff; }
+.box.warn { border-left-color: var(--warn); }
+.steps { list-style: none; padding: 0; margin: 0; }
+.steps li { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 8px 0; background: #fff; }
+.steps li a { font-weight: 600; }
+.steps li .one { color: var(--ink2); font-size: 14px; margin-top: 2px; }
+.toc { font-size: 15px; color: var(--ink2); columns: 2; margin: 8px 0 16px; }
+.toc a { display: block; padding: 3px 0; break-inside: avoid; }
+.flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 14px 0; }
+.flow .node { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 13px; }
+.flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow .arrow { align-self: center; color: var(--ink2); }
+.examples li { margin: 6px 0; font-size: 14px; }
+.examples blockquote { margin: 8px 0 18px; padding-left: 12px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
+details { margin: 18px 0; border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+summary { cursor: pointer; font-weight: 600; }
+.examples code, code { background: #f3f2ef; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+pre { background: #f3f2ef; padding: 10px 12px; border-radius: 6px; font-size: 13px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.prov { font-size: 13px; color: var(--ink2); }
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px; }
+@media (max-width: 640px) {
+  main { padding: 24px 16px 48px; }
+  h1 { font-size: 24px; }
+  .toc { columns: 1; }
+  .flow { flex-direction: column; }
+  .flow .node { flex: auto; }
+  .flow .arrow { display: none; }
+  nav.bottom { gap: 16px; flex-wrap: wrap; }
+}
+</style></head><body><main>
+<nav class="top" aria-label="Project steps"><a href="index.html">Index</a><a href="step1-baseline.html">Step 1: baseline</a><a href="step2-round1.html">Step 2: first results</a><a href="step3-human-review.html">Step 3: human confirmation</a><a href="step4-features.html">Step 4: feature comparison</a><a href="step5-jev.html">Step 5: Jev pilot</a><a href="step6-priority.html" aria-current="page">Step 6: severity and confidence segments</a><span>Independent human evaluation: deferred</span></nav>
+
+<span class="tag">Step 6</span><span class="tag">Policy v3</span>
+<h1>Severity ordering and confidence-segment review bands</h1>
+<p class="lede">A real-data evaluation of the word model with severity as the primary queue ordering,
+development-only diagnostics, and a stricter rule for assigning the priority label. Every moderation action still requires human confirmation.</p>
+<div class="box"><b>Recorded conclusion.</b> On the same scored test rows, segment selection changes priority precision
+from 76.30% to 87.42%, while the priority band shrinks
+from 4,624 to 2,823 comments.
+The current review pool contains 6,312 comments and captures
+916 of 1,080 high-risk comments. The two rules admit exactly the same test comments. Since severity ignores the review band, changing only these bands cannot change its queue results.</div>
+<div class="toc"><a href="#method">What changed</a><a href="#bands">Band precision and coverage</a>
+<a href="#composition">Where high-risk comments go</a><a href="#queue">Queue results</a>
+<a href="#limits">Evidence and limits</a><a href="#reproduce">Reproduce this step</a></div>
+
+<h2 id="method">What changed</h2>
+<p>The primary ordering is <code>severity</code>: for each comment, take the maximum over labels of
+calibrated probability × that label's severity weight, then review the highest-scoring comment first.
+The <code>priority_review</code> label no longer guarantees earlier service.
+Band-first priority, probability and FIFO remain comparisons on the same admitted comments and arrival streams.</p>
+<p>For each label, the priority threshold is the lowest declared score edge for which every segment above it
+meets the 95.00% empirical agreement target with at least
+30 rows. These are score ranges, not statistical confidence intervals.
+Human-review thresholds and identity-term subgroup thresholds retain cumulative precision selection.</p>
+<p>The rule is a project extension inspired by score-based triage in
+<a href="https://arxiv.org/abs/2406.12800">Thomas et al., Supporting Human Raters</a>.
+The paper does not prescribe this all-segments rule or these bin edges. The edges were designed after earlier test diagnostics were inspected.</p>
+<div class="table-scroll" role="region" aria-label="Data table, scroll horizontally" tabindex="0"><table><thead><tr><th scope="col">Label</th><th scope="col">Cumulative priority</th><th scope="col">Segment priority</th><th scope="col">Human review</th></tr></thead><tbody><tr><td>toxic</td><td>0.8474</td><td>0.9800</td><td>0.6575</td></tr><tr><td>severe_toxic</td><td>disabled</td><td>disabled</td><td>disabled</td></tr><tr><td>obscene</td><td>0.9258</td><td>0.9950</td><td>0.6575</td></tr><tr><td>threat</td><td>disabled</td><td>disabled</td><td>disabled</td></tr><tr><td>insult</td><td>0.9904</td><td>0.9950</td><td>0.9179</td></tr><tr><td>identity_hate</td><td>disabled</td><td>disabled</td><td>disabled</td></tr></tbody></table></div>
+<p>Disabled means that no label-specific threshold qualified; other labels or policy rules can still admit a comment.
+The table shows population thresholds. Subgroup thresholds are stored in <a href="priority_run.json">the source record</a>.</p>
+
+<h2 id="bands">Band precision and coverage</h2>
+<div class="table-scroll" role="region" aria-label="Data table, scroll horizontally" tabindex="0"><table><thead><tr><th scope="col">Rows</th><th scope="col">Priority rule</th><th scope="col">Priority count</th><th scope="col">Coverage of all rows</th><th scope="col">Priority precision</th></tr></thead><tbody><tr><td>Selection, in sample</td><td>Cumulative</td><td>1,628</td><td>5.10%</td><td>97.24%</td></tr><tr><td>Selection, in sample</td><td>Segment</td><td>1,060</td><td>3.32%</td><td>99.53%</td></tr><tr><td>Selection, cross-fitted</td><td>Segment</td><td>1,032</td><td>3.23%</td><td>99.52%</td></tr><tr><td>Scored test, reused</td><td>Cumulative</td><td>4,624</td><td>7.23%</td><td>76.30%</td></tr><tr><td>Scored test, reused</td><td>Segment</td><td>2,823</td><td>4.41%</td><td>87.42%</td></tr></tbody></table></div>
+<p>Precision here means that at least one original Jigsaw label is positive, after rules and subgroup thresholds.
+It is not an independent measure of whether a comment deserves review. Cumulative and segment test arms use
+the same saved model scores and selection data; neither fits thresholds on test labels.</p>
+<p>The 5-fold development diagnostic refits thresholds on the other folds
+before routing each held-out fold. It estimates sensitivity to threshold selection within the same distribution;
+it is not a formal bound on optimism or evidence of generalization to a new distribution.</p>
+
+<h2 id="composition">Where high-risk comments go</h2>
+<div class="table-scroll" role="region" aria-label="Data table, scroll horizontally" tabindex="0"><table><thead><tr><th scope="col">Test arm</th><th scope="col">Band</th><th scope="col">Comments</th><th scope="col">High-risk comments</th><th scope="col">High-risk share of band</th></tr></thead><tbody><tr><td>Cumulative</td><td>priority_review</td><td>4,624</td><td>837</td><td>18.10%</td></tr><tr><td>Cumulative</td><td>human_review</td><td>1,688</td><td>79</td><td>4.68%</td></tr><tr><td>Cumulative</td><td>allow</td><td>57,666</td><td>164</td><td>0.28%</td></tr><tr><td>Segment</td><td>priority_review</td><td>2,823</td><td>714</td><td>25.29%</td></tr><tr><td>Segment</td><td>human_review</td><td>3,489</td><td>202</td><td>5.79%</td></tr><tr><td>Segment</td><td>allow</td><td>57,666</td><td>164</td><td>0.28%</td></tr></tbody></table></div>
+<p>High risk uses the saved policy's true-label harm proxy and the simulation threshold
+<code>harm proxy &gt;= 5.0</code>. A larger high-risk share in a smaller band can coexist
+with fewer high-risk comments in that band. 1,801 test comments change bands
+between these two rules. The two rules admit exactly the same test comments. Since severity ignores the review band, changing only these bands cannot change its queue results.</p>
+
+<h2 id="queue">Queue results</h2>
+<p>These rates are admitted review jobs per hour, not all incoming platform comments. Capacity is
+120 jobs/hour with 4
+reviewers, 2.0 minutes per job and an
+8-hour shift. Cells show mean ± standard deviation across
+5 paired simulation seeds.</p>
+<div class="table-scroll" role="region" aria-label="Data table, scroll horizontally" tabindex="0"><table><thead><tr><th scope="col">Review arrivals/h</th><th scope="col">Ordering</th><th scope="col">High-risk completed</th><th scope="col">Harm proxy/reviewer-hour</th><th scope="col">High-risk wait p90, min</th><th scope="col">High-risk unfinished</th></tr></thead><tbody><tr><td>108</td><td>severity</td><td>122.8 ± 13.1</td><td>50.65 ± 3.07</td><td>1.00 ± 0.10</td><td>0.2 ± 0.4</td></tr><tr><td>108</td><td>priority</td><td>122.8 ± 13.1</td><td>50.66 ± 3.09</td><td>1.06 ± 0.09</td><td>0.2 ± 0.4</td></tr><tr><td>108</td><td>prob</td><td>122.8 ± 13.1</td><td>50.66 ± 3.09</td><td>1.19 ± 0.11</td><td>0.2 ± 0.4</td></tr><tr><td>108</td><td>fifo</td><td>122.6 ± 13.2</td><td>50.62 ± 3.09</td><td>5.95 ± 2.73</td><td>0.4 ± 0.5</td></tr><tr><td>180</td><td>severity</td><td>184.6 ± 10.0</td><td>71.04 ± 2.09</td><td>1.64 ± 0.28</td><td>16.2 ± 4.5</td></tr><tr><td>180</td><td>priority</td><td>184.2 ± 10.1</td><td>70.90 ± 2.14</td><td>2.01 ± 0.29</td><td>16.6 ± 4.4</td></tr><tr><td>180</td><td>prob</td><td>176.2 ± 10.9</td><td>68.49 ± 2.56</td><td>2.29 ± 0.66</td><td>24.6 ± 4.1</td></tr><tr><td>180</td><td>fifo</td><td>134.0 ± 9.1</td><td>55.76 ± 2.14</td><td>140.04 ± 8.54</td><td>66.8 ± 9.6</td></tr></tbody></table></div>
+<p>At 180 review arrivals/hour, the paired mean difference, severity minus band-first priority,
+is 0.40 high-risk completions and
+0.144 harm proxy per reviewer-hour.
+These are the current bands; the earlier v2 comparison is a different experiment.</p>
+<p>Wait p90 includes jobs that started, including reviews still in progress. Never-started jobs are excluded from
+waiting-time quantiles and remain in the unfinished count. These seeds characterize simulated arrivals on this fixed
+corpus; they do not measure uncertainty over new corpora. Harm is a label-weighted proxy, not measured real-world harm.</p>
+
+<h2 id="limits">Evidence and limits</h2>
+<p><a href="https://github.com/XinyangWuEthz/review-router/actions/runs/35857528118">Recorded GitHub real-evaluation run</a>: <b>success</b>.
+The record includes the workflow jobs and artifact hashes. A successful run does not mean every diagnostic met a
+precision target or that fairness was established. Per-band test precision gates remain unset.</p>
+<p>For priority-review false discoveries, the identity-term subgroup ratio has 95% interval
+[0.720, 1.294], against a limit of 1.250. Its recorded-metric status is <b>inconclusive</b>.
+FDR concerns false discoveries among flagged comments; it does not replace the separately recorded FPR on clean comments.</p>
+<p>The public test set has been inspected repeatedly. This is a benchmark rerun and a descriptive comparison, not a fresh holdout.
+The segment rule concentrates the priority band; it does not establish an improvement in model recall or actual human review value.</p>
+<p>Two clean retrains with the same data, split, configuration and recorded dependency versions differed in two admitted comment IDs.
+Those membership changes also change which comments the queue's random indices select. Compare orderings within this saved run;
+differences between retrains cannot be attributed to the ordering alone.
+The <a href="retraining_check.json">retraining check</a> found different vocabulary selections at the feature cap;
+the exact platform cause remains unresolved.</p>
+<p>Keep the word model and human confirmation. Jev evaluation remains unattempted following the reported registration limit.
+An independent human evaluation of review worthiness remains <b>deferred and not started</b> because of annotation workload.
+Original Jigsaw labels are retained.</p>
+
+<h2 id="reproduce">Reproduce this step</h2>
+<pre><code># Download and collect the recorded CI run
+gh run download 35857528118 --name evaluation-210d9857220b23d175d4aff5a54ab221ad86280b --dir reports/ci-35857528118
+gh run view 35857528118 --json headSha,status,conclusion,url,jobs &gt;reports/ci-35857528118-ci.json
+PYTHONPATH=. python record/collect_priority.py reports/ci-35857528118 --ci-metadata reports/ci-35857528118-ci.json
+python record/render.py
+# Development diagnostics without scoring test rows
+python scripts/run_pipeline.py --config configs/dev.yaml
+# Rerun the benchmark protocol from the recorded code revision
+python scripts/run_pipeline.py --config configs/baseline.yaml
+REVIEW_ROUTER_EVAL_REPORT=reports/&lt;run&gt;/report.json pytest -q tests/test_gate.py
+python scripts/render_results.py reports/&lt;run&gt;</code></pre>
+<p class="prov">Run <code>20260923T115815829404Z-human-review-baseline</code>, commit <code>210d9857220b23d175d4aff5a54ab221ad86280b</code>,
+clean working tree.
+The <a href="priority_run.json">Step 6 source record</a> contains policy, thresholds, development diagnostics,
+the matched-score test comparison and CI provenance. Steps 1 to 5 retain their saved results.</p>
+<details><summary>Collected artifact SHA-256 hashes</summary><ul><li><code>manifest.json</code>: <code>d468260855d625fbda8048bffaa59c892394e2fe38b96b4d1009c7e6eb8dfc63</code></li><li><code>report.json</code>: <code>82d529e1f20efa2dee8426175e13191f6d7b2f2d80a97e31d821d935be190393</code></li><li><code>policy.yaml</code>: <code>3df259614b78297f94c1465c767c8386ef9ca13ea43242e2f72c7c47ded27b2e</code></li><li><code>config.yaml</code>: <code>801efb58457b838a7316359cc89b91670d762379269720fe6d548611f137162d</code></li><li><code>predictions.csv</code>: <code>438029e7d44f3b333240b3c536e97d5ecdb1349009851abf85e7c18a3e111f09</code></li><li><code>simulation_jobs.csv</code>: <code>4516e2fab3f04ec0366dc496771246ed0163532fcca5560989c08094b1ba6349</code></li></ul></details>
+
+<nav class="bottom" aria-label="Previous and next steps"><span><a href="step5-jev.html">← Step 5: Jev pilot</a></span><span></span></nav>
+</main></body></html>

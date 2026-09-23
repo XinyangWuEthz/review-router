@@ -328,6 +328,12 @@ def main() -> None:
     if args.human_review:
         if args.with_r103 or args.without_r103 or args.final:
             parser.error("--human-review cannot be combined with historical run arguments")
+        policy = yaml.safe_load((args.human_review / "policy.yaml").read_text())
+        if int(policy.get("version", 1)) >= 3:
+            parser.error(
+                "--human-review preserves the historical v2 record; collect v3 runs with "
+                "record/collect_priority.py"
+            )
         run = pick(args.human_review.resolve())
         if (run.get("decision_contract") or {}).get("mode") != "human_confirmation":
             parser.error("--human-review requires a human-confirmation run")

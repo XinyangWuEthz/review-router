@@ -159,9 +159,9 @@ def test_word_queue_and_all_allow_candidate_complete_comparison(
         assert set(by_input) == strategies | {"expected_review_load_per_hour"}
     assert set(comparison["differences_vs_reference"]["jev"]["20.0"]) == strategies
     for strategy in strategies:
-        assert comparison["runs"]["jev"]["by_input"]["20.0"][strategy][
-            "review_arrivals"
-        ]["mean"] == 0
+        assert (
+            comparison["runs"]["jev"]["by_input"]["20.0"][strategy]["review_arrivals"]["mean"] == 0
+        )
     empty = comparison["runs"]["jev"]["by_input"]["20.0"]["priority"]
     word_metrics = comparison["runs"]["word"]["by_input"]["20.0"]["priority"]
     assert word_metrics["review_arrivals"]["mean"] > 0
