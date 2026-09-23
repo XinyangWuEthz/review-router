@@ -94,6 +94,39 @@ def test_snapshot_supplies_targets_and_gates(
     assert "| auto_action precision | 0.950 | ≥ 0.930 | green |" in text
 
 
+def test_compact_results_use_the_saved_primary_ordering(run_dir: Path) -> None:
+    (run_dir / "policy.yaml").write_bytes((ROOT / "review_router/policy.yaml").read_bytes())
+    report = json.loads((run_dir / "report.json").read_text())
+    report["simulation"] = {
+        "primary": {"strategy": "prob", "load_per_hour": 108},
+        "thesis": {"load_per_hour": 180},
+        "assumptions": {"seeds": [1, 2], "horizon_hours": 8, "high_risk": "harm proxy >= 9"},
+        "summary": {
+            "prob@180": {"high_risk_handled": {"mean": 42.0}},
+            "severity@180": {"high_risk_handled": {"mean": 999.0}},
+            "fifo@180": {"high_risk_handled": {"mean": 40.0}},
+        },
+    }
+    (run_dir / "report.json").write_text(json.dumps(report))
+    text = RENDERER.render_compact(run_dir)
+    assert "| High-risk completed at 180/h | 42.0 | FIFO 40.0" in text
+    assert "999.0" not in text
+    assert "harm proxy >= 9" in text
+    assert "2 shared arrival seeds" in text
+    assert "SYNTHETIC corpus" in text
+    assert "| gate |" not in text
+    assert len(text.splitlines()) < 30
+
+
+def test_compact_results_reject_development_data(run_dir: Path) -> None:
+    path = run_dir / "report.json"
+    report = json.loads(path.read_text())
+    report["evaluate_test"] = False
+    path.write_text(json.dumps(report))
+    with pytest.raises(ValueError, match="development run"):
+        RENDERER.render_compact(run_dir)
+
+
 def test_explicit_policy_overrides_gates_but_not_run_targets(run_dir: Path, tmp_path: Path) -> None:
     override = tmp_path / "new-policy.yaml"
     _policy(override, auto_gate=0.96, target=0.12)

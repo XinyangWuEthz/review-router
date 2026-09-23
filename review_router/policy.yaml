@@ -8,8 +8,8 @@ tiers:
   priority_review: 3
 
 # Policy input, NOT a measured quantity. Every harm-per-reviewer-hour number in
-# the benchmark is conditional on this vector; benchmarks/run.py must sweep it
-# (flat weights and a wider spread) and report the sensitivity.
+# the benchmark is conditional on this vector. The bounded ordering-only sweep
+# is declared in configs/severity-sensitivity.yaml and keeps evaluation weights fixed.
 severity_weights:
   threat: 10
   identity_hate: 6

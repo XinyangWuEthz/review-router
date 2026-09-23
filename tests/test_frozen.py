@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import json
+import stat
+import subprocess
+import sys
+import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -234,6 +238,124 @@ def test_restore_rejects_corrupt_source_and_preserves_existing_pin(
     with pytest.raises(ValueError, match="refusing to replace a different frozen artifact"):
         frozen.restore_frozen_model(trained_run, lock_path)
     assert (destination / "model.pkl").read_bytes() == b"different existing model"
+
+
+@pytest.fixture
+def archive_case(tmp_path: Path) -> tuple[Path, Path, Path]:
+    source = tmp_path / "archive-source"
+    source.mkdir()
+    for name in frozen.FILES:
+        (source / name).write_bytes(f"pinned {name}".encode())
+    lock_path = tmp_path / "archive-lock.json"
+    lock_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "artifact_dir": "restored",
+                "files": {name: file_sha256(source / name) for name in frozen.FILES},
+            }
+        )
+    )
+    archive = tmp_path / "frozen-baseline.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        for name in frozen.FILES:
+            bundle.write(source / name, arcname=name)
+    return archive, lock_path, tmp_path / "restored"
+
+
+def test_archive_restore_verifies_without_unpickling_and_is_idempotent(
+    archive_case: tuple[Path, Path, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive, lock_path, destination = archive_case
+
+    def never_unpickle(*args: Any, **kwargs: Any) -> None:
+        pytest.fail("restoring the archive must not unpickle its contents")
+
+    monkeypatch.setattr(frozen.pickle, "load", never_unpickle)
+    assert not destination.exists()
+    assert frozen.restore_frozen_archive(archive, lock_path) == destination
+    assert frozen.restore_frozen_archive(archive, lock_path) == destination
+    lock = json.loads(lock_path.read_text())
+    assert {name: file_sha256(destination / name) for name in frozen.FILES} == lock["files"]
+
+
+@pytest.mark.parametrize(
+    "mutation", ["missing", "unexpected", "nested", "traversal", "absolute", "symlink", "duplicate"]
+)
+def test_archive_rejects_invalid_members_before_installing(
+    archive_case: tuple[Path, Path, Path], mutation: str
+) -> None:
+    archive, lock_path, destination = archive_case
+    with zipfile.ZipFile(archive) as bundle:
+        contents = {name: bundle.read(name) for name in frozen.FILES}
+    with zipfile.ZipFile(archive, "w") as bundle:
+        for name, content in contents.items():
+            if name == "model.pkl":
+                if mutation == "missing":
+                    continue
+                if mutation in ("nested", "traversal", "absolute"):
+                    name = {
+                        "nested": "folder/model.pkl",
+                        "traversal": "../model.pkl",
+                        "absolute": "/model.pkl",
+                    }[mutation]
+                elif mutation == "symlink":
+                    info = zipfile.ZipInfo(name)
+                    info.create_system = 3
+                    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+                    bundle.writestr(info, b"../outside-model")
+                    continue
+            bundle.writestr(name, content)
+        if mutation == "unexpected":
+            bundle.writestr("extra.txt", b"extra")
+        elif mutation == "duplicate":
+            with pytest.warns(UserWarning, match="Duplicate name"):
+                bundle.writestr("model.pkl", contents["model.pkl"])
+    with pytest.raises(ValueError, match="frozen archive"):
+        frozen.restore_frozen_archive(archive, lock_path)
+    assert not destination.exists()
+    assert not (archive.parent / "model.pkl").exists()
+
+
+def test_archive_rejects_corruption_and_preserves_existing_files(
+    archive_case: tuple[Path, Path, Path],
+) -> None:
+    archive, lock_path, destination = archive_case
+    frozen.restore_frozen_archive(archive, lock_path)
+    pinned = {name: (destination / name).read_bytes() for name in frozen.FILES}
+    corrupt = archive.with_name("corrupt.zip")
+    with zipfile.ZipFile(corrupt, "w") as bundle:
+        for name, content in pinned.items():
+            bundle.writestr(name, b"changed model" if name == "model.pkl" else content)
+    with pytest.raises(ValueError, match="artifact hash mismatch: model.pkl"):
+        frozen.restore_frozen_archive(corrupt, lock_path)
+    assert {name: (destination / name).read_bytes() for name in frozen.FILES} == pinned
+    (destination / "model.pkl").write_bytes(b"different existing model")
+    with pytest.raises(ValueError, match="refusing to replace a different frozen artifact"):
+        frozen.restore_frozen_archive(archive, lock_path)
+    assert (destination / "model.pkl").read_bytes() == b"different existing model"
+
+
+def test_restore_cli_accepts_archive_and_rejects_two_sources(
+    archive_case: tuple[Path, Path, Path],
+) -> None:
+    archive, lock_path, destination = archive_case
+    command = [
+        sys.executable,
+        str(ROOT / "scripts/restore_frozen_model.py"),
+        "--archive",
+        str(archive),
+        "--lock",
+        str(lock_path),
+    ]
+    restored = subprocess.run(command, check=True, capture_output=True, text=True)
+    assert restored.stdout.strip() == str(destination)
+    assert set(path.name for path in destination.iterdir()) == set(frozen.FILES)
+    rejected = subprocess.run(
+        [*command, "--source-run", str(destination)], check=False, capture_output=True, text=True
+    )
+    assert rejected.returncode == 2
+    assert "not allowed with argument" in rejected.stderr
 
 
 def test_explicit_retrain_bypasses_lock_without_replacing_pinned_artifacts(

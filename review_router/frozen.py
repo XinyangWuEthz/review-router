@@ -1,6 +1,6 @@
 """Load the project's pinned scorer without fitting vocabulary, heads or calibration.
 
-Only restore artifacts from the trusted project run named in the checked-in lock.
+Only restore artifacts matching the trusted project run in the checked-in lock.
 The hashes are checked before unpickling; a missing artifact never triggers training.
 """
 
@@ -9,6 +9,9 @@ from __future__ import annotations
 import json
 import pickle
 import shutil
+import stat
+import tempfile
+import zipfile
 from dataclasses import asdict
 from importlib.metadata import version
 from pathlib import Path
@@ -33,7 +36,8 @@ def _verify_files(directory: Path, lock: dict[str, Any]) -> None:
         if not path.is_file():
             raise FileNotFoundError(
                 f"frozen model artifact missing: {path}; restore it with "
-                "scripts/restore_frozen_model.py --source-run <saved-run>; "
+                "scripts/restore_frozen_model.py --archive <release.zip> "
+                "or --source-run <saved-run>; "
                 "training is never an automatic fallback"
             )
         if file_sha256(path) != lock["files"][name]:
@@ -55,6 +59,31 @@ def restore_frozen_model(source_run: Path, lock_path: Path) -> Path:
         if not target.exists():
             shutil.copyfile(source_run / name, target)
     return destination
+
+
+def restore_frozen_archive(archive: Path, lock_path: Path) -> Path:
+    """Restore a flat release ZIP after checking its members and pinned file hashes.
+
+    Archive paths are never extracted. Only the three expected regular files are
+    copied to a temporary directory, then the normal verified restore installs them.
+    """
+    with zipfile.ZipFile(archive) as bundle:
+        entries = bundle.infolist()
+        if len(entries) != len(FILES) or {entry.filename for entry in entries} != set(FILES):
+            raise ValueError(
+                "frozen archive must contain exactly model.pkl, manifest.json, splits.csv"
+            )
+        for entry in entries:
+            mode = entry.external_attr >> 16
+            kind = stat.S_IFMT(mode)
+            if entry.is_dir() or kind not in (0, stat.S_IFREG):
+                raise ValueError(f"frozen archive member must be a regular file: {entry.filename}")
+        with tempfile.TemporaryDirectory(prefix="review-router-frozen-") as temporary:
+            source = Path(temporary)
+            for entry in entries:
+                with bundle.open(entry) as reader, (source / entry.filename).open("wb") as writer:
+                    shutil.copyfileobj(reader, writer)
+            return restore_frozen_model(source, lock_path)
 
 
 def load_frozen_model(

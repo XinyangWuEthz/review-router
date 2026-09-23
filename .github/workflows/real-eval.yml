@@ -44,15 +44,16 @@ jobs:
         with:
           path: models/frozen-baseline
           key: frozen-scorer-${{ hashFiles('configs/frozen-baseline.json') }}
-      - name: Restore the pinned scorer from its original run
+      - name: Restore the pinned scorer from the release asset
         if: inputs.retrain != true && steps.scorer.outputs.cache-hit != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh run download 35857528118 --repo XinyangWuEthz/review-router \
-            --name evaluation-210d9857220b23d175d4aff5a54ab221ad86280b \
+          gh release download v0.1.0 --repo XinyangWuEthz/review-router \
+            --pattern frozen-baseline-v0.1.0.zip \
             --dir "$RUNNER_TEMP/frozen-source"
-          python scripts/restore_frozen_model.py --source-run "$RUNNER_TEMP/frozen-source"
+          python scripts/restore_frozen_model.py \
+            --archive "$RUNNER_TEMP/frozen-source/frozen-baseline-v0.1.0.zip"
       - name: Restore the corpus cache
         id: corpus
         uses: actions/cache@v4

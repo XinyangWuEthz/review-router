@@ -632,7 +632,8 @@ def test_render_results_replaces_readme_block(synthetic_corpus: Path, tmp_path: 
     assert text.endswith("<!-- results:end -->\nouttro\n")
     assert "\nold\n" not in text
     assert "SYNTHETIC corpus" in text
-    assert "| gate | measured | requirement | status |" in text
+    assert "| Measure | Default router | Comparison or cost |" in text
+    assert "| gate | measured | requirement | status |" not in text
 
 
 def test_per_job_records_reproduce_every_time_metric(
