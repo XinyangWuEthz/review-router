@@ -22,30 +22,55 @@ definition the gate uses). Strata are proportional to the population:
 | lex / other | 5 | 3 |
 | nolex / other | 2 | 1 |
 
-`sample.csv` carries the text and two verdict columns. `human_verdict` is
-empty and is the deliverable of this step; it has to be filled by a person.
-`preread_verdict` is an LLM pre-read (Claude, recorded as such in
-`sample_meta.json`) under one written rule: **toxic** = abuse directed at a
-person or group; **borderline** = profanity, self-directed or undirected
-rudeness; **clean** = no abuse. Its purpose is to give a first estimate and a
-reading order, not to replace the human pass.
+`sample.csv` carries the text and two verdict columns. `preread_verdict` is
+an LLM pre-read (Claude, recorded as such in `sample_meta.json`).
+`human_verdict` is the audit result: the repository owner read all 100 rows
+against the pre-read and marked only the rows where they disagreed
+(`human_changed`, with `human_note` where they gave a reason). The rule, as
+refined before the human pass:
 
-Pre-read result, 100 rows: toxic 40, borderline 33, clean 27.
+- **toxic**: attacks a person or group, explicitly or by sarcasm, insinuation
+  or a rhetorical question aimed at the reader.
+- **borderline**: profanity or rudeness with nobody attacked, including
+  self-directed and quoted text.
+- **clean**: nothing offensive.
 
-What that implies for the floor if the human pass agreed with the pre-read:
+The human pass changed 11 of 100 pre-read verdicts, in both directions:
 
-| relabel rule | implied auto-action precision |
+| change | rows | examples |
+|---|---:|---|
+| borderline to toxic | 7 | "Your timing sucks", "Cool story bro'. What the fuck does it have to do with anything?", "..why are you acting dumb??" |
+| borderline to clean | 3 | "Alexhead8835 SHUT UP >:(", "WHAT THE HELL Justin", "are you gay?" |
+| toxic to clean | 1 | "u gay bro." |
+
+Final verdicts: toxic 46, borderline 23, clean 31. Scored with
+`python scripts/audit_auto_action_fp.py --score analysis/auto_action_fp_audit`:
+
+| relabel rule | implied auto-action precision (95% CI) |
 |---|---:|
 | as measured | 0.904 |
-| the 40% "toxic" rows are label noise | 0.942 |
-| "toxic" and "borderline" both count as toxic | 0.974 |
+| audited "toxic" rows are label noise | 0.948 [0.939, 0.958] |
+| "toxic" and "borderline" both count as toxic | 0.970 [0.961, 0.978] |
 
-Even the most generous reading leaves the tier below 0.99. The 27 "clean"
-rows are real model errors, and they share one shape: a lexicon word used
-without a target ("the animation is stupid", "awh that sucks", a TV series
-called *2 Stupid Dogs*, "Big Dumb Object", a quoted film line, a regex
-abuse-filter list). The word-level model fires on the token, not on whether
-anyone is being attacked.
+The interval maps the Wilson interval of the audited share through the
+implied-precision formula and ignores the finite-population correction, so it
+is conservative. Reaching 0.99 would need at most 21 false positives among
+2125 auto-action rows, which means at least 90 of the 100 audited rows judged
+toxic. The audit found 46, or 69 under the generous rule.
+
+So the gap is not label noise alone. Relative to the pre-read, the human pass
+raised the lower bound (0.942 to 0.948) because sarcasm and insinuation count
+as attacks, and lowered the upper bound (0.974 to 0.970) because shouting at
+someone without an insult, and asking about an identity, are not abuse. The
+31 clean rows are real model errors. They come in two shapes: an abuse word
+used without a target ("the animation is stupid", "awh that sucks", the TV
+series *2 Stupid Dogs*, a quoted film line, a regex abuse-filter list), and a
+crude or identity word with no insult at all ("WHAT THE HELL Justin", "u gay
+bro.", "sex == hello =="). Four of the 31 mention an identity term. Clean
+verdicts are denser where the fixed lexicon does not hit (14 of 31 rows) than
+where it does (16 of 68). Most of those 14 carry a word the lexicon omits,
+such as "hell", "gay", "ass" or "poop", so a missing lexicon hit does not
+mean the model saw nothing crude.
 
 ## Step 2: character n-grams (`run_comparison.md`, `paired_false_positives.json`)
 
@@ -64,16 +89,18 @@ identity_hate 0.480 to 0.562). Precision at the floor does not move: all
 three intervals overlap and none approaches 0.99.
 
 The paired view explains why. Word+char drops 62 of the baseline's 204 false
-positives, including 16 of the 27 "clean" audited rows, but its threshold
+positives, including 17 of the 31 audited rows judged clean, but its threshold
 admits 517 rows the baseline did not, and 87 of those are new false
 positives. Character n-grams fix the OOV cases and then buy coverage with
 the same non-directed lexical errors at a different set of rows.
 
 ## Conclusion for the next step
 
-- The gap is roughly half label convention (pending the human verdicts) and
-  half a real error mode, non-directed use of abuse vocabulary, that
-  bag-of-n-grams features cannot express at any threshold.
+- The human audit puts the label-convention share of the gap between 46%
+  and 69% of the false positives. The rest, 31%, are real errors: abuse or
+  crude vocabulary with nobody attacked, which bag-of-n-grams features cannot
+  tell apart from an attack at any threshold. Even a full relabel under the
+  generous rule leaves the tier at 0.970.
 - Keep `word+char_wb` as the round-2 default for ranking quality; do not
   expect it to satisfy the auto-action floor.
 - Reaching 0.99 needs either a feature that sees the target of the abuse

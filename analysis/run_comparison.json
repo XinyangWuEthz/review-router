@@ -193,30 +193,30 @@
     }
   ],
   "audit_overlap": {
-    "verdict_column": "preread_verdict",
+    "verdict_column": "human_verdict",
     "n_audited": 100,
     "baseline": {
       "still_auto_action": 100,
       "by_verdict": {
-        "borderline": "33/33",
-        "clean": "27/27",
-        "toxic": "40/40"
+        "borderline": "23/23",
+        "clean": "31/31",
+        "toxic": "46/46"
       }
     },
     "char-ngram": {
       "still_auto_action": 54,
       "by_verdict": {
-        "borderline": "20/33",
-        "clean": "7/27",
-        "toxic": "27/40"
+        "borderline": "14/23",
+        "clean": "8/31",
+        "toxic": "32/46"
       }
     },
     "word-char": {
       "still_auto_action": 68,
       "by_verdict": {
-        "borderline": "26/33",
-        "clean": "11/27",
-        "toxic": "31/40"
+        "borderline": "18/23",
+        "clean": "14/31",
+        "toxic": "36/46"
       }
     }
   }

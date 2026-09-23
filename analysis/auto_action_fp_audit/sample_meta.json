@@ -55,5 +55,40 @@
         "toxic": 1
       }
     }
+  },
+  "human": {
+    "n": 100,
+    "counts": {
+      "toxic": 46,
+      "borderline": 23,
+      "clean": 31
+    },
+    "implied_precision": {
+      "toxic_only": {
+        "rows_counted_correct": 46,
+        "precision": 0.9482,
+        "precision_ci95": [
+          0.9391,
+          0.9575
+        ]
+      },
+      "toxic_or_borderline": {
+        "rows_counted_correct": 69,
+        "precision": 0.9702,
+        "precision_ci95": [
+          0.961,
+          0.9781
+        ]
+      }
+    },
+    "floor": 0.99,
+    "rows_needed_toxic_for_floor": 90,
+    "agreement_with_preread": 0.89,
+    "preread_to_human": {
+      "toxic->clean": 1,
+      "borderline->toxic": 7,
+      "borderline->clean": 3
+    },
+    "protocol": "One reviewer (the repository owner) read all 100 rows against the pre-read and wrote a verdict only where they disagreed; an unmarked row takes the pre-read verdict. Rule: toxic = attacks a person or group, explicitly or by sarcasm, insinuation or a rhetorical question; borderline = profanity or rudeness with nobody attacked, including self-directed and quoted; clean = nothing offensive. Entered in sample.numbers on 2026-09-23 and merged here by row position (text identical on every row)."
   }
 }

@@ -15,10 +15,10 @@
 | insult | 0.696 | 0.724 | 0.731 | 0.965 | 0.970 | 0.971 |
 | identity_hate | 0.480 | 0.560 | 0.562 | 0.974 | 0.983 | 0.984 |
 
-## Audited false positives still sent to auto_action (preread_verdict)
+## Audited false positives still sent to auto_action (human_verdict)
 
 | run | still auto_action | by verdict |
 |---|---:|---|
-| baseline | 100/100 | borderline 33/33, clean 27/27, toxic 40/40 |
-| char-ngram | 54/100 | borderline 20/33, clean 7/27, toxic 27/40 |
-| word-char | 68/100 | borderline 26/33, clean 11/27, toxic 31/40 |
+| baseline | 100/100 | borderline 23/23, clean 31/31, toxic 46/46 |
+| char-ngram | 54/100 | borderline 14/23, clean 8/31, toxic 32/46 |
+| word-char | 68/100 | borderline 18/23, clean 14/31, toxic 36/46 |

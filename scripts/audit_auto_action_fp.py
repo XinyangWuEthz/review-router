@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-"""Draw the human-audit sample of auto-action false positives from a run.
+"""Draw, then score, the human-audit sample of auto-action false positives.
 
     python scripts/audit_auto_action_fp.py --run reports/<run>-baseline --n 100
+    python scripts/audit_auto_action_fp.py --score analysis/auto_action_fp_audit
 
 A false positive here is an auto_action row whose triggering label(s) are 0
 in test_labels.csv (the same definition the auto_action precision uses). The
@@ -12,16 +13,31 @@ are proportional to the population, seeded, and written next to the sample.
 
 The verdict columns are left empty. Filling them is human work; the audit
 answers whether 0.904 measures model error or a looser labelling convention
-on the scored test rows.
+on the scored test rows. Drawing refuses to overwrite a sample that already
+carries verdicts.
+
+--score reads the filled sample and writes the "human" section of
+sample_meta.json: verdict counts, agreement with the pre-read, and the
+auto-action precision implied if the audited share of false positives that
+the human judged toxic held for all of them. Two rules are reported, because
+"borderline" is exactly where the two label conventions disagree:
+
+    implied precision = 1 - n_false_positive * (1 - share_counted_correct) / n_auto_action
+
+The 95% interval maps the Wilson interval of that share through the same
+formula. It ignores the finite-population correction (100 of 204 sampled), so
+it is conservative.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -29,6 +45,7 @@ import pandas as pd
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from review_router.data import LABELS  # noqa: E402
+from review_router.metrics import wilson_interval  # noqa: E402
 
 # Same fixed lexicon as record/diagnose.py; a hit is a text proxy, not a label.
 LEXICON = (
@@ -71,6 +88,71 @@ LEXICON = (
 LEX_PATTERN = re.compile(r"\b(" + "|".join(LEXICON) + r")\b", re.IGNORECASE)
 
 VERDICTS = ("toxic", "borderline", "clean")
+# Which verdicts count as "the model was right" under each relabelling rule.
+RULES: dict[str, tuple[str, ...]] = {
+    "toxic_only": ("toxic",),
+    "toxic_or_borderline": ("toxic", "borderline"),
+}
+AUTO_ACTION_FLOOR = 0.99
+
+
+def implied_precision(n_auto: int, n_fp: int, share_correct: float) -> float:
+    """Tier precision if share_correct of the false positives were really positive."""
+    return 1.0 - n_fp * (1.0 - share_correct) / n_auto
+
+
+def rows_needed_for_floor(n_auto: int, n_fp: int, n_sample: int, floor: float) -> int:
+    """Audited rows that must be judged toxic for the implied precision to reach floor."""
+    max_fp = math.floor(n_auto * (1.0 - floor) + 1e-9)
+    return math.ceil(n_sample * (1.0 - max_fp / n_fp) - 1e-9)
+
+
+def score(sample: pd.DataFrame, n_auto: int, n_fp: int) -> dict[str, Any]:
+    """Summarize a fully filled human_verdict column. Raises on blanks or unknown values."""
+    verdict = sample["human_verdict"].fillna("").astype(str).str.strip().str.lower()
+    unknown = sorted(set(verdict) - set(VERDICTS))
+    if unknown:
+        raise ValueError(f"human_verdict must be one of {VERDICTS} on every row; found {unknown}")
+    n = len(sample)
+    out: dict[str, Any] = {
+        "n": n,
+        "counts": {v: int((verdict == v).sum()) for v in VERDICTS},
+        "implied_precision": {},
+        "floor": AUTO_ACTION_FLOOR,
+        "rows_needed_toxic_for_floor": rows_needed_for_floor(n_auto, n_fp, n, AUTO_ACTION_FLOOR),
+    }
+    for name, correct in RULES.items():
+        k = int(verdict.isin(correct).sum())
+        lo, hi = wilson_interval(k, n)
+        out["implied_precision"][name] = {
+            "rows_counted_correct": k,
+            "precision": round(implied_precision(n_auto, n_fp, k / n), 4),
+            "precision_ci95": [
+                round(implied_precision(n_auto, n_fp, lo), 4),
+                round(implied_precision(n_auto, n_fp, hi), 4),
+            ],
+        }
+    if "preread_verdict" in sample.columns:
+        pre = sample["preread_verdict"].astype(str).str.strip().str.lower()
+        out["agreement_with_preread"] = round(float((pre == verdict).mean()), 4)
+        out["preread_to_human"] = {
+            f"{a}->{b}": int(((pre == a) & (verdict == b)).sum())
+            for a in VERDICTS
+            for b in VERDICTS
+            if a != b and ((pre == a) & (verdict == b)).any()
+        }
+    return out
+
+
+def score_dir(out_dir: Path) -> dict[str, Any]:
+    sample = pd.read_csv(out_dir / "sample.csv", dtype=str, keep_default_na=False)
+    meta_path = out_dir / "sample_meta.json"
+    meta = json.loads(meta_path.read_text())
+    human = score(sample, meta["n_auto_action"], meta["n_false_positive"])
+    human["protocol"] = meta.get("human", {}).get("protocol")
+    meta["human"] = human
+    meta_path.write_text(json.dumps(meta, indent=2, ensure_ascii=False) + "\n")
+    return human
 
 
 def false_positives(run: Path) -> pd.DataFrame:
@@ -109,12 +191,25 @@ def false_positives(run: Path) -> pd.DataFrame:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run", type=Path, required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--run", type=Path, help="draw a sample from this run directory")
+    mode.add_argument("--score", type=Path, help="score the filled sample in this directory")
     parser.add_argument("--data", type=Path, default=Path("data/jigsaw"))
     parser.add_argument("--n", type=int, default=100)
     parser.add_argument("--seed", type=int, default=20260922)
     parser.add_argument("--out", type=Path, default=Path("analysis/auto_action_fp_audit"))
+    parser.add_argument("--force", action="store_true", help="overwrite a sample with verdicts")
     args = parser.parse_args()
+
+    if args.score is not None:
+        print(json.dumps(score_dir(args.score), indent=2))
+        return
+
+    existing = args.out / "sample.csv"
+    if existing.exists() and not args.force:
+        verdicts = pd.read_csv(existing, dtype=str, keep_default_na=False).get("human_verdict")
+        if verdicts is not None and (verdicts.str.strip() != "").any():
+            raise SystemExit(f"{existing} already has human verdicts; pass --force to redraw")
 
     fp, n_auto = false_positives(args.run)
     test = pd.read_csv(args.data / "test.csv", dtype={"id": str}).set_index("id")
