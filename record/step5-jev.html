@@ -64,11 +64,12 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
 </style></head><body><main>
 <nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><a href="step4-features.html">第 4 步：误报复核与字符 n-gram</a><a href="step5-jev.html" aria-current="page">第 5 步：Jev 与词模型对照</a><span>第 6 步：独立人工评估，暂缓</span></nav>
 
-<span class="tag">第 5 步</span><span class="tag">对照尚未完成</span>
+<span class="tag">第 5 步</span><span class="tag">注册受限，实测暂缓</span>
 <h1>Jev 与词模型：固定样本的探索性对照</h1>
-<p class="lede">2026-09-23T09:10:54.612772+00:00 更新。目标是在相同数据和审核政策下，检查语义判断能否改善六标签分类与审核排序。现有 baseline 是 TF-IDF 加逻辑回归，本轮没有训练 BERT。</p>
-<div class="box"><b>当前结论：</b>尚无 Jev 预测，不能判断它是否改善分类或审核队列。默认仍保持 word。</div>
-<p>2026-09-23：环境尚未配置 TypeSafe API 凭据。已完成配对 word 基线与离线接入测试，未发送真实 Jev 请求。测试中的模拟响应只验证代码，不作为模型效果证据。</p>
+<p class="lede">2026-09-23T09:30:44.405911+00:00 更新。目标是在相同数据和审核政策下，检查语义判断能否改善六标签分类与审核排序。现有 baseline 是 TF-IDF 加逻辑回归，本轮没有训练 BERT。</p>
+<div class="box"><b>当前结论：</b>因 TypeSafe 注册暂不可用，Jev 实测暂缓。尚无真实 Jev 预测，不能判断它是否改善分类或审核队列。默认仍保持 word。</div>
+<p>2026-09-23：项目负责人反馈注册页面提示容量已满，暂时无法注册并取得 API 访问，因此尚未尝试真实 Jev 调用。已完成配对 word 基线与离线接入测试；测试中的模拟响应只验证代码，不作为模型效果证据。</p>
+<div class="box warn"><p>项目负责人注册时看到以下提示，目前无法完成注册，因此尚未尝试真实 Jev 调用。</p><blockquote>Whoops, we&#x27;re full - check https://x.com/typesafeai for more information!</blockquote><p>提示指向 <a href="https://x.com/typesafeai">TypeSafe 官方动态</a>。此处记录用户遇到的访问限制；尚无模型效果结果，不能据此评价 Jev 的好坏。</p></div>
 
 <div class="toc"><a href="#design">实验设计</a><a href="#samples">固定样本</a><a href="#results">当前结果</a><a href="#comparison">公平比较</a><a href="#cost">成本与复现边界</a><a href="#repro">复现命令</a></div>
 <h2 id="design">实验设计</h2>
@@ -95,7 +96,7 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
 <h2 id="repro">复现命令</h2>
 <pre><code># 准备固定样本并运行配对 word 对照，不调用 API
 python scripts/run_jev_experiment.py --prepare-only
-# 配好本地 TYPESAFE_API_KEY 后执行真实请求，成功响应会缓存
+# 注册恢复并取得 API 访问后，配置 TYPESAFE_API_KEY 再执行真实请求
 python scripts/run_jev_experiment.py --allow-network
 # 只用缓存重放，缺失时停止
 python scripts/run_jev_experiment.py

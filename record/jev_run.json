@@ -1,6 +1,6 @@
 {
-  "updated_utc": "2026-09-23T09:10:54.612772+00:00",
-  "status": "awaiting_jev_scores",
+  "updated_utc": "2026-09-23T09:30:44.405911+00:00",
+  "status": "blocked_registration",
   "protocol": {
     "scope": "exploratory paired pilot on original Jigsaw labels; not a fresh holdout",
     "model": "jev-1.13.0",
@@ -527,7 +527,7 @@
     }
   },
   "jev": null,
-  "conclusion_zh": "尚无 Jev 预测，不能判断它是否改善分类或审核队列。默认仍保持 word。",
+  "conclusion_zh": "因 TypeSafe 注册暂不可用，Jev 实测暂缓。尚无真实 Jev 预测，不能判断它是否改善分类或审核队列。默认仍保持 word。",
   "selection_rule": {
     "min_predicted_positives": 30,
     "precision_targets": {
@@ -535,7 +535,7 @@
       "priority_review": 0.95
     }
   },
-  "execution_note_zh": "2026-09-23：环境尚未配置 TypeSafe API 凭据。已完成配对 word 基线与离线接入测试，未发送真实 Jev 请求。测试中的模拟响应只验证代码，不作为模型效果证据。",
+  "execution_note_zh": "2026-09-23：项目负责人反馈注册页面提示容量已满，暂时无法注册并取得 API 访问，因此尚未尝试真实 Jev 调用。已完成配对 word 基线与离线接入测试；测试中的模拟响应只验证代码，不作为模型效果证据。",
   "verification": {
     "tests_passed": 315,
     "tests_skipped": 3,
@@ -545,5 +545,12 @@
     "full_baseline_run": "20260923T091213816605Z-human-review-baseline",
     "full_baseline_note_zh": "完整 63,978 条测试行上的八个指标区块与已保存的人工审核 baseline 完全一致，仍有 6,310 条送审。全套测试使用此真实数据报告，包含固定语料哈希和回归门槛检查。",
     "scope_zh": "这些检查验证接入代码与现有流程；它们不证明 Jev 的真实准确率、延迟或在线接口兼容性。"
+  },
+  "access_blocker": {
+    "reported_date": "2026-09-23",
+    "source": "user-reported registration message",
+    "message": "Whoops, we're full - check https://x.com/typesafeai for more information!",
+    "information_url": "https://x.com/typesafeai",
+    "live_jev_attempted": false
   }
 }

@@ -144,6 +144,8 @@ JEV = json.loads(JEV_PATH.read_text()) if JEV_PATH.is_file() else None
 if JEV is not None and FEATURES is not None and HUMAN_RUN is not None:
     STEPS.append((
         "step5-jev.html", "第 5 步：Jev 与词模型对照",
+        "注册容量已满，Jev 实测暂缓；已完成固定样本、接入代码与配对 word 基线"
+        if JEV["status"] == "blocked_registration" else
         "固定样本、问题和政策，比较六标签概率及有限审核容量下的表现",
     ))
     PENDING = (
@@ -1251,6 +1253,17 @@ def build_step5() -> None:
     protocol = data["protocol"]
     done = data["status"] == "completed_exploratory"
     status = "已完成探索性对照" if done else "对照尚未完成"
+    if data["status"] == "blocked_registration":
+        status = "注册受限，实测暂缓"
+    access = data.get("access_blocker")
+    access_note = (
+        '<div class="box warn"><p>项目负责人注册时看到以下提示，'
+        '目前无法完成注册，因此尚未尝试真实 Jev 调用。</p>'
+        f"<blockquote>{escape(access['message'])}</blockquote>"
+        f"<p>提示指向 <a href=\"{escape(access['information_url'], quote=True)}\">"
+        "TypeSafe 官方动态</a>。此处记录用户遇到的访问限制；"
+        "尚无模型效果结果，不能据此评价 Jev 的好坏。</p></div>"
+    ) if access else ""
     count_rows = "".join(
         f"<tr><td>{escape(name)}</td><td class='n'>{counts['rows']:,}</td>"
         + "".join(f"<td class='n'>{counts[label]:,}</td>" for label in LABELS) + "</tr>"
@@ -1387,6 +1400,7 @@ def build_step5() -> None:
 <p class="lede">{escape(data['updated_utc'])} 更新。目标是在相同数据和审核政策下，检查语义判断能否改善六标签分类与审核排序。现有 baseline 是 TF-IDF 加逻辑回归，本轮没有训练 BERT。</p>
 <div class="box"><b>当前结论：</b>{escape(data['conclusion_zh'])}</div>
 {'<p>' + escape(data['execution_note_zh']) + '</p>' if data.get('execution_note_zh') else ''}
+{access_note}
 {failure_note}
 <div class="toc"><a href="#design">实验设计</a><a href="#samples">固定样本</a><a href="#results">当前结果</a><a href="#comparison">公平比较</a><a href="#cost">成本与复现边界</a><a href="#repro">复现命令</a></div>
 <h2 id="design">实验设计</h2>
@@ -1413,7 +1427,7 @@ def build_step5() -> None:
 <h2 id="repro">复现命令</h2>
 <pre><code># 准备固定样本并运行配对 word 对照，不调用 API
 python scripts/run_jev_experiment.py --prepare-only
-# 配好本地 TYPESAFE_API_KEY 后执行真实请求，成功响应会缓存
+# 注册恢复并取得 API 访问后，配置 TYPESAFE_API_KEY 再执行真实请求
 python scripts/run_jev_experiment.py --allow-network
 # 只用缓存重放，缺失时停止
 python scripts/run_jev_experiment.py
