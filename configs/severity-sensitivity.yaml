@@ -1,0 +1,14 @@
+version: 1
+# Declared before running this sweep, after earlier benchmark inspection.
+# This is a bounded stress test, not a search for new default weights.
+loads_per_hour: [108, 180]
+seeds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+simulation: {reviewers: 4, handle_minutes: 2.0, horizon_hours: 8.0}
+high_risk_labels: [severe_toxic, threat, identity_hate]
+evaluation_weights: {toxic: 1, severe_toxic: 5, obscene: 2, threat: 10, insult: 2, identity_hate: 6}
+ordering_weights:
+  default: {toxic: 1, severe_toxic: 5, obscene: 2, threat: 10, insult: 2, identity_hate: 6}
+  flat: {toxic: 1, severe_toxic: 1, obscene: 1, threat: 1, insult: 1, identity_hate: 1}
+  compressed: {toxic: 1, severe_toxic: 3, obscene: 1.5, threat: 5.5, insult: 1.5, identity_hate: 3.5}
+  expanded: {toxic: 1, severe_toxic: 9, obscene: 3, threat: 19, insult: 3, identity_hate: 11}
+  threat_lower: {toxic: 1, severe_toxic: 5, obscene: 2, threat: 5, insult: 2, identity_hate: 6}

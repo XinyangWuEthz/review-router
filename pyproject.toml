@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "review-router"
 version = "0.1.0"
-description = "Capacity-constrained content-policy router: expert-signal fusion, graduated enforcement tiers, and a review-queue simulation."
+description = "Human-confirmed review router over a frozen classifier, with capacity-constrained queue evaluation."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

@@ -609,15 +609,64 @@ def render(run_dir: Path, policy_path: Path | None = None) -> str:
     return "\n".join(lines)
 
 
+def render_compact(run_dir: Path) -> str:
+    """Keep the README to a small outcome table; the full renderer remains available."""
+    report = json.loads((run_dir / "report.json").read_text())
+    if report.get("evaluate_test") is False:
+        raise ValueError("development run: test rows not scored, so there are no results to render")
+    if PRIORITY not in load_policy(run_dir / "policy.yaml").tiers:
+        return render(run_dir)
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    sim = report.get("simulation", {})
+    primary = sim.get("primary", {})
+    thesis = sim.get("thesis", primary)
+    strategy, load = primary.get("strategy"), thesis.get("load_per_hour")
+    summary = sim.get("summary", {})
+    workload = report.get("review_workload", {})
+    band = report.get("tiers", {}).get(PRIORITY, {})
+
+    def mean(arm: str, field: str) -> str:
+        return fmt(summary.get(f"{arm}@{load:g}", {}).get(field, {}).get("mean"), 1) if finite(load) else "n/a"
+
+    def percent(value: Any) -> str:
+        return f"{100 * value:.2f}%" if finite(value) else "n/a"
+
+    commit = manifest.get("git_commit") or "unavailable"
+    lines = ["## Review-routing results", ""]
+    if report.get("synthetic"):
+        lines += ["**SYNTHETIC corpus: pipeline check only.**", ""]
+    if manifest.get("git_dirty"):
+        lines += ["Working-tree run; not a clean-commit acceptance result.", ""]
+    lines += [
+        f"Run `{manifest['run_id']}`, evaluation commit `{commit[:12]}`. "
+        f"The baseline uses {len(sim.get('assumptions', {}).get('seeds', []))} shared arrival seeds; "
+        f"queue results are per {fmt(sim.get('assumptions', {}).get('horizon_hours'), 0)}-hour shift.", "",
+        "| Measure | Default router | Comparison or cost |",
+        "|---|---:|---|",
+        f"| Sent to human review | {fmt(workload.get('n_requires_human_review'))} / {fmt(workload.get('n_total'))}, {percent(workload.get('review_fraction'))} | Both bands consume reviewer capacity |",
+        f"| Priority-band label precision | {percent(band.get('precision'))} | {fmt(band.get('n_predicted_positive'))} comments; human confirmation required |",
+        f"| High-risk labels reaching review | {percent(workload.get('high_risk_recall_into_queue'))} | Measured against original Jigsaw labels |",
+        f"| High-risk completed at {fmt(load, 0)}/h | {mean(str(strategy), 'high_risk_handled')} | FIFO {mean('fifo', 'high_risk_handled')}; probability {mean('prob', 'high_risk_handled')}; band-first {mean('priority', 'high_risk_handled')} |",
+        f"| All reviews completed at {fmt(load, 0)}/h | {mean(str(strategy), 'n_handled')} | FIFO {mean('fifo', 'n_handled')}; ordering redistributes capacity |",
+        f"| Unfinished high-risk jobs at {fmt(load, 0)}/h | {mean(str(strategy), 'high_risk_unhandled')} | FIFO {mean('fifo', 'high_risk_unhandled')} |",
+        "",
+        f"Arrival rates count admitted review jobs. High risk follows the source definition: {sim.get('assumptions', {}).get('high_risk', 'unavailable')}. These are simulated outcomes on an "
+        "already-inspected benchmark, not measured real-world harm reduction. "
+        "[Full results and qualifications](record/step6-priority.html).",
+    ]
+    return "\n".join(lines)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("run_dir", type=Path)
     parser.add_argument("--readme", type=Path, default=Path(__file__).resolve().parent.parent / "README.md")
     parser.add_argument("--policy", type=Path, default=None,
                         help="explicit comparison-gate override; defaults to run_dir/policy.yaml; tier targets always use the run snapshot")
+    parser.add_argument("--detailed", action="store_true", help="render all diagnostics and gates instead of the compact README table")
     args = parser.parse_args()
     try:
-        block = render(args.run_dir, args.policy)
+        block = render(args.run_dir, args.policy) if args.detailed or args.policy else render_compact(args.run_dir)
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
     text = args.readme.read_text(encoding="utf-8")

@@ -1,6 +1,11 @@
 {
   "version": 1,
   "artifact_dir": "../models/frozen-baseline",
+  "release": {
+    "repository": "XinyangWuEthz/review-router",
+    "tag": "v0.1.0",
+    "asset": "frozen-baseline-v0.1.0.zip"
+  },
   "source_run_url": "https://github.com/XinyangWuEthz/review-router/actions/runs/35857528118",
   "source_artifact": "evaluation-210d9857220b23d175d4aff5a54ab221ad86280b",
   "files": {
