@@ -158,6 +158,11 @@ def score_dir(out_dir: Path) -> dict[str, Any]:
 def false_positives(run: Path) -> pd.DataFrame:
     pred = pd.read_csv(run / "predictions.csv", dtype={"id": str})
     thresholds = json.loads((run / "thresholds.json").read_text())
+    if "auto_action" not in thresholds:
+        raise SystemExit(
+            f"{run} has no auto_action tier (policy v2 routes every flag to human review); "
+            "this audit applies to round-1 runs"
+        )
     auto = thresholds["auto_action"]
     sub = thresholds.get("subgroup", {}).get("auto_action", {}).get("identity_term_present", {})
     rows = pred[pred.final_tier == "auto_action"].copy()

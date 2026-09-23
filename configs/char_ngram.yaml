@@ -1,4 +1,4 @@
-# Round-2 variant A: character n-grams only. Differs from baseline.yaml in model.analyzer only.
+# Round-2 variant: character n-grams only. Differs from baseline.yaml only in the model.analyzer block.
 label: char-ngram
 data_dir: data/jigsaw          # train.csv, test.csv, test_labels.csv (official Jigsaw 2018)
 output_dir: reports
@@ -7,7 +7,7 @@ seed: 20260922
 split:                          # of train.csv; scored test rows are held out entirely
   train: 0.6                    # TF-IDF vocabulary + six logistic heads
   calib: 0.2                    # Platt calibration
-  thresh: 0.2                   # tier thresholds from precision floors
+  thresh: 0.2                   # tier thresholds from empirical precision targets
 
 model:
   max_features: 200000
@@ -19,7 +19,7 @@ model:
   char_ngram_max: 5
   char_max_features: 300000
 
-policy: review_router/policy.yaml   # precision floors, severity weights, rules
+policy: review_router/policy.yaml   # review targets, severity weights, rules
 
 simulation:                     # assumptions, not measurements
   reviewers: 4
@@ -30,7 +30,7 @@ simulation:                     # assumptions, not measurements
   high_risk_min_weight: 5       # threat (10), identity_hate (6), severe_toxic (5)
   primary:                      # near-capacity load the queue-clearing gates read, and the
     load_per_hour: 108          # router strategy compared against fifo on time-to-action
-    strategy: severity
+    strategy: priority
   thesis_load_per_hour: 180     # overload where ordering changes harm handled per reviewer-hour
   headline:                     # the ONE time metric the protocol selects for reporting
     metric: wait                # wait = start of review - arrival; completion_latency = completion - arrival
