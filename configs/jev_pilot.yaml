@@ -1,0 +1,15 @@
+# Frozen exploratory comparison; no manual relabelling or new acceptance floors.
+baseline_config: configs/baseline.yaml
+questions: configs/jev_questions.json
+model: jev-1.13.0
+sample_seed: 20260923
+sample_sizes:
+  calib: 4000
+  thresh: 8000
+  test: 10000
+cache_dir: reports/jev-cache
+analysis_dir: analysis/jev
+bootstrap_replicates: 2000
+workers: 8
+requests_per_second: 10
+input_usd_per_million_tokens: 0.042

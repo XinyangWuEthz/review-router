@@ -214,9 +214,14 @@ def equal_input_loads(reference_fraction: float, review_loads: list[float]) -> l
     return [load / reference_fraction for load in review_loads]
 
 
-def _mean_std(values: list[float]) -> dict[str, float]:
-    arr = np.asarray(values, dtype=float)
-    return {"mean": float(arr.mean()), "std": float(arr.std(ddof=1)) if len(arr) > 1 else 0.0}
+def _mean_std(values: list[float | None]) -> dict[str, float | int | None]:
+    """Summarize defined metrics without treating an empty denominator as zero."""
+    arr = np.asarray([value for value in values if value is not None], dtype=float)
+    return {
+        "mean": float(arr.mean()) if len(arr) else None,
+        "std": float(arr.std(ddof=1)) if len(arr) > 1 else None,
+        "valid_n": len(arr),
+    }
 
 
 STREAM_FIELDS = (
@@ -239,7 +244,7 @@ def _stream_metrics(
     sim_cfg: SimConfig,
     strategy: str,
     seed: int,
-) -> dict[str, float]:
+) -> dict[str, float | None]:
     """One run's review of one shared comment stream."""
     ctx = item["_stream"]
     admitted = ctx["flagged"][row]
@@ -261,7 +266,7 @@ def _stream_metrics(
     left_in_allow = int((ctx["high_risk_all"][row] & ~admitted).sum())
     return {
         "review_arrivals": float(len(records)),
-        "completion_ratio": float(res["completion_ratio"]),
+        "completion_ratio": res["completion_ratio"],
         "backlog_end": float(res["backlog_end"]),
         "positives_completed_per_hour": float(
             (ctx["positive"][records.job_index] & completed).sum()
@@ -311,7 +316,7 @@ def shared_stream(items: list[dict[str, Any]], input_rates: list[float]) -> dict
         _prepare_stream(item)
     n_rows = len(ids)
     labels = [i["label"] for i in items]
-    raw: dict[str, dict[str, dict[str, dict[str, list[float]]]]] = {
+    raw: dict[str, dict[str, dict[str, dict[str, list[float | None]]]]] = {
         lb: {f"{r:.1f}": {s: {} for s in EQUAL_INPUT_STRATEGIES} for r in input_rates}
         for lb in labels
     }
@@ -368,10 +373,19 @@ def shared_stream(items: list[dict[str, Any]], input_rates: list[float]) -> dict
     }
 
 
-def _paired(a: list[float], b: list[float]) -> dict[str, float]:
-    d = np.asarray(a, dtype=float) - np.asarray(b, dtype=float)
-    se = float(d.std(ddof=1) / math.sqrt(len(d))) if len(d) > 1 else 0.0
-    return {"mean": float(d.mean()), "se": se}
+def _paired(
+    a: list[float | None], b: list[float | None]
+) -> dict[str, float | int | None]:
+    """Pair by seed, using only seeds where both metrics are defined."""
+    d = np.asarray(
+        [x - y for x, y in zip(a, b, strict=True) if x is not None and y is not None],
+        dtype=float,
+    )
+    return {
+        "mean": float(d.mean()) if len(d) else None,
+        "se": float(d.std(ddof=1) / math.sqrt(len(d))) if len(d) > 1 else None,
+        "valid_n": len(d),
+    }
 
 
 def audit_overlap(items: list[dict[str, Any]], audit: Path) -> dict[str, Any]:
@@ -400,7 +414,10 @@ def _f(value: Any, digits: int = 3) -> str:
     if value is None or (isinstance(value, float) and math.isnan(value)):
         return "n/a"
     if isinstance(value, dict) and "mean" in value:
-        return f"{value['mean']:.{digits}f} ± {value['std']:.{digits}f}"
+        count = f" (n={value['valid_n']})" if "valid_n" in value else ""
+        if value["mean"] is None:
+            return "n/a" + count
+        return f"{_f(value['mean'], digits)} ± {_f(value['std'], digits)}" + count
     if isinstance(value, float):
         return f"{value:.{digits}f}"
     return str(value)
@@ -409,18 +426,19 @@ def _f(value: Any, digits: int = 3) -> str:
 def to_markdown(summary: list[dict[str, Any]], extra: dict[str, Any]) -> str:
     lines = ["# Run comparison (scored test rows)", ""]
     lines.append(
-        "| run | analyzer | commit | tier | n | coverage | test precision (95% CI) "
+        "| run | model | commit | tier | n | coverage | test precision (95% CI) "
         "| selection precision |"
     )
     lines.append("|---|---|---|---|---:|---:|---|---:|")
     for s in summary:
         commit = (s["git_commit"] or "")[:8] + (" dirty" if s["git_dirty"] else "")
         for tier, t in s["tiers"].items():
-            ci = t["test_precision_ci95"] or [float("nan")] * 2
+            ci = t["test_precision_ci95"] or [None, None]
+            model = s["model"].get("model_name") or s["model"].get("analyzer", "word")
             lines.append(
-                f"| {s['label']} | {s['model'].get('analyzer', 'word')} | {commit} | {tier} | "
+                f"| {s['label']} | {model} | {commit} | {tier} | "
                 f"{t['test_n_predicted_positive']} | {t['test_coverage']:.4f} | "
-                f"{_f(t['test_precision'])} [{ci[0]:.3f}, {ci[1]:.3f}] | "
+                f"{_f(t['test_precision'])} [{_f(ci[0])}, {_f(ci[1])}] | "
                 f"{_f(t['selection_precision'])} |"
             )
     if all("review_workload" in s for s in summary):
@@ -429,10 +447,10 @@ def to_markdown(summary: list[dict[str, Any]], extra: dict[str, Any]) -> str:
         lines.append("|---|---:|---:|---|")
         for s in summary:
             w = s["review_workload"]
-            ci = w["precision_ci95"]
+            ci = w["precision_ci95"] or [None, None]
             lines.append(
                 f"| {s['label']} | {w['n_requires_human_review']} | {w['review_fraction']:.4f} | "
-                f"{w['precision']:.3f} [{ci[0]:.3f}, {ci[1]:.3f}] |"
+                f"{_f(w['precision'])} [{_f(ci[0])}, {_f(ci[1])}] |"
             )
     lines += ["", "## Where the positives went", ""]
     lines.append(
@@ -461,8 +479,8 @@ def to_markdown(summary: list[dict[str, Any]], extra: dict[str, Any]) -> str:
     ]
     lines.append("|---|" + "---:|" * (2 * len(summary)))
     for lb in LABELS:
-        aps = " | ".join(f"{s['per_label'][lb]['average_precision']:.3f}" for s in summary)
-        aucs = " | ".join(f"{s['per_label'][lb]['roc_auc']:.3f}" for s in summary)
+        aps = " | ".join(_f(s["per_label"][lb]["average_precision"]) for s in summary)
+        aucs = " | ".join(_f(s["per_label"][lb]["roc_auc"]) for s in summary)
         lines.append(f"| {lb} | {aps} | {aucs} |")
     mv = extra.get("matched_volume")
     if mv:
@@ -502,6 +520,7 @@ def to_markdown(summary: list[dict[str, Any]], extra: dict[str, Any]) -> str:
             "",
             "One incoming comment stream per seed, shared by every run. Each run reviews what it",
             "flags; high-risk comments it leaves in allow count as not reviewed. Mean ± sample SD.",
+            "Undefined metrics remain n/a; n counts defined seeds, or jointly defined pairs.",
             "",
         ]
         lines.append("| run | input/h | strategy | " + " | ".join(STREAM_FIELDS) + " |")
@@ -518,7 +537,11 @@ def to_markdown(summary: list[dict[str, Any]], extra: dict[str, Any]) -> str:
             for rate, per in block.items():
                 for strategy in EQUAL_INPUT_STRATEGIES:
                     cells = " | ".join(
-                        f"{per[strategy][f]['mean']:+.2f} ± {per[strategy][f]['se']:.2f}"
+                        (
+                            f"{per[strategy][f]['mean']:+.2f} ± {_f(per[strategy][f]['se'], 2)}"
+                            if per[strategy][f]["mean"] is not None else "n/a"
+                        )
+                        + f" (n={per[strategy][f]['valid_n']})"
                         for f in STREAM_FIELDS
                     )
                     lines.append(f"| {float(rate):.0f} | {strategy} | {cells} |")

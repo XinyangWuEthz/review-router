@@ -14,6 +14,7 @@ import json
 import re
 import sys
 from html import escape, unescape
+from math import ceil
 from pathlib import Path
 from typing import Any
 
@@ -137,6 +138,18 @@ if FEATURES is not None and HUMAN_RUN is not None:
         "仅保留为可选方向，尚未启动；待资源允许时再决定是否开展，不影响当前保留 word 的决定",
     )
     PENDING_STATUS = "暂缓"
+
+JEV_PATH = HERE / "jev_run.json"
+JEV = json.loads(JEV_PATH.read_text()) if JEV_PATH.is_file() else None
+if JEV is not None and FEATURES is not None and HUMAN_RUN is not None:
+    STEPS.append((
+        "step5-jev.html", "第 5 步：Jev 与词模型对照",
+        "固定样本、问题和政策，比较六标签概率及有限审核容量下的表现",
+    ))
+    PENDING = (
+        "第 6 步：独立人工评估",
+        "继续暂缓；本轮沿用原始标签，尚不能证明实际送审价值改善",
+    )
 
 
 DEFERRED_REVIEW_EVALUATION = """
@@ -705,13 +718,14 @@ def build_current_index() -> None:
     body = f"""
 <span class="tag">项目记录</span><span class="tag">当前：人工确认</span>
 <h1>review-router 项目记录</h1>
-<p class="lede">按步骤记录实验设计、测量结果和决定。前两页保留自动处置实验；第三页记录改成人工确认后的新流程与评估{'；第四页记录误报人工复核和字符特征探索' if len(STEPS) > 3 else ''}。</p>
+<p class="lede">按步骤记录实验设计、测量结果和决定。前两页保留自动处置实验；第三页记录改成人工确认后的新流程与评估{'；第四页记录误报人工复核和字符特征探索' if len(STEPS) > 3 else ''}{'；第五页记录 Jev 对照的进展与结果' if len(STEPS) > 4 else ''}。</p>
 <h2>当前项目在做什么</h2>
 <p>系统将评论分为放行、普通人工审核、优先人工审核。高置信预测及规则标记的高风险评论进入优先档；任何处置都需要人工确认，两个人工档都占用审核容量。</p>
 <p>本轮共评估 {workload["n_total"]:,} 条评论，{workload["n_requires_human_review"]:,} 条进入人工审核，占 {100 * workload["review_fraction"]:.2f}%。这些数字描述保存的评估运行，实际人工审核质量仍待验证。</p>
 {'<p>当前决定是默认保持词特征 <code>word</code>。独立审核价值人工评估集仅记录为后续可选方向，因工作量较大而暂缓，尚未启动；本次不改变数据标签或验收门槛。</p>' if FEATURES is not None else ''}
 <div class="box">99% 是首轮自动处置实验的历史要求。当前 95% 与 90% 是选择集上的分档参数；测试精确率如实报告，项目不再以达到 99% 来判定人工辅助方案是否有效。</div>
 <h2>步骤</h2><ol class="steps">{steps}<li>{PENDING[0]}，{PENDING_STATUS}。{PENDING[1]}。</li></ol>
+{'<p>补充研究依据：<a href="step4-features.html#label-quality-reference">Jigsaw 的非预期偏差指标与标签可靠性前提</a>。记录为何需要复核标签质量，以及论文不能替本项目证明的部分。</p>' if FEATURES is not None else ''}
 {DEFERRED_REVIEW_EVALUATION}
 <h2>重新生成页面</h2>
 <pre><code>python -m pip install -e ".[ml,analysis]"
@@ -1124,7 +1138,7 @@ def build_step4() -> None:
 <span class="tag">第 4 步</span><span class="tag">round 2</span><span class="tag">政策 v1 与 v2</span>
 <h1>误报人工复核与字符 n-gram</h1>
 <p class="lede">第二步发现自动处置在测试集上的精确率是 0.904，达不到 0.99。这一步调查标注口径和拼写变体两种可能的解释：人工复核部分误报，并比较字符 n-gram 特征。两项检查都不能单独确认首轮差距的原因。</p>
-<div class="toc"><a href="#why">为什么做这一步</a><a href="#audit">误报人工复核</a><a href="#what">字符 n-gram 改了什么</a><a href="#r1">首轮设计下的结果</a><a href="#v2">v2 设计下的结果</a>{'<a href="#verify">独立复核</a>' if ver else ''}<a href="#decision">结论与决定</a><a href="#repro">如何复现</a></div>
+<div class="toc"><a href="#why">为什么做这一步</a><a href="#audit">误报人工复核</a><a href="#label-quality-reference">标签质量疑点与研究依据</a><a href="#what">字符 n-gram 改了什么</a><a href="#r1">首轮设计下的结果</a><a href="#v2">v2 设计下的结果</a>{'<a href="#verify">独立复核</a>' if ver else ''}<a href="#decision">结论与决定</a><a href="#repro">如何复现</a></div>
 
 <h2 id="why">为什么做这一步</h2>
 <p>第二步的诊断留下两个调查方向。词典命中后被标为 toxic 的比例，选择集是 0.76，测试集是 0.51；这可能涉及评论内容或标注口径差异，不能直接证明测试集标注更宽松。测试集的 OOV 比例约是选择集的两倍，提示可以尝试字符特征，但尚不能说明拼写变体造成了多少误报。</p>
@@ -1148,6 +1162,21 @@ def build_step4() -> None:
 <tr><td>假定 toxic 和 borderline 都应算正确</td><td class='n'>{f(implied['toxic_or_borderline']['precision'])}</td><td>{ci(implied['toxic_or_borderline']['precision_ci95'])}</td></tr></table>
 <p>在上述假设下，要达到 0.99，{audit['n_auto_action']:,} 条自动处置里最多只能有 {int(audit['n_auto_action'] * 0.01)} 条误报，换算到样本上至少要有 {human['rows_needed_toxic_for_floor']} 条被改计为正确。实际判为 toxic 的有 {human['counts']['toxic']} 条，合并 borderline 也只有 {human['counts']['toxic'] + human['counts']['borderline']} 条。区间由 Wilson 区间近似换算，未计入分层抽样、有限总体修正或人工判断的不确定性，不能视为完整的不确定性估计。</p>
 <div class="box">按本次人工复核口径，样本中仍有 {human['counts']['clean']} 条被判为 clean，不能把这些误报都解释为测试集漏标。攻击对象和语境是值得继续检查的因素；这次复核没有证明词袋特征必然无法识别它们，也没有量化各因素对总体缺口的贡献。</div>
+
+<h2 id="label-quality-reference">标签质量疑点与研究依据</h2>
+<p>2026-09-23 补充。Daniel Borkan 等，Jigsaw，2019：<a href="https://arxiv.org/abs/1903.04561">Nuanced Metrics for Measuring Unintended Bias with Real Data for Text Classification</a>。中文题意为“利用真实数据细致衡量文本分类中的非预期偏差”。发表于 WWW 2019 Companion，<a href="https://doi.org/10.1145/3308560.3317593">DOI</a>。</p>
+<h3>论文提供的依据</h3>
+<p>论文指出，毒性判断复杂且带有主观性；标注者偏见、用户构成和样本选择都可能造成模型学到不当关联。作者明确承认，跨群体的可靠测试标签是重要前提，并非所有应用都满足。这支持检查标签与抽样过程，不能直接证明本项目某条标签错误。见<a href="https://storage.googleapis.com/gweb-research2023-media/pubtools/5007.pdf#page=1">第 1 节</a>。</p>
+<p>论文的三个 AUC 指标不依赖某个固定阈值。这里的群体指评论所提及的身份群体，背景是该群体之外的评论；阳性和阴性均按评估标签划分。见<a href="https://storage.googleapis.com/gweb-research2023-media/pubtools/5007.pdf#page=3">第 3.1 节</a>。</p>
+<table><tr><th>指标</th><th>比较哪些样本</th><th>低值提示什么</th></tr>
+<tr><td>Subgroup AUC</td><td>群体内部的阳性与阴性</td><td>群体内部的区分能力较弱</td></tr>
+<tr><td>BPSN AUC</td><td>背景阳性与群体阴性</td><td>群体阴性相对背景阳性被排得过高，可能导致误报</td></tr>
+<tr><td>BNSP AUC</td><td>背景阴性与群体阳性</td><td>群体阳性相对背景阴性被排得过低，可能导致漏报</td></tr></table>
+<p>它们检查模型排序与标签的关系，不能单独鉴定标签质量，也不等于某个阈值下的 FPR 或 FDR。论文第 4.4 节还保留了标注者“难以判断”的选项，提醒我们不要把所有分歧都当成确定的标错。</p>
+<h3>与本项目的关系</h3>
+<p>本项目怀疑标签不足以支撑当前任务，有两类本地依据。第一，已有误报审计中，{human['counts']['toxic']} 条被复核为 toxic、{human['counts']['borderline']} 条为 borderline，说明原标签与本次判定口径存在分歧；但样本只来自历史误报，且由看过预读结果的一人复核，无法估计全测试集的标签错误率。第二，“值得送人工审核”与“已有毒性阳性标签”并不等价：含糊或需要语境的评论可能值得送审，最终却没有确认违规。这属于评估目标与标签含义的差异，不一定是原标签标错。</p>
+<p>论文使用了另行构建、带身份标注的真实评论数据，不能把它的结论直接套到本项目的 Jigsaw 2018 测试行。当前身份词匹配只是代理分组，并不等同于论文的人工身份标注。</p>
+<div class="box">记录结论：标签可靠性和任务适配性值得复核，但模型偏差、标注分歧与任务口径不一致需要分别判断。目前保留原始标签与现行验收门槛；本文仅作为研究依据记录，不新增 AUC 实现。独立人工评估集继续<a href="#future-review-evaluation">暂缓</a>。</div>
 
 <h2 id="what">字符 n-gram 改了什么</h2>
 <p>模型配置新增 <code>model.analyzer</code>：<code>word</code> 是原来的词级 TF-IDF；<code>char_wb</code> 是词边界内的 2 到 5 字符片段；<code>word+char_wb</code> 把两组特征并排。下游的六个逻辑回归、Platt 校准、阈值选择和路由都不变。对比用的配置只在这几行上与 baseline 不同。</p>
@@ -1201,7 +1230,7 @@ def build_step4() -> None:
 <li><b>还需要评估阈值与容量的取舍。</b>候选的额外审核量和未通过的回归项尚未解决。若以后重启比较，应在开发数据上选择候选方案，另留独立数据评估，不能为了让候选通过而调整当前测试门槛。</li>
 <li><b>证据只有一次训练、一份测试集。</b>区间以这两个训练好的模型为条件，没有估计重新训练带来的方差。</li></ul>
 <p><b>之前的说法哪里不对：</b>最初的判断是“收益主要来自多标记，把词模型阈值调低也能得到”。复核不支持把这句话用于高风险评论：相同标记量下仍有排序收益；把词模型阈值调到同样条数，高风险只多抓约 17 到 20 条，而且会让两项精确率门槛不通过。因此，本次保留 word 同时考虑了计算成本、审核容量和证据范围；字符特征在这些运行中的收益仍如实保留。</p>
-<p><b>后续安排：</b>当前继续使用 <code>word</code>，不启动新增采样或人工标注，也不修改现行门槛。第 5 步仅保留为可选方向，暂缓且尚未启动。若以后决定开展独立数据验证，可再考虑是否将 word+char 纳入候选，并事先确定比较方法和验收要求。</p>
+<p><b>后续安排：</b>当前继续使用 <code>word</code>，不启动新增独立数据采集或人工标注，也不修改现行门槛。独立数据验证仅保留为可选方向，暂缓且尚未启动。若以后决定开展，可再考虑是否将 word+char 纳入候选，并事先确定比较方法和验收要求。</p>
 {DEFERRED_REVIEW_EVALUATION}
 <h2 id="repro">如何复现</h2>
 <pre><code>python scripts/audit_auto_action_fp.py --score analysis/auto_action_fp_audit
@@ -1212,7 +1241,189 @@ python record/collect_runs.py --features analysis
 python record/render.py</code></pre>
 <p class="prov">v2 运行 <code>{escape(cw['run_id'])}</code> 与 <code>{escape(cwc['run_id'])}</code>，commit <code>{cw['git_commit'][:12]}</code>，工作区干净。本页读取 <a href="features_run.json">features_run.json</a>，它由 <code>analysis/</code> 下的对比结果和人工复核结果汇总而来。</p>
 """
-    page(STEPS[3][0], STEPS[3][1], body, STEPS[2], None)
+    page(STEPS[3][0], STEPS[3][1], body, STEPS[2], STEPS[4] if len(STEPS) > 4 else None)
+
+
+def build_step5() -> None:
+    if JEV is None or len(STEPS) < 5:
+        return
+    data = JEV
+    protocol = data["protocol"]
+    done = data["status"] == "completed_exploratory"
+    status = "已完成探索性对照" if done else "对照尚未完成"
+    count_rows = "".join(
+        f"<tr><td>{escape(name)}</td><td class='n'>{counts['rows']:,}</td>"
+        + "".join(f"<td class='n'>{counts[label]:,}</td>" for label in LABELS) + "</tr>"
+        for name, counts in protocol["counts"].items()
+    )
+    runs = [(name, data.get(key)) for name, key in (("word", "baseline"), ("Jev", "jev"))]
+    metric_rows = ""
+    for name, run in runs:
+        if run is None:
+            metric_rows += f"<tr><td>{name}</td><td colspan='5'>尚无真实预测，不能计算</td></tr>"
+            continue
+        work = run["review_workload"]
+        high = run["recall"]["high_risk_flagged"]
+        metric_rows += (
+            f"<tr><td>{name}</td><td class='n'>{work['n_requires_human_review']:,}</td>"
+            f"<td class='n'>{100 * work['review_fraction']:.2f}%</td>"
+            f"<td class='n'>{f(work['precision'])}</td>"
+            f"<td class='n'>{high['k']} / {high['n']}</td>"
+            f"<td class='n'>{run['recall']['high_risk_in_allow']['k']}</td></tr>"
+        )
+    per_label_rows = ""
+    for label in LABELS:
+        cells = []
+        for _, run in runs:
+            cells.extend([
+                f(run["per_label"][label]["average_precision"]) if run else "待实测",
+                f(run["brier"][label], 4) if run else "待实测",
+            ])
+        per_label_rows += f"<tr><td>{label}</td>" + "".join(
+            f"<td class='n'>{value}</td>" for value in cells
+        ) + "</tr>"
+    threshold_rows = ""
+    selection_rule = data.get("selection_rule", {})
+    min_predictions = selection_rule.get("min_predicted_positives", 30)
+    targets = selection_rule.get("precision_targets", {"priority_review": 0.95, "human_review": 0.90})
+    for name, run in runs:
+        if not run:
+            continue
+        for label, selected in run.get("threshold_selection", {}).items():
+            for tier, target in targets.items():
+                threshold = selected[f"at_{tier}"]
+                reason = "已启用"
+                if threshold["threshold"] is None:
+                    needed = ceil(min_predictions * target)
+                    reason = (
+                        f"关闭：阳性 {selected['positives']} 条，少于至少所需的 {needed} 条"
+                        if selected["positives"] < needed else
+                        "关闭：没有分数阈值同时满足最低数量和精确率目标"
+                    )
+                threshold_rows += (
+                    f"<tr><td>{name}</td><td>{label}</td><td>{tier}</td>"
+                    f"<td class='n'>{f(threshold['threshold'])}</td>"
+                    f"<td class='n'>{threshold['n_predicted_positive']:,}</td>"
+                    f"<td class='n'>{f(threshold['precision'])}</td><td>{reason}</td></tr>"
+                )
+    threshold_section = (
+        "<details><summary>阈值选择与关闭原因</summary>"
+        "<p>下表为全体选择样本上的分标签阈值。身份词子组还需通过自己的阈值；"
+        "其明细保存在 jev_run.json 的 thresholds.subgroup 中。</p>"
+        "<table><tr><th>方法</th><th>标签</th><th>层级</th><th>阈值</th>"
+        "<th>选择集预测阳性</th><th>选择集精确率</th><th>状态</th></tr>"
+        + threshold_rows + "</table></details>"
+    ) if threshold_rows else ""
+    failure = data.get("failure")
+    failure_note = (
+        f"<p>停止阶段：<code>{escape(failure['stage'])}</code>。"
+        f"{escape(failure['type'])}：{escape(failure['message'])}</p>"
+    ) if failure else ""
+    verification = data.get("verification")
+    verification_section = (
+        "<h2>实现验证</h2>"
+        f"<p>全套测试 {verification['tests_passed']} 项通过，{verification['tests_skipped']} 项跳过。"
+        f"{escape(verification['skips_zh'])} Ruff 与 mypy 均通过。</p>"
+        f"<p>{escape(verification['full_baseline_note_zh'])} 运行目录："
+        f"<code>{escape(verification['full_baseline_run'])}</code>。</p>"
+        f"<p>{escape(verification['scope_zh'])}</p>"
+    ) if verification else ""
+    comparison = "<p>Jev 预测尚未完成，暂无等标记量差异、配对区间或两模型队列比较。</p>"
+    capture = data.get("paired_capture")
+    if capture:
+        comparison = (
+            f"<p>固定取前 {capture['k']:,} 条，按最大校准标签概率排序。word 抓到 "
+            f"{capture['baseline_captured']} 条高风险评论，Jev 抓到 {capture['jev_captured']} 条。"
+            f"差值为 {capture['difference_jev_minus_baseline']:+}，配对重抽样 95% 区间 "
+            f"{ci(capture['ci95'], 1)}。这是排序诊断，不是含规则路由在相同审核预算下的实测结果。</p>"
+        )
+    eq = (data.get("comparison") or {}).get("equal_input")
+    if eq:
+        queue_rows = ""
+        for name, entry in eq["runs"].items():
+            for rate, stats in entry["by_input"].items():
+                values = stats["priority"]
+                queue_rows += (
+                    f"<tr><td>{escape(name)}</td><td class='n'>{float(rate):.1f}</td>"
+                    f"<td class='n'>{f(values['review_arrivals'], 1)}</td>"
+                    f"<td class='n'>{f(values['backlog_end'], 1)}</td>"
+                    f"<td class='n'>{f(values['high_risk_not_reviewed'], 1)}</td>"
+                    f"<td class='n'>{f(values['harm_handled_per_hour'], 1)}</td></tr>"
+                )
+        comparison += (
+            "<table><tr><th>方法</th><th>评论/h</th><th>审核任务/班次</th>"
+            "<th>结束积压</th><th>高风险未审核/班次</th><th>危害代理处理/h</th></tr>"
+            + queue_rows + "</table>"
+            f"<p>{eq['n_seeds']} 个共同输入流种子，每班次 8 小时，表中均值 ± 样本标准差。"
+            "未审核包括放行中的高风险评论和队列中未完成的高风险评论。模拟种子的误差不包含"
+            "评论样本或重新训练的不确定性。</p>"
+        )
+    api = data.get("api")
+    cost = "<p>尚未完成 Jev 调用，暂无调用成本或延迟测量。</p>"
+    if api:
+        cost = (
+            f"<p>本次进程成功网络请求 {api.get('network_successes', 0):,} 次，"
+            f"缓存命中 {api.get('cache_hits', 0):,} 次。成功网络响应累计输入 "
+            f"{api.get('input_tokens', 0):,} tokens。延迟 p50 "
+            f"{f(api.get('p50_latency_seconds'))} 秒，p95 {f(api.get('p95_latency_seconds'))} 秒。"
+            "缓存重放不产生这些网络延迟；失败重试可能另计费用，实际账单未核对。</p>"
+        )
+    baseline = data.get("baseline")
+    if baseline:
+        cost += (
+            f"<p>word 本次训练、校准和预测合计 {baseline['fit_calibration_prediction_seconds']:.1f} 秒；"
+            f"其中阈值集与测试集的批量预测合计 {baseline['prediction_seconds']:.1f} 秒。"
+            "这是本机批量耗时，不能直接与单条 API 延迟作倍数比较。</p>"
+        )
+    evidence = "".join(
+        f"<li>{name}：<code>{escape(run['run'])}</code>，commit "
+        f"<code>{escape((run.get('git_commit') or '')[:12])}</code>，"
+        f"{'工作区含未提交改动' if run.get('git_dirty') else '工作区干净'}。</li>"
+        for name, run in runs if run
+    )
+    body = f"""
+<span class="tag">第 5 步</span><span class="tag">{status}</span>
+<h1>Jev 与词模型：固定样本的探索性对照</h1>
+<p class="lede">{escape(data['updated_utc'])} 更新。目标是在相同数据和审核政策下，检查语义判断能否改善六标签分类与审核排序。现有 baseline 是 TF-IDF 加逻辑回归，本轮没有训练 BERT。</p>
+<div class="box"><b>当前结论：</b>{escape(data['conclusion_zh'])}</div>
+{'<p>' + escape(data['execution_note_zh']) + '</p>' if data.get('execution_note_zh') else ''}
+{failure_note}
+<div class="toc"><a href="#design">实验设计</a><a href="#samples">固定样本</a><a href="#results">当前结果</a><a href="#comparison">公平比较</a><a href="#cost">成本与复现边界</a><a href="#repro">复现命令</a></div>
+<h2 id="design">实验设计</h2>
+<p>word 使用原 train 子集训练六个逻辑回归。Jev 使用固定版本 <code>{escape(protocol['model'])}</code>，一次调用分别询问六个标签，保留六个独立概率，不将它们归一化为总和 1。输入仅含评论正文与固定任务定义，不含标签、模型分数或人工审计判断。问题定义见 <a href="../configs/jev_questions.json">jev_questions.json</a>。</p>
+<p>两种方法使用同一 calib 子集拟合 Platt 校准，同一 thresh 子集选择阈值，同一 test 子集评估。word 校准原始分类间隔，Jev 校准原始概率的 logit，裁剪范围为 0.000001 到 0.999999。若校准标签只有一类，保留原始概率并记录无法拟合。下游复用原有阈值选择、规则、人工确认与队列模拟。</p>
+<p>两种方法的预训练条件不同，这是完整方法在本项目中的对照，不能把差异归因于某一项架构。所有处置仍由人工确认。</p>
+<h2 id="samples">固定样本</h2>
+<p>从原始划分中按 seed、split 和 ID 的 SHA-256 排序取样，不看标签。保留原始行序，记录各集合 ID 哈希；样本少也不换 seed。协议见 <a href="../analysis/jev/protocol.json">protocol.json</a>，选中的 ID 见 <a href="../analysis/jev/cohort.csv">cohort.csv</a>。</p>
+<table><tr><th>用途</th><th>行数</th>{''.join(f'<th>{label} 阳性</th>' for label in LABELS)}</tr>{count_rows}</table>
+<p>稀有标签的样本数限制结论强度。现有阈值规则至少需要 30 个预测阳性；90% 和 95% 的精确率目标分别至少需要 27 和 29 个真阳性。关闭某个标签的阈值不代表模型无法识别它；评论还可能通过其他标签或规则进入审核。</p>
+<h2 id="results">当前结果</h2>
+<table><tr><th>方法</th><th>需人工审核</th><th>审核比例</th><th>队列精确率</th><th>高风险送审/总数</th><th>高风险留在放行</th></tr>{metric_rows}</table>
+<table><tr><th>标签</th><th>word AP</th><th>word Brier</th><th>Jev AP</th><th>Jev Brier</th></tr>{per_label_rows}</table>
+<p>AP 越高越好，Brier 越低越好。表中正确性沿用原始 Jigsaw 标签，只是审核价值的代理指标。pilot 报告明确标为探索性，不能冒充完整语料上的 baseline 验收。</p>
+{threshold_section}
+<h2 id="comparison">相同标记量与相同评论流</h2>
+{comparison}
+<p>是否值得扩大实验，需要同时看高风险漏审差异的方向与区间、实际送审量、积压和完成量。不能仅凭总准确率或新增送审带来的召回提升更换默认模型。</p>
+{verification_section}
+<h2 id="cost">成本与复现边界</h2>
+{cost}
+<p>锁定模型版本、问题、样本与原始响应。缓存键绑定端点、版本、完整问题和文本；缺失、非法概率或版本不符会停止评估，不跳过困难样本。缓存重放能复算已保存预测，不能保证外部服务未来生成逐值相同的响应。</p>
+<p>官方测试集已经反复查看，Jev 的预训练数据是否含此公开语料也未知。本轮不声称独立泛化结果，不比较 BERT 优劣，也不证明真实送审价值提升。独立人工评估继续暂缓。</p>
+<h2 id="repro">复现命令</h2>
+<pre><code># 准备固定样本并运行配对 word 对照，不调用 API
+python scripts/run_jev_experiment.py --prepare-only
+# 配好本地 TYPESAFE_API_KEY 后执行真实请求，成功响应会缓存
+python scripts/run_jev_experiment.py --allow-network
+# 只用缓存重放，缺失时停止
+python scripts/run_jev_experiment.py
+python record/render.py</code></pre>
+<p>真实调用需要有效 API 访问，密钥只从进程环境读取，不写入配置或报告。<code>reports/jev-cache/</code> 不提交到 Git；跨机器复算需要另行取得该缓存或重新调用服务。</p>
+<ul>{evidence}</ul>
+<p class="prov">协议 SHA-256：<code>{escape(data['protocol_sha256'])}</code>。本页读取 <a href="jev_run.json">jev_run.json</a>，原始比较汇总保存在 <code>analysis/jev/</code>。</p>
+<p>接口与版本依据：<a href="https://docs.typesafe.ai/primitives/noul">Noul</a>、<a href="https://docs.typesafe.ai/models">模型版本</a>、<a href="https://docs.typesafe.ai/model-jaggedness/jev-1.13">已知限制</a>。厂商关于性能和校准的描述不能替代本项目测量。</p>
+"""
+    page(STEPS[4][0], STEPS[4][1], body, STEPS[3], None)
 
 
 if __name__ == "__main__":
@@ -1221,4 +1432,5 @@ if __name__ == "__main__":
     build_step2()
     build_step3()
     build_step4()
+    build_step5()
     print("written:", "index.html", *(s[0] for s in STEPS))

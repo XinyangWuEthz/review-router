@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 import importlib.util
+import json
+from copy import deepcopy
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
 import numpy as np
 import pytest
+
+from review_router.metrics import per_label_metrics, tier_metrics
+from review_router.pipeline import _review_workload
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -66,6 +71,17 @@ def test_paired_difference_and_standard_error() -> None:
     # Differences 2, 3, 4: mean 3, sample SD 1, SE 1/sqrt(3).
     assert out["mean"] == pytest.approx(3.0)
     assert out["se"] == pytest.approx(1 / np.sqrt(3))
+    assert out["valid_n"] == 3
+
+
+def test_undefined_metrics_do_not_become_zero_or_mismatched_seed_pairs() -> None:
+    mean = CMP._mean_std([0.25, None, 0.75])
+    assert mean == {"mean": 0.5, "std": pytest.approx(np.sqrt(0.125)), "valid_n": 2}
+    assert CMP._mean_std([None, None]) == {"mean": None, "std": None, "valid_n": 0}
+    # Only the first seed has a defined ratio in both runs; do not pair seed 2 with seed 3.
+    assert CMP._paired([1.0, None, 0.5], [0.25, 0.8, None]) == {
+        "mean": 0.75, "se": None, "valid_n": 1,
+    }
 
 
 def _stream_item(tmp_path: Path) -> dict[str, Any]:
@@ -99,3 +115,56 @@ def test_stream_counts_high_risk_left_in_allow_as_not_reviewed(tmp_path: Path) -
     assert out["high_risk_not_reviewed"] == 1
     assert out["positives_completed_per_hour"] == 2  # both reviewed rows are positive, 1 hour
     assert out["harm_handled_per_hour"] == pytest.approx(10 + 1)
+
+
+def test_word_queue_and_all_allow_candidate_complete_comparison(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    word = _stream_item(tmp_path)
+    word["label"] = "word"
+    word["model"] = {"analyzer": "word"}
+    word["config"]["sim"] = {"reviewers": 1, "handle_minutes": 2.0, "horizon_hours": 1.0}
+    candidate = deepcopy(word)
+    candidate["label"] = "jev"
+    candidate["model"] = {"kind": "external_scores", "model_name": "jev-1.13.0"}
+    candidate["pred"]["final_tier"] = "allow"
+    candidate["pred"][[f"p_{label}" for label in CMP.LABELS]] = 0.0
+    items = [word, candidate]
+
+    # Build real metric summaries from the existing four-comment synthetic fixture.
+    # Four labels have no positive examples, so their AP/AUC are also undefined.
+    for item in items:
+        proba, y, final = CMP.arrays(item["pred"])
+        tiers = tier_metrics(final, y.any(axis=1), ("priority_review", "human_review"), 1)
+        thresholds = {tier: dict.fromkeys(CMP.LABELS) for tier in tiers}
+        item["report"] = {
+            "tiers": tiers,
+            "threshold_selection": {"tiers": tiers},
+            "per_label": per_label_metrics(y, proba, CMP.LABELS, thresholds),
+            "review_workload": _review_workload(final, y),
+        }
+        item["manifest"] = {"git_commit": "abc12345", "git_dirty": False}
+
+    monkeypatch.setattr(CMP, "EQUAL_INPUT_SEEDS", tuple(range(1, 8)))
+    comparison = CMP.shared_stream(items, [20.0])
+    empty = comparison["runs"]["jev"]["by_input"]["20.0"]["priority"]
+    word_metrics = comparison["runs"]["word"]["by_input"]["20.0"]["priority"]
+    assert word_metrics["review_arrivals"]["mean"] > 0
+    assert word_metrics["completion_ratio"]["valid_n"] == 7
+    assert empty["review_arrivals"]["mean"] == 0
+    assert empty["completion_ratio"] == {"mean": None, "std": None, "valid_n": 0}
+    assert empty["high_risk_not_reviewed"] == empty["high_risk_in_stream"]
+    assert empty["harm_handled_per_hour"]["mean"] == 0
+    difference = comparison["differences_vs_reference"]["jev"]["20.0"]["priority"]
+    assert difference["completion_ratio"] == {"mean": None, "se": None, "valid_n": 0}
+    assert difference["high_risk_not_reviewed"]["mean"] > 0
+    assert difference["high_risk_not_reviewed"]["valid_n"] == 7
+    json.dumps(comparison, allow_nan=False)
+
+    markdown = CMP.to_markdown([CMP.summarize(item) for item in items],
+                               {"equal_input": comparison})
+    assert "| jev | jev-1.13.0 |" in markdown
+    assert "| jev | 0 | 0.0000 | n/a [n/a, n/a] |" in markdown
+    assert "| severe_toxic | n/a | n/a | n/a | n/a |" in markdown
+    assert "n/a (n=0)" in markdown
+    assert "nan" not in markdown
