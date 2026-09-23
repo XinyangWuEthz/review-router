@@ -62,12 +62,12 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
   nav.bottom { gap: 16px; flex-wrap: wrap; }
 }
 </style></head><body><main>
-<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><a href="step4-features.html" aria-current="page">第 4 步：误报复核与字符 n-gram</a><span>第 5 步：独立数据验证，暂缓</span></nav>
+<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><a href="step4-features.html" aria-current="page">第 4 步：误报复核与字符 n-gram</a><a href="step5-jev.html">第 5 步：Jev 与词模型对照</a><span>第 6 步：独立人工评估，暂缓</span></nav>
 
 <span class="tag">第 4 步</span><span class="tag">round 2</span><span class="tag">政策 v1 与 v2</span>
 <h1>误报人工复核与字符 n-gram</h1>
 <p class="lede">第二步发现自动处置在测试集上的精确率是 0.904，达不到 0.99。这一步调查标注口径和拼写变体两种可能的解释：人工复核部分误报，并比较字符 n-gram 特征。两项检查都不能单独确认首轮差距的原因。</p>
-<div class="toc"><a href="#why">为什么做这一步</a><a href="#audit">误报人工复核</a><a href="#what">字符 n-gram 改了什么</a><a href="#r1">首轮设计下的结果</a><a href="#v2">v2 设计下的结果</a><a href="#verify">独立复核</a><a href="#decision">结论与决定</a><a href="#repro">如何复现</a></div>
+<div class="toc"><a href="#why">为什么做这一步</a><a href="#audit">误报人工复核</a><a href="#label-quality-reference">标签质量疑点与研究依据</a><a href="#what">字符 n-gram 改了什么</a><a href="#r1">首轮设计下的结果</a><a href="#v2">v2 设计下的结果</a><a href="#verify">独立复核</a><a href="#decision">结论与决定</a><a href="#repro">如何复现</a></div>
 
 <h2 id="why">为什么做这一步</h2>
 <p>第二步的诊断留下两个调查方向。词典命中后被标为 toxic 的比例，选择集是 0.76，测试集是 0.51；这可能涉及评论内容或标注口径差异，不能直接证明测试集标注更宽松。测试集的 OOV 比例约是选择集的两倍，提示可以尝试字符特征，但尚不能说明拼写变体造成了多少误报。</p>
@@ -91,6 +91,21 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
 <tr><td>假定 toxic 和 borderline 都应算正确</td><td class='n'>0.970</td><td>[0.961, 0.978]</td></tr></tbody></table></div>
 <p>在上述假设下，要达到 0.99，2,125 条自动处置里最多只能有 21 条误报，换算到样本上至少要有 90 条被改计为正确。实际判为 toxic 的有 46 条，合并 borderline 也只有 69 条。区间由 Wilson 区间近似换算，未计入分层抽样、有限总体修正或人工判断的不确定性，不能视为完整的不确定性估计。</p>
 <div class="box">按本次人工复核口径，样本中仍有 31 条被判为 clean，不能把这些误报都解释为测试集漏标。攻击对象和语境是值得继续检查的因素；这次复核没有证明词袋特征必然无法识别它们，也没有量化各因素对总体缺口的贡献。</div>
+
+<h2 id="label-quality-reference">标签质量疑点与研究依据</h2>
+<p>2026-09-23 补充。Daniel Borkan 等，Jigsaw，2019：<a href="https://arxiv.org/abs/1903.04561">Nuanced Metrics for Measuring Unintended Bias with Real Data for Text Classification</a>。中文题意为“利用真实数据细致衡量文本分类中的非预期偏差”。发表于 WWW 2019 Companion，<a href="https://doi.org/10.1145/3308560.3317593">DOI</a>。</p>
+<h3>论文提供的依据</h3>
+<p>论文指出，毒性判断复杂且带有主观性；标注者偏见、用户构成和样本选择都可能造成模型学到不当关联。作者明确承认，跨群体的可靠测试标签是重要前提，并非所有应用都满足。这支持检查标签与抽样过程，不能直接证明本项目某条标签错误。见<a href="https://storage.googleapis.com/gweb-research2023-media/pubtools/5007.pdf#page=1">第 1 节</a>。</p>
+<p>论文的三个 AUC 指标不依赖某个固定阈值。这里的群体指评论所提及的身份群体，背景是该群体之外的评论；阳性和阴性均按评估标签划分。见<a href="https://storage.googleapis.com/gweb-research2023-media/pubtools/5007.pdf#page=3">第 3.1 节</a>。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">指标</th><th scope="col">比较哪些样本</th><th scope="col">低值提示什么</th></tr></thead><tbody>
+<tr><td>Subgroup AUC</td><td>群体内部的阳性与阴性</td><td>群体内部的区分能力较弱</td></tr>
+<tr><td>BPSN AUC</td><td>背景阳性与群体阴性</td><td>群体阴性相对背景阳性被排得过高，可能导致误报</td></tr>
+<tr><td>BNSP AUC</td><td>背景阴性与群体阳性</td><td>群体阳性相对背景阴性被排得过低，可能导致漏报</td></tr></tbody></table></div>
+<p>它们检查模型排序与标签的关系，不能单独鉴定标签质量，也不等于某个阈值下的 FPR 或 FDR。论文第 4.4 节还保留了标注者“难以判断”的选项，提醒我们不要把所有分歧都当成确定的标错。</p>
+<h3>与本项目的关系</h3>
+<p>本项目怀疑标签不足以支撑当前任务，有两类本地依据。第一，已有误报审计中，46 条被复核为 toxic、23 条为 borderline，说明原标签与本次判定口径存在分歧；但样本只来自历史误报，且由看过预读结果的一人复核，无法估计全测试集的标签错误率。第二，“值得送人工审核”与“已有毒性阳性标签”并不等价：含糊或需要语境的评论可能值得送审，最终却没有确认违规。这属于评估目标与标签含义的差异，不一定是原标签标错。</p>
+<p>论文使用了另行构建、带身份标注的真实评论数据，不能把它的结论直接套到本项目的 Jigsaw 2018 测试行。当前身份词匹配只是代理分组，并不等同于论文的人工身份标注。</p>
+<div class="box">记录结论：标签可靠性和任务适配性值得复核，但模型偏差、标注分歧与任务口径不一致需要分别判断。目前保留原始标签与现行验收门槛；本文仅作为研究依据记录，不新增 AUC 实现。独立人工评估集继续<a href="#future-review-evaluation">暂缓</a>。</div>
 
 <h2 id="what">字符 n-gram 改了什么</h2>
 <p>模型配置新增 <code>model.analyzer</code>：<code>word</code> 是原来的词级 TF-IDF；<code>char_wb</code> 是词边界内的 2 到 5 字符片段；<code>word+char_wb</code> 把两组特征并排。下游的六个逻辑回归、Platt 校准、阈值选择和路由都不变。对比用的配置只在这几行上与 baseline 不同。</p>
@@ -156,7 +171,7 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
 <li><b>还需要评估阈值与容量的取舍。</b>候选的额外审核量和未通过的回归项尚未解决。若以后重启比较，应在开发数据上选择候选方案，另留独立数据评估，不能为了让候选通过而调整当前测试门槛。</li>
 <li><b>证据只有一次训练、一份测试集。</b>区间以这两个训练好的模型为条件，没有估计重新训练带来的方差。</li></ul>
 <p><b>之前的说法哪里不对：</b>最初的判断是“收益主要来自多标记，把词模型阈值调低也能得到”。复核不支持把这句话用于高风险评论：相同标记量下仍有排序收益；把词模型阈值调到同样条数，高风险只多抓约 17 到 20 条，而且会让两项精确率门槛不通过。因此，本次保留 word 同时考虑了计算成本、审核容量和证据范围；字符特征在这些运行中的收益仍如实保留。</p>
-<p><b>后续安排：</b>当前继续使用 <code>word</code>，不启动新增采样或人工标注，也不修改现行门槛。第 5 步仅保留为可选方向，暂缓且尚未启动。若以后决定开展独立数据验证，可再考虑是否将 word+char 纳入候选，并事先确定比较方法和验收要求。</p>
+<p><b>后续安排：</b>当前继续使用 <code>word</code>，不启动新增独立数据采集或人工标注，也不修改现行门槛。独立数据验证仅保留为可选方向，暂缓且尚未启动。若以后决定开展，可再考虑是否将 word+char 纳入候选，并事先确定比较方法和验收要求。</p>
 
 <h2 id="future-review-evaluation">后续考虑：独立人工评估集，暂缓</h2>
 <p>2026-09-23 记录。当前用“任一真实标签为阳性”近似衡量审核价值。对有歧义、需要结合语境判断的评论，即使人工最后确认没有违规，送审也可能合理；但缺少语境时，人工也可能无法判断。</p>
@@ -172,5 +187,5 @@ python record/collect_runs.py --features analysis
 python record/render.py</code></pre>
 <p class="prov">v2 运行 <code>20260923T074244236943Z-human-review-baseline</code> 与 <code>20260923T074315427980Z-word-char</code>，commit <code>01897e454919</code>，工作区干净。本页读取 <a href="features_run.json">features_run.json</a>，它由 <code>analysis/</code> 下的对比结果和人工复核结果汇总而来。</p>
 
-<nav class="bottom" aria-label="前后步骤"><span><a href="step3-human-review.html">← 第 3 步：优先人工审核</a></span><span></span></nav>
+<nav class="bottom" aria-label="前后步骤"><span><a href="step3-human-review.html">← 第 3 步：优先人工审核</a></span><span><a href="step5-jev.html">第 5 步：Jev 与词模型对照 →</a></span></nav>
 </main></body></html>

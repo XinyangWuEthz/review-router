@@ -50,7 +50,7 @@ from review_router.thresholds import (
     select_thresholds,
 )
 
-__all__ = ["RunConfig", "load_config", "run"]
+__all__ = ["RunConfig", "evaluate_scores", "load_config", "run"]
 
 HUMAN = "human_review"
 PRIORITY = "priority_review"
@@ -936,6 +936,13 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
     selection = report["threshold_selection"]["per_label"]
     if report["synthetic"]:
         lines[2:2] = ["SYNTHETIC pipeline check only; these are not Jigsaw results.", ""]
+    if report.get("exploratory"):
+        source = report["score_source"]
+        lines[2:2] = [
+            f"EXPLORATORY external-score evaluation for {source['model_name']}; "
+            "these results do not certify the full baseline or deployment readiness.",
+            "",
+        ]
     for label, m in report["per_label"].items():
         h, a = m["at_human_review"], m["at_priority_review"]
         lines.append(
@@ -1204,24 +1211,30 @@ def _report_md(report: dict[str, Any], manifest: dict[str, Any]) -> str:
 # --------------------------------------------------------------------------- entry point
 
 
-def run(config_path: Path) -> Path:
-    import pandas as pd
+def _prepare_run(
+    config_path: Path, config: RunConfig, corpus: Corpus, policy: Policy
+) -> tuple[Path, dict[str, Any]]:
+    if policy.decision_mode != "human_confirmation":
+        raise ValueError("the current pipeline requires a human_confirmation policy")
+    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + "-" + config.label
+    run_dir = config.output_dir / run_id
+    run_dir.mkdir(parents=True, exist_ok=False)
+    manifest = _manifest(config, config_path, corpus, run_id)
+    shutil.copyfile(config_path, run_dir / "config.yaml")
+    shutil.copyfile(config.policy_path, run_dir / "policy.yaml")
+    corpus.train[["id", "split"]].to_csv(run_dir / "splits.csv", index=False)
+    return run_dir, manifest
 
+
+def run(config_path: Path) -> Path:
     config_path = config_path.resolve()
     config = load_config(config_path)
     policy = load_policy(config.policy_path)
     if policy.decision_mode != "human_confirmation":
         raise ValueError("the current pipeline requires a human_confirmation policy")
     corpus = load_corpus(config.data_dir, config.split_fractions, config.seed)
-
-    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ") + "-" + config.label
-    run_dir = config.output_dir / run_id
-    run_dir.mkdir(parents=True, exist_ok=False)
-
-    manifest = _manifest(config, config_path, corpus, run_id)
-    shutil.copyfile(config_path, run_dir / "config.yaml")
-    shutil.copyfile(config.policy_path, run_dir / "policy.yaml")
-    corpus.train[["id", "split"]].to_csv(run_dir / "splits.csv", index=False)
+    # Start provenance before training, so the run duration still includes fit/calibration.
+    run_dir, manifest = _prepare_run(config_path, config, corpus, policy)
 
     def part(name: str) -> tuple[list[str], np.ndarray]:
         frame = corpus.train[corpus.train["split"] == name]
@@ -1229,23 +1242,134 @@ def run(config_path: Path) -> Path:
 
     x_train, y_train = part("train")
     x_calib, y_calib = part("calib")
-    x_thresh, y_thresh = part("thresh")
-
+    x_thresh, _ = part("thresh")
     model = TfidfLogitModel(config.model).fit(x_train, y_train, config.seed)
     model.calibrate(x_calib, y_calib)
     p_thresh = model.predict_proba(x_thresh)
+    p_test = model.predict_proba(corpus.test["comment_text"].astype(str).tolist())
+    return _evaluate_scores(
+        config, corpus, p_thresh, p_test, policy, run_dir, manifest, model=model
+    )
+
+
+def _validate_external_scores(
+    corpus: Corpus, p_thresh: np.ndarray, p_test: np.ndarray, score_source: dict[str, Any]
+) -> tuple[np.ndarray, np.ndarray, str]:
+    """Validate score identity and values before writing any evaluation artefacts."""
+    model_name = score_source.get("model_name")
+    if not isinstance(model_name, str) or not model_name.strip():
+        raise ValueError("score_source must identify a nonempty model_name")
+    if tuple(score_source.get("labels", ())) != LABELS:
+        raise ValueError(f"score_source labels must match the canonical order {LABELS}")
+    # Metadata itself must be reproducible JSON, not a repr of a live object.
+    json.dumps(score_source, allow_nan=False)
+    row_ids = score_source.get("row_ids")
+    if not isinstance(row_ids, dict) or set(row_ids) != {"thresh", "test"}:
+        raise ValueError("score_source row_ids must contain thresh and test IDs in score order")
+    for name, frame in (("train", corpus.train), ("test", corpus.test)):
+        if frame["id"].isna().any() or frame["id"].astype(str).str.strip().eq("").any():
+            raise ValueError(f"external {name} corpus contains missing IDs")
+        if frame["id"].astype(str).duplicated().any():
+            raise ValueError(f"external {name} corpus contains duplicate IDs")
+        if not frame[list(LABELS)].isin([0, 1]).all().all():
+            raise ValueError(f"external {name} corpus contains non-binary labels")
+        if frame["comment_text"].isna().any():
+            raise ValueError(f"external {name} corpus contains missing texts")
+    if set(corpus.train["id"].astype(str)) & set(corpus.test["id"].astype(str)):
+        raise ValueError("external train and test corpus IDs overlap")
+    if not corpus.train["split"].isin(("train", "calib", "thresh")).all():
+        raise ValueError("external training corpus contains unknown split names")
+    frames = {"thresh": corpus.train[corpus.train["split"] == "thresh"], "test": corpus.test}
+    validated = []
+    for name, scores in (("thresh", p_thresh), ("test", p_test)):
+        expected_ids = frames[name]["id"].astype(str).tolist()
+        if row_ids[name] != expected_ids:
+            raise ValueError(f"score_source {name} row_ids do not match corpus row order")
+        values = np.asarray(scores, dtype=float)
+        if not expected_ids or values.shape != (len(expected_ids), len(LABELS)):
+            raise ValueError(f"{name} scores must have shape ({len(expected_ids)}, {len(LABELS)})")
+        if not np.isfinite(values).all() or ((values < 0) | (values > 1)).any():
+            raise ValueError(f"{name} scores must be finite probabilities in [0, 1]")
+        validated.append(values)
+    cohort = {
+        "train": corpus.train[["id", "split", "comment_text", *LABELS]].to_dict(orient="records"),
+        "test": corpus.test[["id", "comment_text", *LABELS]].to_dict(orient="records"),
+    }
+    cohort_hash = hashlib.sha256(
+        json.dumps(cohort, sort_keys=True, ensure_ascii=False, allow_nan=False).encode("utf-8")
+    ).hexdigest()
+    return validated[0], validated[1], cohort_hash
+
+
+def evaluate_scores(
+    config_path: Path,
+    corpus: Corpus,
+    p_thresh: np.ndarray,
+    p_test: np.ndarray,
+    *,
+    score_source: dict[str, Any],
+    model: Any = None,
+) -> Path:
+    """Evaluate externally produced probabilities using the existing routing protocol.
+
+    Columns must follow LABELS; rows must follow the corpus's threshold/test order.
+    score_source requires model_name, labels, and row_ids with thresh/test lists in
+    score order. Additional provenance, including calibration and sampled-cohort
+    hashes, is preserved verbatim. Calibration must have happened upstream, without
+    fitting on threshold-selection or test labels. Every external run is exploratory
+    and cannot stand in for the pinned full-corpus baseline acceptance run.
+    """
+    config_path = config_path.resolve()
+    config = load_config(config_path)
+    policy = load_policy(config.policy_path)
+    p_thresh, p_test, cohort_hash = _validate_external_scores(
+        corpus, p_thresh, p_test, score_source
+    )
+    run_dir, manifest = _prepare_run(config_path, config, corpus, policy)
+    # Retain the original corpus provenance separately. A sampled cohort must not
+    # pass the existing full-corpus gate merely by carrying its source file hashes.
+    manifest["source_data_sha256"] = manifest["data_sha256"]
+    manifest["data_sha256"] = {"external_evaluation_cohort": cohort_hash}
+    manifest["exploratory"] = True
+    manifest["score_source"] = score_source
+    manifest["unused_model_config"] = manifest["config"]["model"]
+    manifest["config"]["model"] = {
+        "kind": "external_scores", "model_name": score_source["model_name"]
+    }
+    return _evaluate_scores(
+        config, corpus, p_thresh, p_test, policy, run_dir, manifest, model=model
+    )
+
+
+def _evaluate_scores(
+    config: RunConfig,
+    corpus: Corpus,
+    p_thresh: np.ndarray,
+    proba: np.ndarray,
+    policy: Policy,
+    run_dir: Path,
+    manifest: dict[str, Any],
+    *,
+    model: Any,
+) -> Path:
+    import pandas as pd
+
+    run_id = manifest["run_id"]
+    frame = corpus.train[corpus.train["split"] == "thresh"]
+    x_thresh = frame["comment_text"].astype(str).tolist()
+    y_thresh = frame[list(LABELS)].to_numpy(dtype=int)
     identity_thresh = identity_term_present(x_thresh)
     thresholds = select_thresholds(
         y_thresh, p_thresh, LABELS, policy, {"identity_term_present": identity_thresh}
     )
     selection_routing = _route(p_thresh, y_thresh, identity_thresh, thresholds, policy)
     (run_dir / "thresholds.json").write_text(json.dumps(thresholds.as_json(), indent=2))
-    with (run_dir / "model.pkl").open("wb") as handle:
-        pickle.dump(model, handle)
+    if model is not None:
+        with (run_dir / "model.pkl").open("wb") as handle:
+            pickle.dump(model, handle)
 
     x_test = corpus.test["comment_text"].astype(str).tolist()
     y_test = corpus.test[list(LABELS)].to_numpy(dtype=int)
-    proba = model.predict_proba(x_test)
     identity = identity_term_present(x_test)
     routing = _route(proba, y_test, identity, thresholds, policy)
 
@@ -1320,6 +1444,10 @@ def run(config_path: Path) -> Path:
         "consistency": _consistency(proba),
         "prevalence_shift": _prevalence_shift(manifest["split_label_counts"], y_test, proba),
     }
+    if manifest.get("exploratory"):
+        report["exploratory"] = True
+        report["score_source"] = manifest["score_source"]
+        report["eval_slice"] = "exploratory " + report["eval_slice"]
     simulation, job_rows = _run_simulation(
         proba, y_test, routing, corpus.test["id"].to_numpy(), policy, config
     )

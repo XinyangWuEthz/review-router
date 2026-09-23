@@ -1,0 +1,75 @@
+{
+  "scope": "exploratory paired pilot on original Jigsaw labels; not a fresh holdout",
+  "model": "jev-1.13.0",
+  "question_sha256": "d70195aad2b2c736128f4822496f2bfc1d7fbd7b0ab2a3d5eae58a19b3910314",
+  "experiment_config_sha256": "7d73b7756b5672488c879dd0665657cb18623090cfeec2fe626696c61a94bba9",
+  "baseline_config_sha256": "32e305e668be20302ba2d1f12730029aaba3647ab8e745001ab2690e33977b09",
+  "policy_sha256": "da0200a9d9b367ed2028bf54c1d9fb8ba802c07279ed81cb34ec44c3ab828f68",
+  "source_data_sha256": {
+    "train": "bd4084611bd27c939ba98e5e63bc3e5a2c1a4e99477dcba46c829e4c986c429d",
+    "test": "c2513ce4abb98c4d1d216e3ca0d4377d57589a0989aa8c06a840509a16c786e8",
+    "test_labels": "2a56dcbeba5c05f965a636f56cb5ae972bad60c3b952c239b49be18d7ab70f49"
+  },
+  "sample_seed": 20260923,
+  "requested_sizes": {
+    "calib": 4000,
+    "thresh": 8000,
+    "test": 10000
+  },
+  "sampling": "lowest SHA256(seed, split, id), without labels; original order retained",
+  "counts": {
+    "train": {
+      "toxic": 9182,
+      "severe_toxic": 983,
+      "obscene": 5140,
+      "threat": 293,
+      "insult": 4776,
+      "identity_hate": 854,
+      "rows": 95743
+    },
+    "calib": {
+      "toxic": 360,
+      "severe_toxic": 36,
+      "obscene": 191,
+      "threat": 12,
+      "insult": 187,
+      "identity_hate": 22,
+      "rows": 4000
+    },
+    "thresh": {
+      "toxic": 770,
+      "severe_toxic": 77,
+      "obscene": 430,
+      "threat": 25,
+      "insult": 387,
+      "identity_hate": 71,
+      "rows": 8000
+    },
+    "test": {
+      "toxic": 944,
+      "severe_toxic": 52,
+      "obscene": 573,
+      "threat": 40,
+      "insult": 526,
+      "identity_hate": 108,
+      "rows": 10000
+    }
+  },
+  "id_sha256": {
+    "train": "e77f18409c8cd80e6fae3b11bb6c5d97d7cc1c241775ab5b557587393ab44d04",
+    "calib": "3aba600b120c04674372b6e133f4066c3421639db1d2cf63af38853230430719",
+    "thresh": "5e675612e17ec342eeb714dd4b7b6bd065fd4b496be84b1d9f2c1556678ddb95",
+    "test": "da894220fb3aec30339f6b5b616b8f28acd688196a6cd689fcdcaf47d4994b58"
+  },
+  "comparison": "same calibration, threshold-selection and test rows for both methods",
+  "primary_diagnostic": "high-risk captured at word baseline flagged count, max-score top-k",
+  "operational_check": "same policy and common incoming comment streams, 200 paired seeds",
+  "limitations": [
+    "Existing test data have been inspected repeatedly.",
+    "Jev pretraining overlap with this public corpus is unknown.",
+    "No independent human review-worthiness evaluation; original labels are a proxy.",
+    "Small rare-label counts can make calibration or threshold selection inconclusive.",
+    "Bootstrap holds models and thresholds fixed; simulation SE covers only queue seeds.",
+    "No BERT run: this comparison cannot establish superiority over BERT."
+  ]
+}

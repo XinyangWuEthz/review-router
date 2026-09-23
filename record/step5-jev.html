@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 5 步：Jev 与词模型对照</title><style>
+:root { --ink: #0b0b0b; --ink2: #52514e; --line: #e6e5e1; --surface: #fcfcfb; --accent: #185ea8; --warn: #a73816; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif; }
+main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
+nav.top { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); margin-bottom: 24px; flex-wrap: wrap; }
+nav.top a, a { color: var(--accent); text-underline-offset: 3px; }
+a:hover { text-decoration-thickness: 2px; }
+a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+nav.top a[aria-current="page"] { font-weight: 700; color: var(--ink); }
+h1 { font-size: 26px; line-height: 1.3; margin: 0 0 8px; }
+h2 { font-size: 20px; margin: 40px 0 10px; border-top: 1px solid var(--line); padding-top: 20px; }
+h3 { font-size: 17px; margin: 26px 0 8px; }
+h4 { font-size: 15px; margin: 18px 0 6px; color: var(--ink2); }
+p { margin: 12px 0; max-width: 78ch; }
+li { margin: 8px 0; }
+h2, h3 { scroll-margin-top: 16px; }
+.lede { color: var(--ink2); font-size: 15px; }
+.tag { display: inline-block; font-size: 12px; padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink2); margin-right: 6px; }
+.tag.red { border-color: var(--warn); color: var(--warn); }
+.table-scroll { overflow-x: auto; margin: 12px 0 18px; }
+.table-scroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--ink2); font-weight: 600; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+figure { margin: 18px 0; }
+figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+figcaption { font-size: 14px; color: var(--ink2); margin-top: 8px; max-width: 78ch; }
+.box { border: 1px solid var(--line); border-left: 4px solid var(--accent); padding: 10px 14px; margin: 14px 0; border-radius: 4px; background: #fff; }
+.box.warn { border-left-color: var(--warn); }
+.steps { list-style: none; padding: 0; margin: 0; }
+.steps li { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 8px 0; background: #fff; }
+.steps li a { font-weight: 600; }
+.steps li .one { color: var(--ink2); font-size: 14px; margin-top: 2px; }
+.toc { font-size: 15px; color: var(--ink2); columns: 2; margin: 8px 0 16px; }
+.toc a { display: block; padding: 3px 0; break-inside: avoid; }
+.flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 14px 0; }
+.flow .node { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 13px; }
+.flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
+.flow .arrow { align-self: center; color: var(--ink2); }
+.examples li { margin: 6px 0; font-size: 14px; }
+.examples blockquote { margin: 8px 0 18px; padding-left: 12px; border-left: 2px solid var(--line); overflow-wrap: anywhere; }
+details { margin: 18px 0; border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+summary { cursor: pointer; font-weight: 600; }
+.examples code, code { background: #f3f2ef; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+pre { background: #f3f2ef; padding: 10px 12px; border-radius: 6px; font-size: 13px; overflow-x: auto; }
+pre code { background: none; padding: 0; }
+.prov { font-size: 13px; color: var(--ink2); }
+code { overflow-wrap: anywhere; }
+pre code { overflow-wrap: normal; }
+nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px; }
+@media (max-width: 640px) {
+  main { padding: 24px 16px 48px; }
+  h1 { font-size: 24px; }
+  .toc { columns: 1; }
+  .flow { flex-direction: column; }
+  .flow .node { flex: auto; }
+  .flow .arrow { display: none; }
+  nav.bottom { gap: 16px; flex-wrap: wrap; }
+}
+</style></head><body><main>
+<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><a href="step4-features.html">第 4 步：误报复核与字符 n-gram</a><a href="step5-jev.html" aria-current="page">第 5 步：Jev 与词模型对照</a><span>第 6 步：独立人工评估，暂缓</span></nav>
+
+<span class="tag">第 5 步</span><span class="tag">Registration unavailable; live evaluation deferred</span>
+<h1>Jev 与词模型：固定样本的探索性对照</h1>
+<p class="lede">2026-09-23T09:35:21.469035+00:00 更新。目标是在相同数据和审核政策下，检查语义判断能否改善六标签分类与审核排序。现有 baseline 是 TF-IDF 加逻辑回归，本轮没有训练 BERT。</p>
+<div class="box"><b>Current conclusion:</b> Live Jev evaluation is deferred because TypeSafe registration is currently unavailable. No real Jev predictions have been collected, so its effect on classification and review queues is unknown. The default remains word.</div>
+<p>2026-09-23: The project owner reported that signup was at capacity and could not obtain API access. No live Jev API calls have been attempted. The paired word baseline and offline integration tests are complete; simulated test responses verify the code only and are not evidence of model performance.</p>
+<div class="box warn"><p>The project owner reported the following signup message. Registration is currently unavailable, so no live Jev API calls have been attempted.</p><blockquote>Whoops, we&#x27;re full - check https://x.com/typesafeai for more information!</blockquote><p>The notice links to <a href="https://x.com/typesafeai">TypeSafe updates</a>. This records a user-reported access limitation. No results are available to assess Jev's performance.</p></div>
+
+<div class="toc"><a href="#design">实验设计</a><a href="#samples">固定样本</a><a href="#results">当前结果</a><a href="#comparison">公平比较</a><a href="#cost">成本与复现边界</a><a href="#repro">复现命令</a></div>
+<h2 id="design">实验设计</h2>
+<p>word 使用原 train 子集训练六个逻辑回归。Jev 使用固定版本 <code>jev-1.13.0</code>，一次调用分别询问六个标签，保留六个独立概率，不将它们归一化为总和 1。输入仅含评论正文与固定任务定义，不含标签、模型分数或人工审计判断。问题定义见 <a href="../configs/jev_questions.json">jev_questions.json</a>。</p>
+<p>两种方法使用同一 calib 子集拟合 Platt 校准，同一 thresh 子集选择阈值，同一 test 子集评估。word 校准原始分类间隔，Jev 校准原始概率的 logit，裁剪范围为 0.000001 到 0.999999。若校准标签只有一类，保留原始概率并记录无法拟合。下游复用原有阈值选择、规则、人工确认与队列模拟。</p>
+<p>两种方法的预训练条件不同，这是完整方法在本项目中的对照，不能把差异归因于某一项架构。所有处置仍由人工确认。</p>
+<h2 id="samples">固定样本</h2>
+<p>从原始划分中按 seed、split 和 ID 的 SHA-256 排序取样，不看标签。保留原始行序，记录各集合 ID 哈希；样本少也不换 seed。协议见 <a href="../analysis/jev/protocol.json">protocol.json</a>，选中的 ID 见 <a href="../analysis/jev/cohort.csv">cohort.csv</a>。</p>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">用途</th><th scope="col">行数</th><th scope="col">toxic 阳性</th><th scope="col">severe_toxic 阳性</th><th scope="col">obscene 阳性</th><th scope="col">threat 阳性</th><th scope="col">insult 阳性</th><th scope="col">identity_hate 阳性</th></tr></thead><tbody><tr><td>train</td><td class='n'>95,743</td><td class='n'>9,182</td><td class='n'>983</td><td class='n'>5,140</td><td class='n'>293</td><td class='n'>4,776</td><td class='n'>854</td></tr><tr><td>calib</td><td class='n'>4,000</td><td class='n'>360</td><td class='n'>36</td><td class='n'>191</td><td class='n'>12</td><td class='n'>187</td><td class='n'>22</td></tr><tr><td>thresh</td><td class='n'>8,000</td><td class='n'>770</td><td class='n'>77</td><td class='n'>430</td><td class='n'>25</td><td class='n'>387</td><td class='n'>71</td></tr><tr><td>test</td><td class='n'>10,000</td><td class='n'>944</td><td class='n'>52</td><td class='n'>573</td><td class='n'>40</td><td class='n'>526</td><td class='n'>108</td></tr></tbody></table></div>
+<p>稀有标签的样本数限制结论强度。现有阈值规则至少需要 30 个预测阳性；90% 和 95% 的精确率目标分别至少需要 27 和 29 个真阳性。关闭某个标签的阈值不代表模型无法识别它；评论还可能通过其他标签或规则进入审核。</p>
+<h2 id="results">当前结果</h2>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">方法</th><th scope="col">需人工审核</th><th scope="col">审核比例</th><th scope="col">队列精确率</th><th scope="col">高风险送审/总数</th><th scope="col">高风险留在放行</th></tr></thead><tbody><tr><td>word</td><td class='n'>1,044</td><td class='n'>10.44%</td><td class='n'>0.653</td><td class='n'>146 / 170</td><td class='n'>24</td></tr><tr><td>Jev</td><td colspan='5'>尚无真实预测，不能计算</td></tr></tbody></table></div>
+<div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">标签</th><th scope="col">word AP</th><th scope="col">word Brier</th><th scope="col">Jev AP</th><th scope="col">Jev Brier</th></tr></thead><tbody><tr><td>toxic</td><td class='n'>0.737</td><td class='n'>0.0515</td><td class='n'>待实测</td><td class='n'>待实测</td></tr><tr><td>severe_toxic</td><td class='n'>0.331</td><td class='n'>0.0054</td><td class='n'>待实测</td><td class='n'>待实测</td></tr><tr><td>obscene</td><td class='n'>0.775</td><td class='n'>0.0258</td><td class='n'>待实测</td><td class='n'>待实测</td></tr><tr><td>threat</td><td class='n'>0.433</td><td class='n'>0.0030</td><td class='n'>待实测</td><td class='n'>待实测</td></tr><tr><td>insult</td><td class='n'>0.692</td><td class='n'>0.0266</td><td class='n'>待实测</td><td class='n'>待实测</td></tr><tr><td>identity_hate</td><td class='n'>0.437</td><td class='n'>0.0080</td><td class='n'>待实测</td><td class='n'>待实测</td></tr></tbody></table></div>
+<p>AP 越高越好，Brier 越低越好。表中正确性沿用原始 Jigsaw 标签，只是审核价值的代理指标。pilot 报告明确标为探索性，不能冒充完整语料上的 baseline 验收。</p>
+<details><summary>阈值选择与关闭原因</summary><p>下表为全体选择样本上的分标签阈值。身份词子组还需通过自己的阈值；其明细保存在 jev_run.json 的 thresholds.subgroup 中。</p><div class="table-scroll" role="region" aria-label="数据表，可横向滚动" tabindex="0"><table><thead><tr><th scope="col">方法</th><th scope="col">标签</th><th scope="col">层级</th><th scope="col">阈值</th><th scope="col">选择集预测阳性</th><th scope="col">选择集精确率</th><th scope="col">状态</th></tr></thead><tbody><tr><td>word</td><td>toxic</td><td>human_review</td><td class='n'>0.587</td><td class='n'>547</td><td class='n'>0.901</td><td>已启用</td></tr><tr><td>word</td><td>toxic</td><td>priority_review</td><td class='n'>0.820</td><td class='n'>413</td><td class='n'>0.952</td><td>已启用</td></tr><tr><td>word</td><td>severe_toxic</td><td>human_review</td><td class='n'>n/a</td><td class='n'>0</td><td class='n'>n/a</td><td>关闭：没有分数阈值同时满足最低数量和精确率目标</td></tr><tr><td>word</td><td>severe_toxic</td><td>priority_review</td><td class='n'>n/a</td><td class='n'>0</td><td class='n'>n/a</td><td>关闭：没有分数阈值同时满足最低数量和精确率目标</td></tr><tr><td>word</td><td>obscene</td><td>human_review</td><td class='n'>0.577</td><td class='n'>324</td><td class='n'>0.901</td><td>已启用</td></tr><tr><td>word</td><td>obscene</td><td>priority_review</td><td class='n'>0.931</td><td class='n'>221</td><td class='n'>0.950</td><td>已启用</td></tr><tr><td>word</td><td>threat</td><td>human_review</td><td class='n'>n/a</td><td class='n'>0</td><td class='n'>n/a</td><td>关闭：阳性 25 条，少于至少所需的 27 条</td></tr><tr><td>word</td><td>threat</td><td>priority_review</td><td class='n'>n/a</td><td class='n'>0</td><td class='n'>n/a</td><td>关闭：阳性 25 条，少于至少所需的 29 条</td></tr><tr><td>word</td><td>insult</td><td>human_review</td><td class='n'>0.930</td><td class='n'>132</td><td class='n'>0.902</td><td>已启用</td></tr><tr><td>word</td><td>insult</td><td>priority_review</td><td class='n'>0.993</td><td class='n'>66</td><td class='n'>0.955</td><td>已启用</td></tr><tr><td>word</td><td>identity_hate</td><td>human_review</td><td class='n'>n/a</td><td class='n'>0</td><td class='n'>n/a</td><td>关闭：没有分数阈值同时满足最低数量和精确率目标</td></tr><tr><td>word</td><td>identity_hate</td><td>priority_review</td><td class='n'>n/a</td><td class='n'>0</td><td class='n'>n/a</td><td>关闭：没有分数阈值同时满足最低数量和精确率目标</td></tr></tbody></table></div></details>
+<h2 id="comparison">相同标记量与相同评论流</h2>
+<p>Jev 预测尚未完成，暂无等标记量差异、配对区间或两模型队列比较。</p>
+<p>是否值得扩大实验，需要同时看高风险漏审差异的方向与区间、实际送审量、积压和完成量。不能仅凭总准确率或新增送审带来的召回提升更换默认模型。</p>
+<h2>实现验证</h2><p>全套测试 315 项通过，3 项跳过。未开启干净提交检查；两个分层精确率项目按既有政策只作诊断，没有固定验收下限。 Ruff 与 mypy 均通过。</p><p>完整 63,978 条测试行上的八个指标区块与已保存的人工审核 baseline 完全一致，仍有 6,310 条送审。全套测试使用此真实数据报告，包含固定语料哈希和回归门槛检查。 运行目录：<code>20260923T091213816605Z-human-review-baseline</code>。</p><p>这些检查验证接入代码与现有流程；它们不证明 Jev 的真实准确率、延迟或在线接口兼容性。</p>
+<h2 id="cost">成本与复现边界</h2>
+<p>尚未完成 Jev 调用，暂无调用成本或延迟测量。</p><p>word 本次训练、校准和预测合计 14.9 秒；其中阈值集与测试集的批量预测合计 0.9 秒。这是本机批量耗时，不能直接与单条 API 延迟作倍数比较。</p>
+<p>锁定模型版本、问题、样本与原始响应。缓存键绑定端点、版本、完整问题和文本；缺失、非法概率或版本不符会停止评估，不跳过困难样本。缓存重放能复算已保存预测，不能保证外部服务未来生成逐值相同的响应。</p>
+<p>官方测试集已经反复查看，Jev 的预训练数据是否含此公开语料也未知。本轮不声称独立泛化结果，不比较 BERT 优劣，也不证明真实送审价值提升。独立人工评估继续暂缓。</p>
+<h2 id="repro">复现命令</h2>
+<pre><code># 准备固定样本并运行配对 word 对照，不调用 API
+python scripts/run_jev_experiment.py --prepare-only
+# Once registration is available, obtain API access and set TYPESAFE_API_KEY
+python scripts/run_jev_experiment.py --allow-network
+# 只用缓存重放，缺失时停止
+python scripts/run_jev_experiment.py
+python record/render.py</code></pre>
+<p>真实调用需要有效 API 访问，密钥只从进程环境读取，不写入配置或报告。<code>reports/jev-cache/</code> 不提交到 Git；跨机器复算需要另行取得该缓存或重新调用服务。</p>
+<ul><li>word：<code>20260923T091052513799Z-jev-pilot-word</code>，commit <code>7a1765906648</code>，工作区含未提交改动。</li></ul>
+<p class="prov">协议 SHA-256：<code>4a85201c80d1246e93a4a0250bb83227d1527259b27677808ddb0602a19c056f</code>。本页读取 <a href="jev_run.json">jev_run.json</a>，原始比较汇总保存在 <code>analysis/jev/</code>。</p>
+<p>接口与版本依据：<a href="https://docs.typesafe.ai/primitives/noul">Noul</a>、<a href="https://docs.typesafe.ai/models">模型版本</a>、<a href="https://docs.typesafe.ai/model-jaggedness/jev-1.13">已知限制</a>。厂商关于性能和校准的描述不能替代本项目测量。</p>
+
+<nav class="bottom" aria-label="前后步骤"><span><a href="step4-features.html">← 第 4 步：误报复核与字符 n-gram</a></span><span></span></nav>
+</main></body></html>

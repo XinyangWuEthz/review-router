@@ -1,21 +1,24 @@
 from __future__ import annotations
 
 import json
+import pickle
 import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from review_router.data import LABELS
+from review_router.data import LABELS, Corpus, load_corpus
 from review_router.pipeline import (
     _headline,
     _identity_concentration,
     _route,
     _run_simulation,
+    evaluate_scores,
     load_config,
     queue_inputs,
     run,
@@ -502,3 +505,136 @@ def test_prevalence_shift_is_hand_computable() -> None:
         -0.5
     )  # 1 expected / 2 actual - 1
     assert out["severe_toxic"]["volume_overshoot_model"] is None  # no positives on test
+
+
+@pytest.fixture
+def external_case(
+    synthetic_corpus: Path, tmp_path: Path,
+) -> tuple[Path, Corpus, np.ndarray, np.ndarray, dict[str, Any]]:
+    path = _config(tmp_path, synthetic_corpus)
+    config = load_config(path)
+    corpus = load_corpus(config.data_dir, config.split_fractions, config.seed)
+    # Deliberately retain a non-sorted cohort order; evaluation must not silently
+    # sort IDs or align external scores against a newly loaded full test set.
+    corpus = replace(
+        corpus,
+        train=corpus.train.sample(frac=1, random_state=1),
+        test=corpus.test.sample(n=100, random_state=2),
+    )
+    thresh = corpus.train[corpus.train["split"] == "thresh"]
+    rng = np.random.default_rng(13)
+    p_thresh = rng.uniform(0.1, 0.9, (len(thresh), len(LABELS)))
+    p_test = rng.uniform(0.1, 0.9, (len(corpus.test), len(LABELS)))
+    source = {
+        "model_name": "test-external-model-v1",
+        "labels": list(LABELS),
+        "row_ids": {
+            "thresh": thresh["id"].astype(str).tolist(),
+            "test": corpus.test["id"].astype(str).tolist(),
+        },
+        "cohort_manifest_sha256": "recorded-upstream-cohort-hash",
+    }
+    return path, corpus, p_thresh, p_test, source
+
+
+def test_external_scores_preserve_identity_and_exploratory_provenance(
+    external_case: tuple[Path, Corpus, np.ndarray, np.ndarray, dict[str, Any]],
+) -> None:
+    path, corpus, p_thresh, p_test, source = external_case
+    run_dir = evaluate_scores(path, corpus, p_thresh, p_test, score_source=source)
+    predictions = pd.read_csv(run_dir / "predictions.csv", dtype={"id": str})
+    assert predictions["id"].tolist() == source["row_ids"]["test"]
+    np.testing.assert_allclose(predictions[[f"p_{label}" for label in LABELS]], p_test)
+    np.testing.assert_array_equal(
+        predictions[[f"y_{label}" for label in LABELS]], corpus.test[list(LABELS)]
+    )
+    assert not (run_dir / "model.pkl").exists()
+    manifest = json.loads((run_dir / "manifest.json").read_text())
+    report = json.loads((run_dir / "report.json").read_text())
+    assert manifest["score_source"] == report["score_source"] == source
+    assert manifest["exploratory"] is report["exploratory"] is True
+    assert report["synthetic"] is True  # "exploratory" does not disguise synthetic input
+    assert report["eval_slice"].startswith("exploratory ")
+    assert manifest["source_data_sha256"] == corpus.file_hashes
+    assert set(manifest["data_sha256"]) == {"external_evaluation_cohort"}
+    assert len(manifest["data_sha256"]["external_evaluation_cohort"]) == 64
+    assert manifest["data_sha256"] != corpus.file_hashes
+    assert manifest["config"]["model"] == {
+        "kind": "external_scores", "model_name": source["model_name"]
+    }
+    assert manifest["unused_model_config"]["analyzer"] == "word"
+    assert manifest["split_label_counts"]["test_scored"]["rows"] == 100
+    assert "EXPLORATORY external-score evaluation" in (run_dir / "report.md").read_text()
+    assert report["decision_contract"]["automatic_actions"] == 0
+
+
+@pytest.mark.parametrize("split", ["thresh", "test"])
+@pytest.mark.parametrize("invalid", ["shape", "nan", "inf", "negative", "above_one"])
+def test_external_scores_reject_invalid_probabilities_before_writing(
+    external_case: tuple[Path, Corpus, np.ndarray, np.ndarray, dict[str, Any]],
+    split: str,
+    invalid: str,
+) -> None:
+    path, corpus, p_thresh, p_test, source = external_case
+    scores = {"thresh": p_thresh, "test": p_test}
+    if invalid == "shape":
+        scores[split] = scores[split][:-1]
+        message = "must have shape"
+    else:
+        scores[split][0, 0] = {
+            "nan": np.nan, "inf": np.inf, "negative": -0.01, "above_one": 1.01
+        }[invalid]
+        message = r"finite probabilities in \[0, 1\]"
+    with pytest.raises(ValueError, match=message):
+        evaluate_scores(path, corpus, scores["thresh"], scores["test"], score_source=source)
+    assert not load_config(path).output_dir.exists()
+
+
+@pytest.mark.parametrize("field", ["thresh", "test", "labels"])
+def test_external_scores_reject_mismatched_row_or_label_order(
+    external_case: tuple[Path, Corpus, np.ndarray, np.ndarray, dict[str, Any]],
+    field: str,
+) -> None:
+    path, corpus, p_thresh, p_test, source = external_case
+    if field == "labels":
+        source["labels"].reverse()
+        message = "canonical order"
+    else:
+        source["row_ids"][field].reverse()
+        message = "do not match corpus row order"
+    with pytest.raises(ValueError, match=message):
+        evaluate_scores(path, corpus, p_thresh, p_test, score_source=source)
+    assert not load_config(path).output_dir.exists()
+
+
+def test_external_scores_share_exact_baseline_evaluation(
+    synthetic_corpus: Path, tmp_path: Path,
+) -> None:
+    path = _config(tmp_path, synthetic_corpus)
+    baseline = run(path)
+    config = load_config(path)
+    corpus = load_corpus(config.data_dir, config.split_fractions, config.seed)
+    with (baseline / "model.pkl").open("rb") as handle:
+        model = pickle.load(handle)
+    thresh = corpus.train[corpus.train["split"] == "thresh"]
+    source = {
+        "model_name": "frozen-word-baseline-replay",
+        "labels": list(LABELS),
+        "row_ids": {"thresh": thresh["id"].tolist(), "test": corpus.test["id"].tolist()},
+    }
+    replay = evaluate_scores(
+        path, corpus,
+        model.predict_proba(thresh["comment_text"].tolist()),
+        model.predict_proba(corpus.test["comment_text"].tolist()),
+        score_source=source,
+    )
+    for name in ("splits.csv", "thresholds.json", "predictions.csv", "simulation_jobs.csv"):
+        assert (baseline / name).read_bytes() == (replay / name).read_bytes(), name
+    baseline_report = json.loads((baseline / "report.json").read_text())
+    replay_report = json.loads((replay / "report.json").read_text())
+    baseline_report.pop("run_id")
+    replay_report.pop("run_id")
+    replay_report.pop("exploratory")
+    replay_report.pop("score_source")
+    replay_report["eval_slice"] = replay_report["eval_slice"].removeprefix("exploratory ")
+    assert replay_report == baseline_report
