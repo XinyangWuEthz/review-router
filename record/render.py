@@ -742,48 +742,101 @@ def build_step2() -> None:
 def build_current_index() -> None:
     run = PRIORITY_RUN["run"] if PRIORITY_RUN is not None else HUMAN_RUN
     source_name = "priority_run.json" if PRIORITY_RUN is not None else "human_review_run.json"
-    if PRIORITY_RUN is not None:
-        ci_run_id = str(PRIORITY_RUN["ci"]["url"]).rstrip("/").rsplit("/", 1)[-1]
-        download_dir = f"reports/ci-{ci_run_id}"
-        update_commands = (
-            f"gh run download {ci_run_id} --name evaluation-{run['git_commit']} --dir {download_dir}\n"
-            f"gh run view {ci_run_id} --json headSha,status,conclusion,url,jobs >{download_dir}-ci.json\n"
-            f"PYTHONPATH=. python record/collect_priority.py {download_dir} --ci-metadata {download_dir}-ci.json\n"
-            "python record/render.py"
-        )
-    else:
-        update_commands = (
-            "python scripts/run_pipeline.py --config configs/baseline.yaml\n"
-            "python record/collect_runs.py --human-review reports/<new run>\n"
-            "python record/render.py"
-        )
+    repository = "https://github.com/XinyangWuEthz/review-router"
+    release_files = f"{repository}/blob/v0.1.0"
+    sensitivity = json.loads((HERE / "severity-sensitivity.json").read_text())
+    default = sensitivity["summary"]["default@180"]
+    fifo = sensitivity["summary"]["fifo@180"]
+    high_risk_gain = (
+        default["high_risk_completed"]["mean"] - fifo["high_risk_completed"]["mean"]
+    )
+    other_loss = fifo["other_completed"]["mean"] - default["other_completed"]["mean"]
+    seed_count = len(sensitivity["protocol"]["seeds"])
     workload = run["review_workload"]
+    descriptions = {
+        "step1-baseline.html": "Build a reproducible pipeline for scoring, thresholds, rules and queue simulation.",
+        "step2-round1.html": "Inspect the first results, retire R103 and diagnose the unmet automatic-action target.",
+        "step3-human-review.html": "Require human confirmation and count both review bands against reviewer capacity.",
+        "step4-features.html": "Audit false positives and compare word features with word plus character features.",
+        "step5-jev.html": "Prepare a paired pilot. Registration was unavailable; no live Jev evaluation was attempted.",
+        "step6-priority.html": "Compare severity ordering and confidence segments in the archived five-seed baseline.",
+    }
     steps = "".join(
-        f'<li><a href="{path}">{title}</a><div class="one">{description}。</div></li>'
-        for path, title, description in STEPS
+        f'<li><a href="{path}">{ENGLISH_STEP_TITLES[path]}</a>'
+        f' <span class="tag">{"English" if path == "step6-priority.html" else "Chinese archive"}</span>'
+        f'<div class="one">{descriptions[path]}</div></li>'
+        for path, _, _ in STEPS
     )
     body = f"""
-<span class="tag">项目记录</span><span class="tag">当前：人工确认</span>
-<h1>review-router 项目记录</h1>
-<p class="lede">按步骤记录实验设计、测量结果和决定。前两页保留自动处置实验；第三页记录改成人工确认后的新流程与评估{'；第四页记录误报人工复核和字符特征探索' if len(STEPS) > 3 else ''}{'；第五页记录 Jev 对照的进展与结果' if len(STEPS) > 4 else ''}{'；第六页记录严重度排序、开发集诊断和分段阈值的新评估' if len(STEPS) > 5 else ''}。</p>
-<h2>当前项目在做什么</h2>
-<p>系统将评论分为放行、普通人工审核、优先人工审核。高置信预测及规则标记的高风险评论进入优先档；任何处置都需要人工确认，两个人工档都占用审核容量。</p>
-{'<p>当前队列按预测严重度排序，优先档标签不再直接决定先后。第 6 步用同一组模型分数比较累计阈值与分段阈值，历史页面保留原来的数值与结论。</p>' if PRIORITY_RUN is not None else ''}
-<p>本轮共评估 {workload["n_total"]:,} 条评论，{workload["n_requires_human_review"]:,} 条进入人工审核，占 {100 * workload["review_fraction"]:.2f}%。这些数字描述保存的评估运行，实际人工审核质量仍待验证。</p>
-{'<p>当前决定是默认保持词特征 <code>word</code>。独立审核价值人工评估集仅记录为后续可选方向，因工作量较大而暂缓，尚未启动；原始数据标签保持不变。</p>' if FEATURES is not None else ''}
-<div class="box">99% 是首轮自动处置实验的历史要求。当前 95% 与 90% 是选择集上的分档参数；测试精确率如实报告，项目不再以达到 99% 来判定人工辅助方案是否有效。</div>
-<h2>步骤</h2><ol class="steps">{steps}<li>{PENDING[0]}，{PENDING_STATUS}。{PENDING[1]}。</li></ol>
-{'<p>补充研究依据：<a href="step4-features.html#label-quality-reference">Jigsaw 的非预期偏差指标与标签可靠性前提</a>。记录为何需要复核标签质量，以及论文不能替本项目证明的部分。</p>' if FEATURES is not None else ''}
-{DEFERRED_REVIEW_EVALUATION}
-<h2>重新生成页面</h2>
+<span class="tag">Experiment record</span><span class="tag">v0.1.0</span>
+<h1>Same model and reviewers. Different review priorities.</h1>
+<p class="lede">review-router is a reproducible benchmark for human-review routing.
+It compares admission policies and queue ordering under fixed reviewer capacity.</p>
+<p><a href="{repository}/releases/tag/v0.1.0">v0.1.0 release and downloads</a> ·
+<a href="{repository}">Source code</a></p>
+
+<h2>What the queue changes, and what it costs</h2>
+<p>At 180 admitted review jobs per hour, the default ordering completes
+{high_risk_gain:.2f} more high-risk reviews per shift than FIFO and {other_loss:.2f} fewer other reviews.
+These are means across {seed_count} paired simulation seeds, with four reviewers,
+two minutes per job and an eight-hour shift.</p>
+<table><tr><th>Completed reviews per shift</th><th>FIFO</th><th>Default severity ordering</th></tr>
+<tr><td>High-risk reviews</td><td>{fifo["high_risk_completed"]["mean"]:.2f}</td><td>{default["high_risk_completed"]["mean"]:.2f}</td></tr>
+<tr><td>Other reviews</td><td>{fifo["other_completed"]["mean"]:.2f}</td><td>{default["other_completed"]["mean"]:.2f}</td></tr>
+<tr><td>Total reviews</td><td>{fifo["completed"]["mean"]:.2f}</td><td>{default["completed"]["mean"]:.2f}</td></tr></table>
+<p>Ordering reallocates fixed capacity. High risk means a positive severe toxicity, threat or identity hate label;
+other reviews include all remaining queued jobs. The
+<a href="{release_files}/record/severity-sensitivity.md">bounded weight sensitivity experiment</a>
+uses {seed_count} seeds and retains the declared default weights. Step 6 below preserves the earlier five-seed baseline.
+Neither experiment is an independent evaluation on new comments or a measurement of production review value.</p>
+
+<h2>The released method</h2>
+<p>The scorer uses frozen word TF-IDF features, six logistic classifiers and Platt calibration.
+The router assigns comments to allow, ordinary review or priority review. Both review bands enter one queue,
+ordered by the largest calibrated label probability times its severity weight.
+The priority label alone does not determine queue position. Every moderation action requires human confirmation.</p>
+<p>The saved benchmark routes {workload["n_requires_human_review"]:,} of {workload["n_total"]:,} test comments
+to review, or {100 * workload["review_fraction"]:.2f}%. Jigsaw labels remain proxies for review value.
+The method and its limits are fixed in the <a href="{release_files}/docs/release-v0.1.0.md">release notes</a>;
+the <a href="{release_files}/record/frozen-router.md">scorer freeze record</a> explains what stays fixed.</p>
+
+<h2>How the method developed</h2>
+<p>Steps 1 and 2 document the retired automatic-action experiment and its 99% precision target.
+Later steps require human confirmation. Historical pages keep their original results;
+Steps 1 to 5 are in Chinese, and Step 6 is in English.</p>
+<ol class="steps">{steps}
+<li><a href="{release_files}/record/frozen-router.md">Freeze the scorer</a>
+<div class="one">Hold the vocabulary, classifier and calibration parameters fixed for router comparisons.</div></li>
+<li><a href="{release_files}/record/severity-sensitivity.md">Check weight sensitivity and release v0.1.0</a>
+<div class="one">Test five declared weight vectors, report the capacity tradeoff and retain the default.</div></li></ol>
+<p>Jev remains untested because the project owner reported that registration was at capacity.
+The prepared pilot does not establish its accuracy, latency or benefit.</p>
+
+<h2 id="future-review-evaluation">Independent human evaluation remains deferred</h2>
+<p>A comment may deserve review because it is ambiguous or needs context, even if its original label is negative.
+An independent assessment could record review worthiness, urgency, missing context, final decisions and handling time.
+This work has not started because of the annotation workload. Original Jigsaw labels remain unchanged.</p>
+<p>The <a href="step4-features.html#label-quality-reference">label-quality research note</a>, in Chinese,
+explains why labels deserve scrutiny and why that alone does not prove a particular label is wrong.</p>
+
+<h2>Reproduce the release</h2>
+<p>Start with the <a href="{repository}/releases/tag/v0.1.0">versioned model and evaluation archives</a>
+and the <a href="{release_files}/docs/experiment.md">setup and restoration protocol</a>.
+The archives preserve model bytes, predictions, thresholds and configuration without relying on expiring CI artifacts.</p>
+<details><summary>Regenerate the saved record pages</summary>
 <pre><code>python -m pip install -e ".[ml,analysis]"
 python record/diagnose.py --render-only
 python record/render.py</code></pre>
-<p>以上命令读取保存的数据生成页面和图表。{'从已完成的 CI 运行重新收集当前实验记录：' if PRIORITY_RUN is not None else '更新当前人工审核实验时：'}</p>
-<pre><code>{escape(update_commands)}</code></pre>
-<p class="prov">当前运行 <code>{run["run_id"]}</code>。源数据与策略快照保存在 <a href="{source_name}">{source_name}</a>；历史运行保存在 <a href="runs.json">runs.json</a>。</p>
+<p>These commands render saved records and figures. They do not train the model or rerun the benchmark.</p></details>
+<p class="prov">Archived Step 6 provenance before the scorer freeze:
+run <code>{run["run_id"]}</code>, commit <code>{run["git_commit"]}</code>.
+Its policy and results are in <a href="{source_name}">{source_name}</a>.
+Earlier runs are in <a href="runs.json">runs.json</a>;
+the release sensitivity protocol and results are in <a href="severity-sensitivity.json">severity-sensitivity.json</a>.</p>
+<p class="prov">Project code is licensed under <a href="../LICENSE">MIT</a>.
+Third-party data and dependencies retain their own terms.</p>
 """
-    page("index.html", "review-router 项目记录", body, None, STEPS[0])
+    page("index.html", "review-router experiment record", body, None, STEPS[0], language="en")
 
 
 def _human_time_section(sim: dict[str, Any]) -> str:
