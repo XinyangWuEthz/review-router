@@ -1,8 +1,19 @@
 # review-router
 
-A human-review router over a fixed text classifier. It decides which comments
-enter review and which are served first when reviewer capacity is limited.
-Every moderation action requires human confirmation.
+[Experiment pages](https://xinyangwuethz.github.io/review-router/) ·
+[Release v0.1.0 and downloads](https://github.com/XinyangWuEthz/review-router/releases/tag/v0.1.0) ·
+[Reproduce](#reproduce)
+
+A reproducible benchmark for human-review routing. It compares admission
+policies and queue ordering with a fixed text classifier and fixed reviewer
+capacity. Every moderation action requires human confirmation.
+
+Changing the queue changes which risks reviewers reach. At 180 admitted jobs per
+hour, the default severity ordering completed **53.75 more high-risk reviews and
+53.75 fewer other reviews** per 8-hour shift than FIFO, averaged over 20 paired
+seeds. Total completions stayed the same. This is a reallocation of review
+capacity in a simulation. The [weight sensitivity record](record/severity-sensitivity.md)
+contains this comparison; the generated baseline table below uses five seeds.
 
 The project asks: **can a routing layer help reviewers reach more high-risk
 comments, sooner, with the same capacity?** Its contribution is the routing and
@@ -136,4 +147,7 @@ be read alongside unfinished counts. Identity-term checks do not establish
 general fairness; the priority-band disparity interval is inconclusive.
 Transfer to other languages, domains or changing traffic has not been evaluated.
 
-Developed with AI-assisted tooling. Licensed under MIT.
+Developed with AI-assisted tooling. Project code is licensed under [MIT](LICENSE).
+Third-party dependencies and data retain their own terms. Obtain the original
+corpus from [Jigsaw on Kaggle](https://www.kaggle.com/c/jigsaw-toxic-comment-classification-challenge/data)
+and consult its terms before use. The project license does not replace them.
