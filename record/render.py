@@ -45,12 +45,28 @@ CSS = """
 :root { --ink: #0b0b0b; --ink2: #52514e; --line: #e6e5e1; --surface: #fcfcfb; --accent: #185ea8; --warn: #a73816; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif; }
-main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
-nav.top { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); margin-bottom: 24px; flex-wrap: wrap; }
-nav.top a, a { color: var(--accent); text-underline-offset: 3px; }
+.page-layout { display: grid; grid-template-columns: 264px minmax(0, 960px); gap: 40px; max-width: 1320px; margin: 0 auto; padding: 32px 24px 80px; align-items: start; }
+main { min-width: 0; }
+a { color: var(--accent); text-underline-offset: 3px; }
 a:hover { text-decoration-thickness: 2px; }
 a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-nav.top a[aria-current="page"] { font-weight: 700; color: var(--ink); }
+.skip-link { position: fixed; top: 8px; left: 16px; transform: translateY(-160%); z-index: 10; padding: 8px 14px; background: #fff; border: 1px solid var(--accent); border-radius: 4px; }
+.skip-link:focus { transform: translateY(0); }
+.sidebar { position: sticky; top: 24px; max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 18px 8px 0; border-right: 1px solid var(--line); }
+.record-brand { margin: 0 0 18px; font-size: 18px; line-height: 1.4; }
+.record-brand a { font-weight: 700; color: var(--ink); text-decoration: none; }
+.record-brand span { display: block; margin-top: 3px; font-size: 13px; color: var(--ink2); }
+.sidebar details { margin: 0; padding: 0; border: 0; }
+.sidebar summary { display: none; }
+.sidebar nav + nav { margin-top: 22px; }
+.nav-label { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--ink2); }
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.sidebar li { margin: 2px 0; }
+.sidebar nav a { display: block; padding: 7px 10px; border-left: 3px solid transparent; border-radius: 0 5px 5px 0; color: var(--ink2); font-size: 14px; line-height: 1.45; text-decoration: none; overflow-wrap: anywhere; }
+.sidebar nav a:hover { background: #f1f3f5; color: var(--accent); }
+.sidebar nav a[aria-current="page"] { border-left-color: var(--accent); background: #eaf2fb; color: #164e88; font-weight: 600; }
+.sidebar .section-links a { padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
+.sidebar .sidebar-status { margin: 18px 10px 0; font-size: 12px; line-height: 1.5; color: var(--ink2); }
 h1 { font-size: 26px; line-height: 1.3; margin: 0 0 8px; }
 h2 { font-size: 20px; margin: 40px 0 10px; border-top: 1px solid var(--line); padding-top: 20px; }
 h3 { font-size: 17px; margin: 26px 0 8px; }
@@ -76,8 +92,6 @@ figcaption { font-size: 14px; color: var(--ink2); margin-top: 8px; max-width: 78
 .steps li { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 8px 0; background: #fff; }
 .steps li a { font-weight: 600; }
 .steps li .one { color: var(--ink2); font-size: 14px; margin-top: 2px; }
-.toc { font-size: 15px; color: var(--ink2); columns: 2; margin: 8px 0 16px; }
-.toc a { display: block; padding: 3px 0; break-inside: avoid; }
 .flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 14px 0; }
 .flow .node { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 13px; }
 .flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
@@ -93,10 +107,19 @@ pre code { background: none; padding: 0; }
 code { overflow-wrap: anywhere; }
 pre code { overflow-wrap: normal; }
 nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px; }
+@media (max-width: 900px) {
+  .page-layout { display: block; max-width: 1000px; padding: 24px 20px 64px; }
+  .sidebar { position: static; max-height: none; overflow: visible; padding: 0; margin-bottom: 28px; border: 0; }
+  .record-brand { margin-bottom: 12px; font-size: 16px; }
+  .record-brand span { display: inline; margin-left: 8px; }
+  .sidebar details { border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .sidebar summary { display: list-item; padding: 12px 16px; font-size: 14px; }
+  .sidebar summary span { display: block; margin: 3px 0 0 18px; font-weight: 400; font-size: 12px; color: var(--ink2); }
+  .sidebar-content { padding: 8px 14px 16px; }
+}
 @media (max-width: 640px) {
-  main { padding: 24px 16px 48px; }
+  .page-layout { padding: 20px 16px 48px; }
   h1 { font-size: 24px; }
-  .toc { columns: 1; }
   .flow { flex-direction: column; }
   .flow .node { flex: auto; }
   .flow .arrow { display: none; }
@@ -165,7 +188,7 @@ if PRIORITY_RUN is not None and len(STEPS) == 5:
     PENDING = ("后续：独立人工评估", "继续暂缓，尚未启动；原始 Jigsaw 标签保持不变")
 
 ENGLISH_STEP_TITLES = {
-    "index.html": "Index",
+    "index.html": "Overview",
     "step1-baseline.html": "Step 1: baseline",
     "step2-round1.html": "Step 2: first results",
     "step3-human-review.html": "Step 3: human confirmation",
@@ -173,6 +196,76 @@ ENGLISH_STEP_TITLES = {
     "step5-jev.html": "Step 5: Jev pilot",
     "step6-priority.html": "Step 6: severity and confidence segments",
 }
+
+# Translate navigation only; the archived section text stays as originally written.
+ENGLISH_SECTION_TITLES = {
+    "起点：项目脚手架": "Project setup",
+    "实验协议": "Experiment protocol",
+    "政策文件里的三条规则（baseline 时的写法）": "Original policy rules",
+    "门槛（回归检查）": "Regression gates",
+    "产物": "Saved artifacts",
+    "先在合成数据上跑通": "Synthetic-data check",
+    "这一步交付了什么": "Step outcomes",
+    "1. 数据": "Data",
+    "2. R1 结果": "First-round results",
+    "3. R103 的处理": "Removing R103",
+    "4. 门槛": "Regression gates",
+    "5. 未达标的诊断": "Diagnosing missed targets",
+    "6. 首轮提出的下一步": "Proposed next steps",
+    "改变了什么": "What changed",
+    "本轮工作量与质量": "Workload and quality",
+    "逐任务时间与主指标": "Task timing and primary metric",
+    "新验收标准与结果": "Acceptance criteria and results",
+    "四类回归检查": "Four regression checks",
+    "四种排序的仿真结果": "Queue simulation results",
+    "身份词子组诊断": "Identity-term diagnostics",
+    "如何复现": "Reproduce this step",
+    "为什么做这一步": "Why this experiment",
+    "误报人工复核": "False-positive review",
+    "标签质量疑点与研究依据": "Label quality and research",
+    "字符 n-gram 改了什么": "Character n-gram features",
+    "首轮设计下的结果": "First-round protocol results",
+    "v2 设计下的结果": "v2 protocol results",
+    "独立复核": "Independent verification",
+    "结论与决定": "Findings and decision",
+    "后续考虑：独立人工评估集，暂缓": "Independent evaluation deferred",
+    "实验设计": "Experiment design",
+    "固定样本": "Fixed sample",
+    "当前结果": "Current results",
+    "相同标记量与相同评论流": "Matched flags and comment stream",
+    "实现验证": "Implementation checks",
+    "成本与复现边界": "Costs and reproduction limits",
+    "复现命令": "Reproduction commands",
+}
+
+
+def section_navigation(body: str) -> tuple[str, str]:
+    """Move section navigation into the shared sidebar without rewriting the prose."""
+    body = re.sub(r'<(nav|div) class="toc"[^>]*>.*?</\1>', "", body, flags=re.S)
+    ids = set(re.findall(r'\bid="([^"]+)"', body))
+    links = []
+
+    def section(match: re.Match[str]) -> str:
+        attributes, heading = match.groups()
+        label = unescape(re.sub(r"<[^>]+>", "", heading))
+        label = ENGLISH_SECTION_TITLES.get(label, label)
+        existing_id = re.search(r'\bid="([^"]+)"', attributes)
+        if existing_id:
+            anchor = existing_id[1]
+        else:
+            base = re.sub(r"[^a-z0-9]+", "-", label.lower()).strip("-") or "section"
+            anchor = base
+            suffix = 2
+            while anchor in ids:
+                anchor = f"{base}-{suffix}"
+                suffix += 1
+            ids.add(anchor)
+            attributes += f' id="{anchor}"'
+        links.append(f'<li><a href="#{escape(anchor, quote=True)}">{escape(label)}</a></li>')
+        return f"<h2{attributes}>{heading}</h2>"
+
+    body = re.sub(r"<h2([^>]*)>(.*?)</h2>", section, body, flags=re.S)
+    return body, "".join(links)
 
 
 DEFERRED_REVIEW_EVALUATION = """
@@ -205,7 +298,7 @@ def page(
     table_label = "Data table, scroll horizontally" if english else "数据表，可横向滚动"
 
     def navigation_title(path: str, label: str) -> str:
-        return ENGLISH_STEP_TITLES.get(path, label) if english else label
+        return ENGLISH_STEP_TITLES.get(path, label)
 
     def accessible_table(match: re.Match[str]) -> str:
         header = re.sub(r"<th(?=[ >])", '<th scope="col"', match[1])
@@ -213,23 +306,51 @@ def page(
 
     body = re.sub(r"<table><tr>(.*?)</tr>", accessible_table, body, flags=re.S)
     body = body.replace("</table>", "</tbody></table></div>")
+    body, section_links = section_navigation(body)
     nav_prev = (
         f'<a href="{prev_[0]}">← {navigation_title(prev_[0], prev_[1])}</a>' if prev_
         else f'<a href="index.html">← {navigation_title("index.html", "目录")}</a>'
     )
     nav_next = f'<a href="{next_[0]}">{navigation_title(next_[0], next_[1])} →</a>' if next_ else ""
     navigation = ''.join(
-        f'<a href="{path}"' + (' aria-current="page"' if path == name else '')
-        + f'>{navigation_title(path, label)}</a>'
+        f'<li><a href="{path}"' + (' aria-current="page"' if path == name else '')
+        + f'>{navigation_title(path, label)}</a></li>'
         for path, label in [("index.html", "目录"), *((s[0], s[1]) for s in STEPS)]
     )
+    current_page = escape(navigation_title(name, title))
     doc = f"""<!DOCTYPE html>
 <html lang="{language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title}</title><style>{CSS}</style></head><body><main>
-<nav class="top" aria-label="{'Project steps' if english else '项目步骤'}">{navigation}<span>{'Independent human evaluation: deferred' if english else PENDING[0] + '，' + PENDING_STATUS}</span></nav>
+<title>{title}</title><style>{CSS}</style></head><body>
+<a class="skip-link" href="#main-content" lang="en">Skip to content</a>
+<div class="page-layout">
+<aside class="sidebar" aria-label="Record navigation" lang="en">
+<p class="record-brand"><a href="index.html">review-router</a><span>Experiment record</span></p>
+<details id="record-navigation" open>
+<summary>Navigate this record<span>{current_page}</span></summary>
+<div class="sidebar-content">
+<nav aria-labelledby="record-pages-label"><p class="nav-label" id="record-pages-label">Record pages</p><ul>{navigation}</ul></nav>
+<nav class="section-links" aria-labelledby="page-sections-label"><p class="nav-label" id="page-sections-label">On this page</p><ul>{section_links}</ul></nav>
+<nav aria-labelledby="project-links-label"><p class="nav-label" id="project-links-label">Project links</p><ul>
+<li><a href="https://github.com/XinyangWuEthz/review-router">GitHub repository</a></li>
+<li><a href="https://xinyangwuethz.github.io/notes/same-model-different-review-queue/">Read the article</a></li>
+<li><a href="https://github.com/XinyangWuEthz/review-router/releases/tag/v0.1.0">v0.1.0 release</a></li>
+</ul></nav>
+<p class="sidebar-status">Independent human evaluation is deferred.</p>
+</div></details></aside>
+<main id="main-content" tabindex="-1">
 {body}
-<nav class="bottom" aria-label="{'Previous and next steps' if english else '前后步骤'}"><span>{nav_prev}</span><span>{nav_next}</span></nav>
-</main></body></html>"""
+<nav class="bottom" aria-label="Previous and next steps" lang="en"><span>{nav_prev}</span><span>{nav_next}</span></nav>
+</main></div>
+<script>
+(() => {{
+  const menu = document.getElementById("record-navigation");
+  const desktop = window.matchMedia("(min-width: 901px)");
+  const updateMenu = () => {{ menu.open = desktop.matches; }};
+  updateMenu();
+  desktop.addEventListener("change", updateMenu);
+}})();
+</script>
+</body></html>"""
     (HERE / name).write_text(doc, encoding="utf-8")
 
 

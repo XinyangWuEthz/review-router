@@ -4,12 +4,28 @@
 :root { --ink: #0b0b0b; --ink2: #52514e; --line: #e6e5e1; --surface: #fcfcfb; --accent: #185ea8; --warn: #a73816; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--surface); color: var(--ink); font: 16px/1.65 -apple-system, "PingFang SC", "Noto Sans CJK SC", "Helvetica Neue", Arial, sans-serif; }
-main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 80px; }
-nav.top { display: flex; gap: 16px; font-size: 14px; color: var(--ink2); margin-bottom: 24px; flex-wrap: wrap; }
-nav.top a, a { color: var(--accent); text-underline-offset: 3px; }
+.page-layout { display: grid; grid-template-columns: 264px minmax(0, 960px); gap: 40px; max-width: 1320px; margin: 0 auto; padding: 32px 24px 80px; align-items: start; }
+main { min-width: 0; }
+a { color: var(--accent); text-underline-offset: 3px; }
 a:hover { text-decoration-thickness: 2px; }
 a:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-nav.top a[aria-current="page"] { font-weight: 700; color: var(--ink); }
+.skip-link { position: fixed; top: 8px; left: 16px; transform: translateY(-160%); z-index: 10; padding: 8px 14px; background: #fff; border: 1px solid var(--accent); border-radius: 4px; }
+.skip-link:focus { transform: translateY(0); }
+.sidebar { position: sticky; top: 24px; max-height: calc(100vh - 48px); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 0 18px 8px 0; border-right: 1px solid var(--line); }
+.record-brand { margin: 0 0 18px; font-size: 18px; line-height: 1.4; }
+.record-brand a { font-weight: 700; color: var(--ink); text-decoration: none; }
+.record-brand span { display: block; margin-top: 3px; font-size: 13px; color: var(--ink2); }
+.sidebar details { margin: 0; padding: 0; border: 0; }
+.sidebar summary { display: none; }
+.sidebar nav + nav { margin-top: 22px; }
+.nav-label { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--ink2); }
+.sidebar ul { list-style: none; margin: 0; padding: 0; }
+.sidebar li { margin: 2px 0; }
+.sidebar nav a { display: block; padding: 7px 10px; border-left: 3px solid transparent; border-radius: 0 5px 5px 0; color: var(--ink2); font-size: 14px; line-height: 1.45; text-decoration: none; overflow-wrap: anywhere; }
+.sidebar nav a:hover { background: #f1f3f5; color: var(--accent); }
+.sidebar nav a[aria-current="page"] { border-left-color: var(--accent); background: #eaf2fb; color: #164e88; font-weight: 600; }
+.sidebar .section-links a { padding-top: 5px; padding-bottom: 5px; font-size: 13px; }
+.sidebar .sidebar-status { margin: 18px 10px 0; font-size: 12px; line-height: 1.5; color: var(--ink2); }
 h1 { font-size: 26px; line-height: 1.3; margin: 0 0 8px; }
 h2 { font-size: 20px; margin: 40px 0 10px; border-top: 1px solid var(--line); padding-top: 20px; }
 h3 { font-size: 17px; margin: 26px 0 8px; }
@@ -35,8 +51,6 @@ figcaption { font-size: 14px; color: var(--ink2); margin-top: 8px; max-width: 78
 .steps li { border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; margin: 8px 0; background: #fff; }
 .steps li a { font-weight: 600; }
 .steps li .one { color: var(--ink2); font-size: 14px; margin-top: 2px; }
-.toc { font-size: 15px; color: var(--ink2); columns: 2; margin: 8px 0 16px; }
-.toc a { display: block; padding: 3px 0; break-inside: avoid; }
 .flow { display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap; margin: 14px 0; }
 .flow .node { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; background: #fff; font-size: 13px; }
 .flow .node b { display: block; font-size: 14px; margin-bottom: 2px; }
@@ -52,27 +66,49 @@ pre code { background: none; padding: 0; }
 code { overflow-wrap: anywhere; }
 pre code { overflow-wrap: normal; }
 nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; font-size: 14px; }
+@media (max-width: 900px) {
+  .page-layout { display: block; max-width: 1000px; padding: 24px 20px 64px; }
+  .sidebar { position: static; max-height: none; overflow: visible; padding: 0; margin-bottom: 28px; border: 0; }
+  .record-brand { margin-bottom: 12px; font-size: 16px; }
+  .record-brand span { display: inline; margin-left: 8px; }
+  .sidebar details { border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+  .sidebar summary { display: list-item; padding: 12px 16px; font-size: 14px; }
+  .sidebar summary span { display: block; margin: 3px 0 0 18px; font-weight: 400; font-size: 12px; color: var(--ink2); }
+  .sidebar-content { padding: 8px 14px 16px; }
+}
 @media (max-width: 640px) {
-  main { padding: 24px 16px 48px; }
+  .page-layout { padding: 20px 16px 48px; }
   h1 { font-size: 24px; }
-  .toc { columns: 1; }
   .flow { flex-direction: column; }
   .flow .node { flex: auto; }
   .flow .arrow { display: none; }
   nav.bottom { gap: 16px; flex-wrap: wrap; }
 }
-</style></head><body><main>
-<nav class="top" aria-label="项目步骤"><a href="index.html">目录</a><a href="step1-baseline.html">第 1 步：建立 baseline</a><a href="step2-round1.html" aria-current="page">第 2 步：首轮结果与诊断</a><a href="step3-human-review.html">第 3 步：优先人工审核</a><a href="step4-features.html">第 4 步：误报复核与字符 n-gram</a><a href="step5-jev.html">第 5 步：Jev 与词模型对照</a><a href="step6-priority.html">Step 6: severity ordering and confidence segments</a><span>后续：独立人工评估，暂缓</span></nav>
+</style></head><body>
+<a class="skip-link" href="#main-content" lang="en">Skip to content</a>
+<div class="page-layout">
+<aside class="sidebar" aria-label="Record navigation" lang="en">
+<p class="record-brand"><a href="index.html">review-router</a><span>Experiment record</span></p>
+<details id="record-navigation" open>
+<summary>Navigate this record<span>Step 2: first results</span></summary>
+<div class="sidebar-content">
+<nav aria-labelledby="record-pages-label"><p class="nav-label" id="record-pages-label">Record pages</p><ul><li><a href="index.html">Overview</a></li><li><a href="step1-baseline.html">Step 1: baseline</a></li><li><a href="step2-round1.html" aria-current="page">Step 2: first results</a></li><li><a href="step3-human-review.html">Step 3: human confirmation</a></li><li><a href="step4-features.html">Step 4: feature comparison</a></li><li><a href="step5-jev.html">Step 5: Jev pilot</a></li><li><a href="step6-priority.html">Step 6: severity and confidence segments</a></li></ul></nav>
+<nav class="section-links" aria-labelledby="page-sections-label"><p class="nav-label" id="page-sections-label">On this page</p><ul><li><a href="#data">Data</a></li><li><a href="#results">First-round results</a></li><li><a href="#r103">Removing R103</a></li><li><a href="#gates">Regression gates</a></li><li><a href="#gap">Diagnosing missed targets</a></li><li><a href="#next">Proposed next steps</a></li></ul></nav>
+<nav aria-labelledby="project-links-label"><p class="nav-label" id="project-links-label">Project links</p><ul>
+<li><a href="https://github.com/XinyangWuEthz/review-router">GitHub repository</a></li>
+<li><a href="https://xinyangwuethz.github.io/notes/same-model-different-review-queue/">Read the article</a></li>
+<li><a href="https://github.com/XinyangWuEthz/review-router/releases/tag/v0.1.0">v0.1.0 release</a></li>
+</ul></nav>
+<p class="sidebar-status">Independent human evaluation is deferred.</p>
+</div></details></aside>
+<main id="main-content" tabindex="-1">
 
 <span class="tag">第 2 步，历史实验</span><span class="tag red">原自动处置要求未达标</span><span class="tag">2026-09-22</span>
 <h1>首轮结果与诊断</h1>
 <p class="box">本页保留原自动处置实验及其 99% 目标。当前方案已改为优先人工审核，见<a href="step3-human-review.html">第三步</a>。历史结果不按新标准重判。</p>
 <p class="lede">本轮完成了真实数据评估，移除 R103，并检查自动处置精确率的缺口。先列最终路由结果，再比较策略改动，最后讨论诊断能支持哪些判断。</p>
 <div class="box warn"><b>先看结论：</b>自动处置精确率为 90.4%，未达到 99%；严重度排序在本次仿真中优于 FIFO。文本与标签统计能提示问题，但还不足以确认性能差距的原因。</div>
-<nav class="toc" aria-label="本页目录">
-<a href="#data">1. 数据</a><a href="#results">2. R1 结果</a><a href="#r103">3. R103 的处理</a><a href="#gates">4. 门槛</a>
-<a href="#gap">5. 未达标的诊断</a><a href="#gap1">5.1 固定阈值复核</a><a href="#gap2">5.2 选择集内部验证</a><a href="#gap3">5.3 两份数据的差异</a><a href="#gap4">5.4 假阳性样本检查</a><a href="#gap5">5.5 阈值规则对比</a><a href="#gap6">5.6 证据与限制</a><a href="#next">6. 下一步</a>
-</nav>
+
 
 <h2 id="data">1. 数据</h2>
 <p>数据来自 Hugging Face 镜像 <code>thesofakillers/jigsaw-toxic-comment-classification-challenge</code>，保存在 <code>data/jigsaw/</code>，不提交语料文件。train 共 159,571 行，评分测试行共 63,978 行；行数和标签计数与项目记录的基准计数一致。manifest 保存三个文件的 SHA-256，便于检查是否使用同一份输入。</p>
@@ -202,5 +238,15 @@ nav.bottom { display: flex; justify-content: space-between; margin-top: 40px; fo
 </ol>
 <p class="prov">本节数字来自 <a href="results.json">results.json</a>，运行对照来自 <a href="runs.json">runs.json</a>。测试标签用于事后诊断和阈值范围扫描，但没有用扫描结果替换本轮冻结的路由阈值。以上改进方向都还需要新的验证；原始评估标签在本轮保持不变。</p>
 
-<nav class="bottom" aria-label="前后步骤"><span><a href="step1-baseline.html">← 第 1 步：建立 baseline</a></span><span><a href="step3-human-review.html">第 3 步：优先人工审核 →</a></span></nav>
-</main></body></html>
+<nav class="bottom" aria-label="Previous and next steps" lang="en"><span><a href="step1-baseline.html">← Step 1: baseline</a></span><span><a href="step3-human-review.html">Step 3: human confirmation →</a></span></nav>
+</main></div>
+<script>
+(() => {
+  const menu = document.getElementById("record-navigation");
+  const desktop = window.matchMedia("(min-width: 901px)");
+  const updateMenu = () => { menu.open = desktop.matches; };
+  updateMenu();
+  desktop.addEventListener("change", updateMenu);
+})();
+</script>
+</body></html>
