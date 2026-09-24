@@ -773,7 +773,14 @@ def build_current_index() -> None:
 <p class="lede">review-router is a reproducible benchmark for human-review routing.
 It compares admission policies and queue ordering under fixed reviewer capacity.</p>
 <p><a href="{repository}/releases/tag/v0.1.0">v0.1.0 release and downloads</a> ·
-<a href="{repository}">Source code</a></p>
+<a href="{repository}">GitHub repository</a></p>
+
+<div class="box">
+<p><b>Read the article:</b>
+<a href="https://xinyangwuethz.github.io/notes/same-model-different-review-queue/">Same model, different review queue: which risks get reviewed first?</a></p>
+<p>A walkthrough of the four queue orderings, the gains and displaced work under fixed capacity,
+and why waiting-time statistics need to be read alongside counts of jobs that never started.</p>
+</div>
 
 <h2>What the queue changes, and what it costs</h2>
 <p>At 180 admitted review jobs per hour, the default ordering completes
