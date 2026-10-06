@@ -84,7 +84,7 @@ def test_pool_must_name_every_signal(pool: pd.DataFrame) -> None:
     [
         ("severity", ["b", "a", "c", "d"]),  # c and d tie at 5.0; id breaks it
         ("max_score", ["c", "f", "b", "a"]),
-        ("uncertainty", ["d", "e", "a", "a"]),
+        ("uncertainty", ["d", "e", "a", "b"]),  # b and c tie at 0.4; id breaks it
     ],
 )
 def test_ranked_selection_order(
@@ -94,11 +94,7 @@ def test_ranked_selection_order(
     assert len(chosen) == config.budget
     assert chosen["rank"].tolist() == [1, 2, 3, 4]
     assert (chosen["source"] == policy).all()
-    if policy == "uncertainty":
-        # d (0.5 safety) first, e (0.6 hallucination) second; the rest tie-break by id.
-        assert chosen["trace_id"].tolist()[:2] == ["d", "e"]
-    else:
-        assert chosen["trace_id"].tolist() == expected
+    assert chosen["trace_id"].tolist() == expected
 
 
 def test_ties_break_by_trace_id_for_determinism(config: Any) -> None:
@@ -143,7 +139,7 @@ def test_mixed_selection_is_unique_and_spends_the_budget(pool: pd.DataFrame) -> 
     assert chosen["trace_id"].tolist()[:3] == ["b", "a", "c"]
 
 
-def test_mixed_refills_from_severity_when_quotas_overlap(config: Any) -> None:
+def test_mixed_refills_from_severity_when_quotas_overlap() -> None:
     # Every signal 0.5: uncertainty and severity agree on every row, so the
     # uncertainty quota is fully starved by severity's picks and must be refilled.
     tied = pd.DataFrame({"trace_id": list("abcdef"), **{name: [0.5] * 6 for name in WEIGHTS}})
@@ -174,6 +170,7 @@ def test_duplicate_or_blank_trace_ids_are_rejected(pool: pd.DataFrame, config: A
         ({"mixed_quota": {"severity": 0.5, "fifo": 0.5}}, "unknown policies"),
         ({"mixed_quota": {"severity": 0.7, "random": 0.2}}, "sum to 1"),
         ({"mixed_quota": {"severity": 1.5, "random": -0.5}}, "nonnegative"),
+        ({"mixed_quota": {"severity": float("nan"), "random": 1.0}}, "finite"),
     ],
 )
 def test_config_validation(kwargs: dict[str, Any], message: str) -> None:
@@ -241,11 +238,35 @@ def test_truth_nan_counts_as_unlabelled_and_non_binary_is_rejected(
         BS.compare_policies(pool.assign(truth=2), config, ["severity"], truth="truth")
 
 
-def test_reserved_column_names_are_rejected(pool: pd.DataFrame, config: Any) -> None:
+@pytest.mark.parametrize("name", sorted(BS.RESERVED_COLUMNS))
+def test_reserved_column_names_are_rejected(pool: pd.DataFrame, config: Any, name: str) -> None:
     with pytest.raises(ValueError, match="reserved"):
-        BS.select(pool.assign(score=0.1), "severity", config)
+        BS.select(pool.assign(**{name: 0.1}), "severity", config)
     with pytest.raises(ValueError, match="reserved"):
-        BS.SelectionConfig(budget=3, weights={**WEIGHTS, "rank": 1.0})
+        BS.SelectionConfig(budget=3, weights={**WEIGHTS, name: 1.0})
+
+
+def test_every_selection_carries_the_severity_score(pool: pd.DataFrame, config: Any) -> None:
+    expected = BS.severity_scores(pool, WEIGHTS).set_axis(pool["trace_id"])
+    for policy in BS.POLICIES:
+        chosen = BS.select(pool, policy, config).set_index("trace_id")
+        assert chosen["severity_score"].tolist() == pytest.approx(
+            expected.loc[chosen.index].tolist()
+        )
+    max_score = BS.select(pool, "max_score", config)
+    assert not np.allclose(max_score["score"], max_score["severity_score"])
+
+
+def test_string_truth_and_bare_policy_strings(pool: pd.DataFrame, config: Any) -> None:
+    words = pool.assign(truth=["True", "false", "TRUE", "False", "false", "true"])
+    table = BS.compare_policies(words, config, ["severity"], truth="truth").iloc[0]
+    assert table["true_positive_selected"] == 2  # a and c among b, a, c, d
+    with pytest.raises(ValueError, match="0/1"):
+        BS.compare_policies(pool.assign(truth="yes"), config, ["severity"], truth="truth")
+    with pytest.raises(TypeError, match="single string"):
+        BS.compare_policies(pool, config, "severity")
+    with pytest.raises(TypeError, match="single string"):
+        BS.select_all(pool, config, "severity")
 
 
 def test_numpy_numbers_are_accepted_as_budget_and_weights(pool: pd.DataFrame) -> None:
@@ -283,6 +304,10 @@ def test_annotation_precision_counts_only_labelled_rows(pool: pd.DataFrame, conf
     assert 0 <= table["ci_low"] < table["precision"] < table["ci_high"] <= 1
     empty = BS.annotation_precision(selections, annotations.head(0), ["human_safety"]).iloc[0]
     assert empty["annotated"] == 0 and np.isnan(empty["precision"])
+    # No policy at all (a live run before any annotation): the frame keeps its columns.
+    none = BS.annotation_precision({}, annotations.head(0), ["human_safety"])
+    assert none.empty and list(none.columns)[0] == "policy"
+    none.set_index("policy")
 
 
 def test_judge_agreement_on_annotated_rows(pool: pd.DataFrame) -> None:
@@ -360,8 +385,22 @@ def test_notebook_structure_is_valid_and_offline_safe() -> None:
         assert "execution" not in cell["metadata"], "strip per-cell timing before committing"
         for out in cell["outputs"]:
             assert out["output_type"] != "error", cell["id"]
-            # HTML tables carry a <style> block that does not compile as MDX in langfuse-docs.
+            # HTML tables carry a <style> block that does not compile as MDX in langfuse-docs,
+            # and plain-text tables become indented blocks that MDX renders as prose.
             assert "text/html" not in out.get("data", {}), cell["id"]
+            if out["output_type"] == "execute_result":
+                plain = out["data"].get("text/plain", "")
+                plain = "".join(plain) if isinstance(plain, list) else plain
+                assert "\n" not in plain.strip(), (
+                    f"{cell['id']}: render tables with show(), not the DataFrame repr"
+                )
+    markdown_outputs = sum(
+        "text/markdown" in out.get("data", {})
+        for cell in nb["cells"]
+        if cell["cell_type"] == "code"
+        for out in cell["outputs"]
+    )
+    assert markdown_outputs >= 5, "tables must be emitted as text/markdown"
     code = "\n".join(_source(c) for c in nb["cells"] if c["cell_type"] == "code")
     # Live calls are gated so the notebook runs end to end without credentials.
     assert "LANGFUSE_PUBLIC_KEY" in code and "LANGFUSE_SECRET_KEY" in code

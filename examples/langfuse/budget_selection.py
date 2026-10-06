@@ -86,8 +86,14 @@ class SelectionConfig:
         unknown = set(self.mixed_quota) - {*_SCORED, "random"}
         if unknown:
             raise ValueError(f"mixed_quota names unknown policies: {sorted(unknown)}")
-        if any(share < 0 for share in self.mixed_quota.values()):
-            raise ValueError("mixed_quota shares must be nonnegative")
+        for share in self.mixed_quota.values():
+            if (
+                isinstance(share, bool)
+                or not isinstance(share, int | float | np.integer | np.floating)
+                or not isfinite(share)
+                or share < 0
+            ):
+                raise ValueError("mixed_quota shares must be finite and nonnegative")
         if abs(sum(self.mixed_quota.values()) - 1.0) > 1e-9:
             raise ValueError("mixed_quota shares must sum to 1")
 
@@ -215,7 +221,26 @@ def select(pool: pd.DataFrame, policy: str, config: SelectionConfig) -> pd.DataF
 def select_all(
     pool: pd.DataFrame, config: SelectionConfig, policies: Iterable[str] = POLICIES
 ) -> dict[str, pd.DataFrame]:
-    return {policy: select(pool, policy, config) for policy in policies}
+    return {policy: select(pool, policy, config) for policy in _names(policies)}
+
+
+def _truth_label(value: object) -> float:
+    if isinstance(value, str):
+        return {"true": 1.0, "false": 0.0, "1": 1.0, "0": 0.0}.get(value.strip().lower(), 2.0)
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 2.0
+
+
+def _truth_mask(column: pd.Series, name: str) -> np.ndarray:
+    """0/1, False/True or their strings as a boolean mask; NaN counts as not positive."""
+    labels = (
+        column.astype(object).where(column.notna(), 0.0).map(_truth_label).to_numpy(dtype=float)
+    )
+    if not np.isin(labels, (0.0, 1.0)).all():
+        raise ValueError(f"truth column {name!r} must hold 0/1 or False/True values")
+    return np.asarray(labels == 1.0)
 
 
 def compare_policies(
@@ -237,15 +262,12 @@ def compare_policies(
     _check_pool(pool)
     positives = np.zeros(len(pool), dtype=bool)
     if truth is not None:
-        labels = pool[truth].astype(object).where(pool[truth].notna(), 0).astype(float).to_numpy()
-        if not np.isin(labels, (0.0, 1.0)).all():
-            raise ValueError(f"truth column {truth!r} must hold 0/1 or False/True values")
-        positives = labels == 1.0
+        positives = _truth_mask(pool[truth], truth)
     flags = _signal_matrix(pool, config.weights) >= FLAG_THRESHOLD
     any_flag = pd.Series(flags.any(axis=1), index=pool.index)
     severity = severity_scores(pool, config.weights)
     rows = []
-    for policy in policies:
+    for policy in _names(policies):
         chosen = select(pool, policy, config)
         mask = pool["trace_id"].isin(chosen["trace_id"]).to_numpy()
         row: dict[str, object] = {
@@ -384,7 +406,8 @@ def annotation_precision(
                 "ci_high": high,
             }
         )
-    return pd.DataFrame(rows)
+    columns = ["policy", "annotated", "positive", "precision", "ci_low", "ci_high"]
+    return pd.DataFrame(rows, columns=columns)
 
 
 def judge_agreement(
