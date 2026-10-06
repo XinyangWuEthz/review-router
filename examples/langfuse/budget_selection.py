@@ -5,11 +5,12 @@ column per automated signal (an LLM-as-a-judge score, a code check, a user
 feedback flag). Every signal is read as a probability-like value in [0, 1];
 a missing signal counts as no evidence (0), never as evidence.
 
-The policies mirror the queue orderings compared in the review-router
-benchmark: ``random`` and ``max_score`` are the baselines, ``severity``
-ranks by the maximum of probability times a declared weight, ``uncertainty``
-prefers signals near 0.5 for judge calibration, and ``mixed`` splits the
-budget between them by quota. Selecting within a budget reallocates fixed
+Two policies mirror arms of the review-router benchmark: ``max_score`` is
+its probability ordering and ``severity`` its default, the maximum over
+signals of probability times a declared weight. ``random`` is this module's
+sampling baseline, ``uncertainty`` prefers signals near 0.5 for judge
+calibration, and ``mixed`` splits the budget between them by quota; these
+three were not benchmark arms. Selecting within a budget reallocates fixed
 reviewer capacity; it does not add capacity, and nothing here measures
 real-world harm.
 
@@ -27,6 +28,7 @@ import pandas as pd
 __all__ = [
     "POLICIES",
     "FLAG_THRESHOLD",
+    "RESERVED_COLUMNS",
     "SelectionConfig",
     "severity_scores",
     "max_scores",
@@ -47,6 +49,8 @@ POLICIES: tuple[str, ...] = ("random", "max_score", "severity", "uncertainty", "
 # A signal at or above this value counts as "flagged" in the composition tables.
 FLAG_THRESHOLD = 0.5
 _SCORED = ("max_score", "severity", "uncertainty")
+# Columns rank() and select() add; a signal with one of these names would be overwritten.
+RESERVED_COLUMNS = frozenset({"policy", "score", "rank", "source", "severity_score"})
 
 
 @dataclass(frozen=True)
@@ -61,13 +65,24 @@ class SelectionConfig:
     )
 
     def __post_init__(self) -> None:
-        if isinstance(self.budget, bool) or not isinstance(self.budget, int) or self.budget <= 0:
+        if (
+            isinstance(self.budget, bool)
+            or not isinstance(self.budget, int | np.integer)
+            or self.budget <= 0
+        ):
             raise ValueError("budget must be a positive integer")
         if not self.weights:
             raise ValueError("weights must name at least one signal")
         for name, weight in self.weights.items():
-            if not isinstance(weight, int | float) or not isfinite(weight) or weight <= 0:
+            if (
+                isinstance(weight, bool)
+                or not isinstance(weight, int | float | np.integer | np.floating)
+                or not isfinite(weight)
+                or weight <= 0
+            ):
                 raise ValueError(f"weight for {name!r} must be positive and finite")
+            if name in RESERVED_COLUMNS:
+                raise ValueError(f"signal name {name!r} is reserved; rename the score")
         unknown = set(self.mixed_quota) - {*_SCORED, "random"}
         if unknown:
             raise ValueError(f"mixed_quota names unknown policies: {sorted(unknown)}")
@@ -88,7 +103,7 @@ def _signal_matrix(pool: pd.DataFrame, weights: Mapping[str, float]) -> np.ndarr
     values = pool[list(weights)].to_numpy(dtype=float)
     if np.nanmin(values, initial=0.0) < 0 or np.nanmax(values, initial=0.0) > 1:
         raise ValueError("signals must lie in [0, 1]")
-    return np.nan_to_num(values, nan=0.0)
+    return np.asarray(np.nan_to_num(values, nan=0.0), dtype=float)
 
 
 def severity_scores(pool: pd.DataFrame, weights: Mapping[str, float]) -> pd.Series:
@@ -132,14 +147,25 @@ def _check_pool(pool: pd.DataFrame) -> None:
         raise ValueError("every candidate needs a non-empty trace_id")
     if pool["trace_id"].duplicated().any():
         raise ValueError("trace_id values must be unique; aggregate signals per trace first")
+    clash = sorted(RESERVED_COLUMNS.intersection(pool.columns))
+    if clash:
+        raise ValueError(f"pool columns {clash} are reserved for the selection output; rename them")
 
 
 def rank(pool: pd.DataFrame, policy: str, config: SelectionConfig) -> pd.DataFrame:
-    """The whole pool ordered by one policy: score descending, ties by trace_id."""
+    """The whole pool ordered by one policy: score descending, ties by trace_id.
+
+    ``score`` is the policy's own ranking score; ``severity_score`` is added to
+    every row so selections from different policies share one comparable number.
+    """
     _check_pool(pool)
     if policy == "mixed":
         raise ValueError("mixed selects by quota; use select()")
-    scored = pool.assign(policy=policy, score=policy_scores(pool, policy, config))
+    scored = pool.assign(
+        policy=policy,
+        score=policy_scores(pool, policy, config),
+        severity_score=severity_scores(pool, config.weights),
+    )
     ordered = scored.sort_values(["score", "trace_id"], ascending=[False, True], kind="stable")
     return ordered.assign(rank=np.arange(1, len(ordered) + 1)).reset_index(drop=True)
 
@@ -157,8 +183,11 @@ def _quota_counts(budget: int, quota: Mapping[str, float]) -> dict[str, int]:
 def select(pool: pd.DataFrame, policy: str, config: SelectionConfig) -> pd.DataFrame:
     """The rows one policy sends to review, at most the budget, in service order.
 
-    Columns: trace_id, policy, score, rank, source (the sub-policy that took
-    the row; equals policy except under mixed), plus the pool's own columns.
+    Columns: trace_id, policy, score, severity_score, rank, source (the
+    sub-policy that took the row; equals policy except under mixed), plus the
+    pool's own columns. Under mixed, ``score`` is the taking sub-policy's own
+    score and is only comparable within one ``source``; ``severity_score`` is
+    comparable across rows.
     """
     _check_pool(pool)
     if policy != "mixed":
@@ -201,10 +230,17 @@ def compare_policies(
     per-signal flagged counts, mean severity of the selection, and
     ``flagged_left_out``: flagged rows that did not fit in the budget. With a
     boolean ``truth`` column (an oracle, only available on synthetic or
-    already-labelled data) it adds the true positives captured and the share
-    of all true positives in the pool that the budget reaches.
+    already-labelled data; 0/1 or False/True, NaN meaning unlabelled and
+    counted as not positive) it adds the true positives captured and the
+    share of all true positives in the pool that the budget reaches.
     """
     _check_pool(pool)
+    positives = np.zeros(len(pool), dtype=bool)
+    if truth is not None:
+        labels = pool[truth].astype(object).where(pool[truth].notna(), 0).astype(float).to_numpy()
+        if not np.isin(labels, (0.0, 1.0)).all():
+            raise ValueError(f"truth column {truth!r} must hold 0/1 or False/True values")
+        positives = labels == 1.0
     flags = _signal_matrix(pool, config.weights) >= FLAG_THRESHOLD
     any_flag = pd.Series(flags.any(axis=1), index=pool.index)
     severity = severity_scores(pool, config.weights)
@@ -222,7 +258,6 @@ def compare_policies(
         for j, name in enumerate(config.signals):
             row[f"{name}_flagged"] = int(flags[mask, j].sum())
         if truth is not None:
-            positives = pool[truth].astype(bool).to_numpy()
             captured = int((positives & mask).sum())
             row["true_positive_selected"] = captured
             row["true_positive_share"] = (
@@ -292,14 +327,22 @@ def simulate_annotations(
     """
     rng = np.random.default_rng(seed)
     truth = pool.set_index("trace_id")
+    names = _names(signals)
     rows = []
     for trace_id in selected["trace_id"].drop_duplicates():
-        for name in signals:
+        for name in names:
             label = int(truth.at[trace_id, f"true_{name}"])
             if rng.random() < flip:
                 label = 1 - label
             rows.append({"trace_id": trace_id, "name": f"human_{name}", "value": float(label)})
     return pd.DataFrame(rows, columns=["trace_id", "name", "value"])
+
+
+def _names(values: Iterable[str]) -> list[str]:
+    """Materialise a name list; a bare string is a mistake, not a one-item list."""
+    if isinstance(values, str):
+        raise TypeError("pass an iterable of names, not a single string")
+    return list(values)
 
 
 def _wilson(successes: int, n: int, z: float = 1.959964) -> tuple[float, float]:
@@ -322,7 +365,7 @@ def annotation_precision(
     denominator, so early in a review cycle the estimate covers only the
     items reviewers reached. Intervals are 95% Wilson.
     """
-    names = set(positive_names)
+    names = set(_names(positive_names))
     labelled = annotations[annotations["name"].isin(names)]
     positive_ids = set(labelled.loc[labelled["value"] >= 1, "trace_id"])
     labelled_ids = set(labelled["trace_id"])
@@ -354,7 +397,7 @@ def judge_agreement(
     """
     scores = pool.set_index("trace_id")
     rows = []
-    for name in signals:
+    for name in _names(signals):
         human = annotations[annotations["name"] == f"human_{name}"]
         human = human[human["trace_id"].isin(scores.index)]
         if human.empty:

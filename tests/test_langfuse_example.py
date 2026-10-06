@@ -212,12 +212,59 @@ def test_synthetic_pool_is_reproducible_and_bounded() -> None:
         BS.synthetic_pool(0, WEIGHTS)
 
 
-def test_overlap_matrix_diagonal_is_selection_size(pool: pd.DataFrame, config: Any) -> None:
+def test_overlap_matrix_counts_shared_traces(pool: pd.DataFrame, config: Any) -> None:
     selections = BS.select_all(pool, config)
     matrix = BS.overlap_matrix(selections)
     assert list(matrix.index) == list(BS.POLICIES)
     assert all(matrix.loc[p, p] == len(selections[p]) for p in BS.POLICIES)
     assert matrix.equals(matrix.T)
+    # severity picks b, a, c, d; max_score picks c, f, b, a: three in common.
+    assert matrix.loc["severity", "max_score"] == 3
+    assert matrix.loc["severity", "uncertainty"] == len(
+        set(selections["severity"]["trace_id"]) & set(selections["uncertainty"]["trace_id"])
+    )
+
+
+def test_truth_nan_counts_as_unlabelled_and_non_binary_is_rejected(
+    pool: pd.DataFrame, config: Any
+) -> None:
+    # severity selects b, a, c, d. Truth: a, c, f positive; b and e unlabelled.
+    labelled = pool.assign(truth=[1.0, np.nan, 1.0, 0.0, np.nan, 1.0])
+    table = BS.compare_policies(labelled, config, ["severity"], truth="truth").iloc[0]
+    assert table["true_positive_selected"] == 2
+    assert table["true_positive_share"] == pytest.approx(2 / 3)
+    nullable = pool.assign(truth=pd.array([True, None, True, False, None, True], dtype="boolean"))
+    assert BS.compare_policies(nullable, config, ["severity"], truth="truth").equals(
+        BS.compare_policies(labelled, config, ["severity"], truth="truth")
+    )
+    with pytest.raises(ValueError, match="0/1"):
+        BS.compare_policies(pool.assign(truth=2), config, ["severity"], truth="truth")
+
+
+def test_reserved_column_names_are_rejected(pool: pd.DataFrame, config: Any) -> None:
+    with pytest.raises(ValueError, match="reserved"):
+        BS.select(pool.assign(score=0.1), "severity", config)
+    with pytest.raises(ValueError, match="reserved"):
+        BS.SelectionConfig(budget=3, weights={**WEIGHTS, "rank": 1.0})
+
+
+def test_numpy_numbers_are_accepted_as_budget_and_weights(pool: pd.DataFrame) -> None:
+    config = BS.SelectionConfig(
+        budget=np.int64(3), weights={name: np.float32(w) for name, w in WEIGHTS.items()}
+    )
+    assert len(BS.select(pool, "severity", config)) == 3
+    assert BS.select(pool, "severity", config)["severity_score"].iloc[0] == pytest.approx(9.5)
+
+
+def test_name_iterables_are_materialised_and_bare_strings_rejected(config: Any) -> None:
+    pool = BS.synthetic_pool(30, WEIGHTS, seed=2)
+    chosen = BS.select(pool, "severity", config)
+    labels = BS.simulate_annotations(chosen, pool, (name for name in WEIGHTS), flip=0.0)
+    assert len(labels) == len(chosen) * len(WEIGHTS)
+    with pytest.raises(TypeError, match="single string"):
+        BS.annotation_precision({"severity": chosen}, labels, "human_tone")
+    with pytest.raises(TypeError, match="single string"):
+        BS.judge_agreement(pool, labels, "tone")
 
 
 def test_annotation_precision_counts_only_labelled_rows(pool: pd.DataFrame, config: Any) -> None:
@@ -307,11 +354,20 @@ def test_notebook_structure_is_valid_and_offline_safe() -> None:
     assert nb["nbformat"] == 4
     kinds = {c["cell_type"] for c in nb["cells"]}
     assert kinds <= {"markdown", "code"}
+    for cell in nb["cells"]:
+        if cell["cell_type"] != "code":
+            continue
+        assert "execution" not in cell["metadata"], "strip per-cell timing before committing"
+        for out in cell["outputs"]:
+            assert out["output_type"] != "error", cell["id"]
+            # HTML tables carry a <style> block that does not compile as MDX in langfuse-docs.
+            assert "text/html" not in out.get("data", {}), cell["id"]
     code = "\n".join(_source(c) for c in nb["cells"] if c["cell_type"] == "code")
     # Live calls are gated so the notebook runs end to end without credentials.
     assert "LANGFUSE_PUBLIC_KEY" in code and "LANGFUSE_SECRET_KEY" in code
-    for call in ("create_queue(", "create_queue_item(", "create_score(", "get_many("):
+    for call in ("create_queue(", "create_queue_item(", "create_score(", "get_many_v3("):
         assert call in code
+    assert "scores.get_many(" not in code, "the v2 scores endpoint is deprecated; use scores_v3"
     assert "pk-lf-" not in code.replace("pk-lf-...", "") and "sk-lf-" not in code.replace(
         "sk-lf-...", ""
     ), "no real-looking credentials in the notebook"

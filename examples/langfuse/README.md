@@ -12,12 +12,13 @@ the queue?
 | `example_annotation_queue_prioritization.ipynb` | The cookbook. Runs offline on a synthetic pool without credentials; reads and writes a Langfuse project when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set. |
 | `budget_selection.py` | The selection logic: five policies, the comparison tables, the synthetic pool and the closing-the-loop estimates. Inlined verbatim into the notebook cell tagged `budget_selection`; `tests/test_langfuse_example.py` fails if the two copies drift. |
 
-The policies mirror the benchmark's queue orderings: `random` and `max_score`
-are baselines, `severity` is the default ordering (maximum of probability
-times a declared weight), `uncertainty` targets judge calibration, and
-`mixed` splits the budget by quota. Selection under a budget reallocates
-reviewer time; it does not add any, and the notebook reports the displaced
-work next to every gain.
+`max_score` mirrors the benchmark's probability ordering and `severity` its
+default ordering, the maximum over signals of probability times a declared
+weight. `random` is the notebook's sampling baseline; `uncertainty` (judge
+calibration) and `mixed` (quota split) are additions for annotation queues and
+have no benchmark counterpart. Selection under a budget reallocates reviewer
+time; it does not add any, and the notebook reports the displaced work next to
+every gain.
 
 ## Run
 
@@ -26,28 +27,48 @@ pip install -e ".[ml,dev]" langfuse nbconvert ipykernel
 python -m pytest -q tests/test_langfuse_example.py
 # Execute offline (synthetic pool); outputs are rewritten in place.
 jupyter nbconvert --to notebook --execute --inplace \
+  --ExecutePreprocessor.record_timing=False \
   examples/langfuse/example_annotation_queue_prioritization.ipynb
 ```
 
+Clear the `%pip` cell's output before committing; the tests reject per-cell
+timing metadata, error outputs and HTML table outputs (the notebook renders
+tables as text so the generated MDX compiles).
+
 Set the two keys and `LANGFUSE_BASE_URL` to run against a project. The live
-path is written against the public API as exposed by `langfuse` 4.17.0
-(`api.scores.get_many`, `api.score_configs`, `api.annotation_queues`,
-`create_score`); it was checked against the SDK's signatures, not yet against
-a live project.
+path uses the public API as exposed by `langfuse` 4.17.0: the v3 scores read
+(`api.scores_v3.get_many_v3`, cursor-paged, with the `subject`, `annotation`
+and `details` field groups), `api.score_configs`, `api.annotation_queues` and
+`create_score`. The page-based `api.scores.get_many` is the deprecated v2 read
+path and is not used: the SDK marks it for removal on Langfuse Cloud on
+2026-11-16 and on self-hosted deployments at the Langfuse v4 upgrade. The live
+path was checked against the SDK's signatures and types, not yet against a
+project.
 
 ## Before opening the langfuse-docs pull request
 
-Verified on a live project, once:
+Read from the Langfuse server source and API definition while writing, so the
+notebook text already relies on them; confirm once in the UI of a live project:
 
-- [ ] The queue lists items in insertion order. If not, the fallback in the
-      notebook text applies: one queue per tier.
-- [ ] Adding a trace that is already in the queue is rejected or ignored;
-      the notebook skips known ids first, so either behaviour is fine.
+- [ ] Annotators are served pending items oldest first, so insertion order is
+      the priority (the items endpoint lists newest first). If the served
+      order differs, the fallback in the notebook text applies: one queue per
+      tier.
+- [ ] The API does not reject a trace already in the queue; the notebook's
+      `queued_trace_ids` check is what prevents duplicates.
 - [ ] `create_score(..., data_type="CATEGORICAL")` without a config id is
-      accepted for the `review_policy` marker.
-- [ ] `api.scores.get_many(queue_id=...)` returns the annotation scores for the queue.
+      accepted for the `review_policy` marker, and its `metadata` comes back
+      through the `details` field group.
+
+Still to verify on a live project:
+
+- [ ] `api.scores_v3.get_many_v3(queue_id=..., source="ANNOTATION")` returns
+      the queue's annotation scores with `subject` and `queue_id` populated.
+- [ ] A second run after annotations exist rebuilds the per-policy table in
+      Step 6 from the stored `review_policy` metadata.
 - [ ] The langfuse.com and api.reference.langfuse.com links resolve; they were
-      derived from the langfuse-docs file paths, not opened from this sandbox.
+      derived from the langfuse-docs file paths and the API tag names, not
+      opened from this sandbox.
 
 Mechanics of the contribution, from the langfuse-docs README and recent
 cookbook pull requests:
