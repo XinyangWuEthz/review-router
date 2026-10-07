@@ -32,6 +32,9 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 "scripts/render_results.py" = ["E501"]
 # Analysis records: plotting and page templates, long lines on purpose.
 "record/**" = ["E501", "E741", "B905", "B007"]
+# Cookbook notebook: one cell inlines examples/langfuse/budget_selection.py verbatim,
+# so its docstring precedes its imports and numpy/pandas are imported a second time.
+"examples/langfuse/*.ipynb" = ["E402", "F811"]
 
 [tool.ruff.format]
 # Prose generator: keep its long sentences on one line each.
