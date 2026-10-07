@@ -427,9 +427,16 @@ def test_notebook_structure_is_valid_and_offline_safe() -> None:
     code = "\n".join(_source(c) for c in nb["cells"] if c["cell_type"] == "code")
     # Live calls are gated so the notebook runs end to end without credentials.
     assert "LANGFUSE_PUBLIC_KEY" in code and "LANGFUSE_SECRET_KEY" in code
-    for call in ("create_queue(", "create_queue_item(", "create_score(", "get_many_v3("):
+    for call in ("create_queue(", "create_queue_item(", "scores.create(", "get_many_v3("):
         assert call in code
     assert "scores.get_many(" not in code, "the v2 scores endpoint is deprecated; use scores_v3"
+    # create_score batches in the background and never raises, so it cannot guarantee that a
+    # queued trace has its decision; the synchronous endpoint must run before the queue insert.
+    assert "langfuse.create_score(" not in code
+    push = code[code.index("def push_selection") :]
+    assert push.index("scores.create(") < push.index("create_queue_item("), (
+        "push_selection must record the decision before adding the queue item"
+    )
     assert "pk-lf-" not in code.replace("pk-lf-...", "") and "sk-lf-" not in code.replace(
         "sk-lf-...", ""
     ), "no real-looking credentials in the notebook"
