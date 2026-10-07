@@ -93,20 +93,22 @@ Read from the Langfuse server source and API definition while writing, so the
 notebook text already relies on them; confirm once in the UI of a live project:
 
 - [x] Insertion order is the priority: the queue page lists the rank-1 trace
-      first while the items endpoint returns it last (newest first).
-      Confirmed on 2026-10-07; the served order in Process queue is checked
-      during annotation.
+      first while the items endpoint returns it last (newest first), and the
+      first ten items served for annotation were ranks 1 to 10 (all from the
+      severity quota). Confirmed on 2026-10-07.
 - [ ] The API does not reject a trace already in the queue; the notebook's
       `queued_trace_ids` check is what prevents duplicates.
-- [ ] `create_score(..., data_type="CATEGORICAL")` without a config id is
+- [x] `create_score(..., data_type="CATEGORICAL")` without a config id is
       accepted for the `review_policy` marker, and its `metadata` comes back
-      through the `details` field group.
+      through the `details` field group: the second run excluded "40 selected
+      earlier" and attributed the annotated traces to four policies.
 
 Still to verify on a live project:
 
-- [ ] `api.scores_v3.get_many_v3(queue_id=..., source="ANNOTATION")` returns
-      the queue's annotation scores with `subject` and `queue_id` populated.
-- [ ] A second run after annotations exist rebuilds the per-policy table in
+- [x] `api.scores_v3.get_many_v3(queue_id=..., source="ANNOTATION")` returns
+      the queue's annotation scores with `subject` and `queue_id` populated:
+      50 labels on 10 traces after scoring ten items in the UI.
+- [x] A second run after annotations exist rebuilds the per-policy table in
       Step 6 from the stored `review_policy` metadata.
 - [ ] The langfuse.com and api.reference.langfuse.com links resolve; they were
       derived from the langfuse-docs file paths and the API tag names, not
@@ -118,8 +120,14 @@ Live run log:
   traces: first run read 1428 scores on 300 candidates through the v3
   endpoint (trace ids resolved from `subject`), created the five boolean
   score configs and the queue with plain-string arguments, added 40 of 40
-  items, and took the empty-queue branch in Step 6. Pending: the served
-  order in the UI, the second run after annotation.
+  items, and took the empty-queue branch in Step 6.
+- 2026-10-07, second run after scoring ten items in the UI: Step 3 excluded
+  10 annotated, 40 selected earlier and 40 already queued (260 candidates);
+  Step 5 added a second batch of 40 to the same queue; Step 6 read 50
+  annotation labels and attributed them to severity (10), mixed (10),
+  max_score (5) and random (1); the one deliberate disagreement showed up
+  as negative_feedback agreement 0.9. Signals with no flagged and no
+  positive rows render empty judge precision and recall cells, as designed.
 
 Mechanics of the contribution, from the langfuse-docs README and recent
 cookbook pull requests:
