@@ -111,8 +111,9 @@ Changed after those runs, in response to the langfuse-docs review, and not yet
 run against a project:
 
 - [ ] `api.scores.create(id=..., data_type="CATEGORICAL")` without a config id
-      is accepted for `review_policy`, a second write with the same id replaces
-      the first, and the `queue_id` and `signals` metadata come back through
+      is accepted for `review_policy`, a second write with the same id on the same
+      UTC day replaces the first (on a later day it adds a second record, and
+      Step 6 keeps the latest), and the `queue_id` and `signals` metadata come back through
       `details`. The 2026-10-07 runs covered `create_score`, not this call.
 - [ ] `list_queue_items(status="COMPLETED")` returns only completed items, which
       is what Step 6 now reads.
