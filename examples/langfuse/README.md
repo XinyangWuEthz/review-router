@@ -92,10 +92,10 @@ project.
 Read from the Langfuse server source and API definition while writing, so the
 notebook text already relies on them; confirm once in the UI of a live project:
 
-- [ ] Annotators are served pending items oldest first, so insertion order is
-      the priority (the items endpoint lists newest first). If the served
-      order differs, the fallback in the notebook text applies: one queue per
-      tier.
+- [x] Insertion order is the priority: the queue page lists the rank-1 trace
+      first while the items endpoint returns it last (newest first).
+      Confirmed on 2026-10-07; the served order in Process queue is checked
+      during annotation.
 - [ ] The API does not reject a trace already in the queue; the notebook's
       `queued_trace_ids` check is what prevents duplicates.
 - [ ] `create_score(..., data_type="CATEGORICAL")` without a config id is
