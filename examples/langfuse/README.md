@@ -43,8 +43,8 @@ and `details` field groups), `api.score_configs`, `api.annotation_queues` and
 `create_score`. The page-based `api.scores.get_many` is the deprecated v2 read
 path and is not used: the SDK marks it for removal on Langfuse Cloud on
 2026-11-16 and on self-hosted deployments at the Langfuse v4 upgrade. The live
-path was checked against the SDK's signatures and types, not yet against a
-project.
+path was run twice against a Langfuse Cloud project on 2026-10-07; the log
+below records what each run confirmed.
 
 ## Run against a free Langfuse project
 
@@ -105,16 +105,16 @@ notebook text already relies on them; confirm once in the UI of a live project:
       through the `details` field group: the second run excluded "40 selected
       earlier" and attributed the annotated traces to four policies.
 
-Still to verify on a live project:
+Confirmed on the same project:
 
 - [x] `api.scores_v3.get_many_v3(queue_id=..., source="ANNOTATION")` returns
       the queue's annotation scores with `subject` and `queue_id` populated:
       50 labels on 10 traces after scoring ten items in the UI.
 - [x] A second run after annotations exist rebuilds the per-policy table in
       Step 6 from the stored `review_policy` metadata.
-- [ ] The langfuse.com and api.reference.langfuse.com links resolve; they were
-      derived from the langfuse-docs file paths and the API tag names, not
-      opened from this sandbox.
+- [x] The langfuse.com and api.reference.langfuse.com links resolve; they were
+      derived from the langfuse-docs file paths and the API tag names and
+      opened in a browser on 2026-10-07.
 
 Live run log:
 
@@ -144,5 +144,6 @@ cookbook pull requests:
    `{"notebook": "example_annotation_queue_prioritization.ipynb", "docsPath": null, "isGuide": true}`
    to `cookbook/_routes.json`.
 4. Run `pnpm run format`.
-5. In the pull request text: offline reproduction, SDK version tested, no real
-   credentials, and the live checks above with their outcome.
+5. Use `langfuse-docs-pr.md` as the pull request text: offline reproduction,
+   SDK version tested, no real credentials, and the live checks above with
+   their outcome.
