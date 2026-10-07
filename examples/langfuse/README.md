@@ -10,6 +10,7 @@ the queue?
 | File | Role |
 |---|---|
 | `example_annotation_queue_prioritization.ipynb` | The cookbook. Runs offline on a synthetic pool without credentials; reads and writes a Langfuse project when `LANGFUSE_PUBLIC_KEY` and `LANGFUSE_SECRET_KEY` are set. |
+| `seed_demo_project.py` | Writes synthetic traces and judge scores into an empty project so the live path has candidates. Dry-runs without credentials. |
 | `budget_selection.py` | The selection logic: five policies, the comparison tables, the synthetic pool and the closing-the-loop estimates. Inlined verbatim into the notebook cell tagged `budget_selection`; `tests/test_langfuse_example.py` fails if the two copies drift. |
 
 `max_score` mirrors the benchmark's probability ordering and `severity` its
@@ -44,6 +45,47 @@ path and is not used: the SDK marks it for removal on Langfuse Cloud on
 2026-11-16 and on self-hosted deployments at the Langfuse v4 upgrade. The live
 path was checked against the SDK's signatures and types, not yet against a
 project.
+
+## Run against a free Langfuse project
+
+1. Sign up at cloud.langfuse.com (the free Hobby plan is enough), create a
+   project, and under Project Settings > API Keys create a key pair. Note the
+   region: `https://cloud.langfuse.com` for EU, `https://us.cloud.langfuse.com`
+   for US.
+2. Seed the empty project with synthetic traces and judge scores named like
+   the notebook's signals; a fresh project has no scores, so the live path
+   would otherwise find no candidates:
+
+   ```bash
+   export LANGFUSE_PUBLIC_KEY=pk-lf-...
+   export LANGFUSE_SECRET_KEY=sk-lf-...
+   export LANGFUSE_BASE_URL=https://cloud.langfuse.com
+   python examples/langfuse/seed_demo_project.py --n 300
+   ```
+
+   Wait a minute for ingestion, then confirm in the UI that the traces carry
+   `safety_violation`, `hallucination`, `negative_feedback`, `off_topic` and
+   `tone` scores.
+3. Execute the notebook against the project into a copy, so the committed
+   offline outputs stay untouched:
+
+   ```bash
+   jupyter nbconvert --to notebook --execute \
+     --output live-run.ipynb --output-dir /tmp/langfuse-live \
+     examples/langfuse/example_annotation_queue_prioritization.ipynb
+   ```
+
+   Or open it in Jupyter with the three variables exported and run all cells.
+   Step 3 should report a few hundred candidates, Step 5 a queue named
+   `daily-review` with 40 items, and Step 6 "no annotation scores ... yet".
+4. In the UI, open Annotation Queues > daily-review, note the order the items
+   are served in, and score ten or so items with the `human_*` configs.
+5. Run the notebook again. Step 3 excludes the traces selected on the first
+   run, Step 5 adds a second batch, and Step 6 now shows the precision and
+   agreement tables rebuilt from the stored `review_policy` scores.
+6. Tick the checklist below and record each outcome for the pull request
+   text. Do not commit the live-executed copy; re-execute offline (recipe
+   above) before committing any notebook change.
 
 ## Before opening the langfuse-docs pull request
 
