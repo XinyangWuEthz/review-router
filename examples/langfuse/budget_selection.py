@@ -416,30 +416,39 @@ def judge_agreement(
 ) -> pd.DataFrame:
     """Per signal, how the judge flag (>= 0.5) agrees with the human label on annotated rows.
 
-    Rows were chosen by the policies, not at random, so these rates describe
-    the reviewed slice only; they are not the judge's accuracy on all traffic.
+    A row the judge did not score holds no prediction: it is left out of
+    ``annotated`` and the rates, and counted in ``judge_missing``. Rows were
+    chosen by the policies, not at random, so these rates describe the
+    reviewed slice only; they are not the judge's accuracy on all traffic.
     """
     scores = pool.set_index("trace_id")
     rows = []
     for name in _names(signals):
         human = annotations[annotations["name"] == f"human_{name}"]
         human = human[human["trace_id"].isin(scores.index)]
-        if human.empty:
-            rows.append({"signal": name, "annotated": 0})
-            continue
         judge = scores.loc[human["trace_id"], name].to_numpy(dtype=float)
-        judge_flag = np.nan_to_num(judge, nan=0.0) >= FLAG_THRESHOLD
-        label = human["value"].to_numpy(dtype=float) >= 1
+        scored = ~np.isnan(judge)
+        judge_flag = judge[scored] >= FLAG_THRESHOLD
+        label = human["value"].to_numpy(dtype=float)[scored] >= 1
         both = int((judge_flag & label).sum())
         rows.append(
             {
                 "signal": name,
-                "annotated": int(len(label)),
-                "agreement": float((judge_flag == label).mean()),
+                "annotated": int(scored.sum()),
+                "judge_missing": int((~scored).sum()),
+                "agreement": float((judge_flag == label).mean()) if scored.any() else float("nan"),
                 "judge_precision": both / int(judge_flag.sum())
                 if judge_flag.any()
                 else float("nan"),
                 "judge_recall": both / int(label.sum()) if label.any() else float("nan"),
             }
         )
-    return pd.DataFrame(rows)
+    columns = [
+        "signal",
+        "annotated",
+        "judge_missing",
+        "agreement",
+        "judge_precision",
+        "judge_recall",
+    ]
+    return pd.DataFrame(rows, columns=columns)

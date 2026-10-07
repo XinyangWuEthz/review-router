@@ -323,10 +323,33 @@ def test_judge_agreement_on_annotated_rows(pool: pd.DataFrame) -> None:
     safety = table.loc["safety_violation"]
     # Judge flags b only; humans mark b and f. Agreement 2/3, precision 1, recall 1/2.
     assert safety["annotated"] == 3
+    assert safety["judge_missing"] == 0
     assert safety["agreement"] == pytest.approx(2 / 3)
     assert safety["judge_precision"] == pytest.approx(1.0)
     assert safety["judge_recall"] == pytest.approx(0.5)
     assert table.loc["tone", "annotated"] == 0
+    assert table.loc["tone", "judge_missing"] == 0
+
+
+def test_judge_agreement_leaves_out_rows_the_judge_did_not_score(pool: pd.DataFrame) -> None:
+    # Row e has no safety score. Read as 0, the human's yes on e would count as a judge miss;
+    # it is no prediction at all, so it is counted apart instead.
+    annotations = pd.DataFrame(
+        {
+            "trace_id": ["b", "a", "e"],
+            "name": ["human_safety_violation"] * 3,
+            "value": [1.0, 0.0, 1.0],
+        }
+    )
+    safety = BS.judge_agreement(pool, annotations, ["safety_violation"]).iloc[0]
+    assert safety["annotated"] == 2
+    assert safety["judge_missing"] == 1
+    assert safety["agreement"] == pytest.approx(1.0)  # b flagged and positive, a neither
+    assert safety["judge_recall"] == pytest.approx(1.0)
+    only_missing = BS.judge_agreement(pool, annotations.tail(1), ["safety_violation"]).iloc[0]
+    assert only_missing["annotated"] == 0
+    assert only_missing["judge_missing"] == 1
+    assert np.isnan(only_missing["agreement"])
 
 
 def test_simulated_annotations_cover_every_selected_row(config: Any) -> None:
