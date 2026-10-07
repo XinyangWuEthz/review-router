@@ -96,8 +96,10 @@ notebook text already relies on them; confirm once in the UI of a live project:
       first while the items endpoint returns it last (newest first), and the
       first ten items served for annotation were ranks 1 to 10 (all from the
       severity quota). Confirmed on 2026-10-07.
-- [ ] The API does not reject a trace already in the queue; the notebook's
-      `queued_trace_ids` check is what prevents duplicates.
+- [x] The API does not reject a trace already in the queue; the notebook's
+      `queued_trace_ids` check is what prevents duplicates. Confirmed on
+      2026-10-07: adding an already-queued trace created a second item, which
+      `delete_queue_item` removed.
 - [x] `create_score(..., data_type="CATEGORICAL")` without a config id is
       accepted for the `review_policy` marker, and its `metadata` comes back
       through the `details` field group: the second run excluded "40 selected
