@@ -293,9 +293,10 @@ def overlap_matrix(selections: Mapping[str, pd.DataFrame]) -> pd.DataFrame:
     """Count of trace_ids two policies both selected."""
     ids = {name: set(frame["trace_id"]) for name, frame in selections.items()}
     names = list(ids)
-    return pd.DataFrame(
+    matrix = pd.DataFrame(
         [[len(ids[a] & ids[b]) for b in names] for a in names], index=names, columns=names
     )
+    return matrix.rename_axis(index="policy")
 
 
 def synthetic_pool(

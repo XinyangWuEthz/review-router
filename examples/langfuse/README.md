@@ -112,6 +112,15 @@ Still to verify on a live project:
       derived from the langfuse-docs file paths and the API tag names, not
       opened from this sandbox.
 
+Live run log:
+
+- 2026-10-07, Langfuse Cloud, langfuse 4.17.0, project seeded with 300
+  traces: first run read 1428 scores on 300 candidates through the v3
+  endpoint (trace ids resolved from `subject`), created the five boolean
+  score configs and the queue with plain-string arguments, added 40 of 40
+  items, and took the empty-queue branch in Step 6. Pending: the served
+  order in the UI, the second run after annotation.
+
 Mechanics of the contribution, from the langfuse-docs README and recent
 cookbook pull requests:
 
