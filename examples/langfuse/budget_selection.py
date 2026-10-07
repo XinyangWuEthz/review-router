@@ -255,7 +255,7 @@ def compare_policies(
     per-signal flagged counts, mean severity of the selection, and
     ``flagged_left_out``: flagged rows that did not fit in the budget. With a
     boolean ``truth`` column (an oracle, only available on synthetic or
-    already-labelled data; 0/1 or False/True, NaN meaning unlabelled and
+    already-labeled data; 0/1 or False/True, NaN meaning unlabeled and
     counted as not positive) it adds the true positives captured and the
     share of all true positives in the pool that the budget reaches.
     """
@@ -362,7 +362,7 @@ def simulate_annotations(
 
 
 def _names(values: Iterable[str]) -> list[str]:
-    """Materialise a name list; a bare string is a mistake, not a one-item list."""
+    """Materialize a name list; a bare string is a mistake, not a one-item list."""
     if isinstance(values, str):
         raise TypeError("pass an iterable of names, not a single string")
     return list(values)
@@ -373,9 +373,9 @@ def _wilson(successes: int, n: int, z: float = 1.959964) -> tuple[float, float]:
         return (float("nan"), float("nan"))
     p = successes / n
     denominator = 1 + z * z / n
-    centre = (p + z * z / (2 * n)) / denominator
+    center = (p + z * z / (2 * n)) / denominator
     half = z * sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denominator
-    return (max(0.0, centre - half), min(1.0, centre + half))
+    return (max(0.0, center - half), min(1.0, center + half))
 
 
 def annotation_precision(
@@ -384,17 +384,17 @@ def annotation_precision(
     """Share of each policy's annotated rows that a human marked positive on any listed score.
 
     ``annotations`` is long-form (trace_id, name, value) with value 1 for a
-    positive label. Rows a human has not labelled yet are excluded from the
+    positive label. Rows a human has not labeled yet are excluded from the
     denominator, so early in a review cycle the estimate covers only the
     items reviewers reached. Intervals are 95% Wilson.
     """
     names = set(_names(positive_names))
-    labelled = annotations[annotations["name"].isin(names)]
-    positive_ids = set(labelled.loc[labelled["value"] >= 1, "trace_id"])
-    labelled_ids = set(labelled["trace_id"])
+    labeled = annotations[annotations["name"].isin(names)]
+    positive_ids = set(labeled.loc[labeled["value"] >= 1, "trace_id"])
+    labeled_ids = set(labeled["trace_id"])
     rows = []
     for policy, chosen in selections.items():
-        ids = [t for t in chosen["trace_id"] if t in labelled_ids]
+        ids = [t for t in chosen["trace_id"] if t in labeled_ids]
         hits = sum(t in positive_ids for t in ids)
         low, high = _wilson(hits, len(ids))
         rows.append(
@@ -416,30 +416,39 @@ def judge_agreement(
 ) -> pd.DataFrame:
     """Per signal, how the judge flag (>= 0.5) agrees with the human label on annotated rows.
 
-    Rows were chosen by the policies, not at random, so these rates describe
-    the reviewed slice only; they are not the judge's accuracy on all traffic.
+    A row the judge did not score holds no prediction: it is left out of
+    ``annotated`` and the rates, and counted in ``judge_missing``. Rows were
+    chosen by the policies, not at random, so these rates describe the
+    reviewed slice only; they are not the judge's accuracy on all traffic.
     """
     scores = pool.set_index("trace_id")
     rows = []
     for name in _names(signals):
         human = annotations[annotations["name"] == f"human_{name}"]
         human = human[human["trace_id"].isin(scores.index)]
-        if human.empty:
-            rows.append({"signal": name, "annotated": 0})
-            continue
         judge = scores.loc[human["trace_id"], name].to_numpy(dtype=float)
-        judge_flag = np.nan_to_num(judge, nan=0.0) >= FLAG_THRESHOLD
-        label = human["value"].to_numpy(dtype=float) >= 1
+        scored = ~np.isnan(judge)
+        judge_flag = judge[scored] >= FLAG_THRESHOLD
+        label = human["value"].to_numpy(dtype=float)[scored] >= 1
         both = int((judge_flag & label).sum())
         rows.append(
             {
                 "signal": name,
-                "annotated": int(len(label)),
-                "agreement": float((judge_flag == label).mean()),
+                "annotated": int(scored.sum()),
+                "judge_missing": int((~scored).sum()),
+                "agreement": float((judge_flag == label).mean()) if scored.any() else float("nan"),
                 "judge_precision": both / int(judge_flag.sum())
                 if judge_flag.any()
                 else float("nan"),
                 "judge_recall": both / int(label.sum()) if label.any() else float("nan"),
             }
         )
-    return pd.DataFrame(rows)
+    columns = [
+        "signal",
+        "annotated",
+        "judge_missing",
+        "agreement",
+        "judge_precision",
+        "judge_recall",
+    ]
+    return pd.DataFrame(rows, columns=columns)

@@ -40,11 +40,12 @@ Set the two keys and `LANGFUSE_BASE_URL` to run against a project. The live
 path uses the public API as exposed by `langfuse` 4.17.0: the v3 scores read
 (`api.scores_v3.get_many_v3`, cursor-paged, with the `subject`, `annotation`
 and `details` field groups), `api.score_configs`, `api.annotation_queues` and
-`create_score`. The page-based `api.scores.get_many` is the deprecated v2 read
-path and is not used: the SDK marks it for removal on Langfuse Cloud on
-2026-11-16 and on self-hosted deployments at the Langfuse v4 upgrade. The live
-path was run twice against a Langfuse Cloud project on 2026-10-07; the log
-below records what each run confirmed.
+`api.scores.create` (synchronous, so a failed decision write raises). The
+page-based `api.scores.get_many` is the deprecated v2 read path and is not
+used: the SDK marks it for removal on Langfuse Cloud on 2026-11-16 and on
+self-hosted deployments at the Langfuse v4 upgrade. The live path was run
+twice against a Langfuse Cloud project on 2026-10-07; the log below records
+what each run confirmed.
 
 ## Run against a free Langfuse project
 
@@ -77,9 +78,10 @@ below records what each run confirmed.
 
    Or open it in Jupyter with the three variables exported and run all cells.
    Step 3 should report a few hundred candidates, Step 5 a queue named
-   `daily-review` with 40 items, and Step 6 "no annotation scores ... yet".
+   `daily-review` with 40 items, and Step 6 "no completed reviews in queue ... yet".
 4. In the UI, open Annotation Queues > daily-review, note the order the items
-   are served in, and score ten or so items with the `human_*` configs.
+   are served in, and score ten or so items with the `human_*` configs,
+   completing each one (Step 6 reads completed items only).
 5. Run the notebook again. Step 3 excludes the traces selected on the first
    run, Step 5 adds a second batch, and Step 6 now shows the precision and
    agreement tables rebuilt from the stored `review_policy` scores.
@@ -104,6 +106,19 @@ notebook text already relies on them; confirm once in the UI of a live project:
       accepted for the `review_policy` marker, and its `metadata` comes back
       through the `details` field group: the second run excluded "40 selected
       earlier" and attributed the annotated traces to four policies.
+
+Changed after those runs, in response to the langfuse-docs review, and not yet
+run against a project:
+
+- [ ] `api.scores.create(id=..., data_type="CATEGORICAL")` without a config id
+      is accepted for `review_policy`, a second write with the same id on the same
+      UTC day replaces the first (on a later day it adds a second record, and
+      Step 6 keeps the latest), and the `queue_id` and `signals` metadata come back through
+      `details`. The 2026-10-07 runs covered `create_score`, not this call.
+- [ ] `list_queue_items(status="COMPLETED")` returns only completed items, which
+      is what Step 6 now reads.
+- [ ] `list_queues` returns `score_config_ids` for an existing queue, which
+      `ensure_queue` now checks.
 
 Confirmed on the same project:
 
